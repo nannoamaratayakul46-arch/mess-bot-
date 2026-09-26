@@ -81,6 +81,7 @@ const {
 
 const {
   isSpecialPlayer,
+  isEclipseAdmin,
   discover: discoverLoveQuest,
   handleLoveQuestCommand,
 } = require("./rpg/love-quest");
@@ -4891,9 +4892,8 @@ async function handleMessage(
       // ------------------------------------------------------
 
       if (
-        isSpecialPlayer(
-          senderId
-        )
+        isSpecialPlayer(senderId) ||
+        isEclipseAdmin(senderId)
       ) {
         try {
           const loveQuestHandled =
