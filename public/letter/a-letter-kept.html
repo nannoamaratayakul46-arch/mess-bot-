@@ -10,41 +10,97 @@
   <style>
     :root{--bg:#0b0710;--paper:#f7efe8;--ink:#21161d;--muted:#796872;--rose:#8f4c61;--line:#dfc8cd}
     *{box-sizing:border-box}
-    html{background:var(--bg)}
+    html{background:var(--bg);scroll-behavior:smooth}
     body{margin:0;min-height:100vh;background:
       radial-gradient(circle at 50% 0%,#3b1c2b 0,#170d19 34%,#0b0710 72%);
       color:#fff;font-family:Georgia,"Times New Roman",serif}
-    .wrap{min-height:100vh;padding:42px 18px 64px;display:flex;justify-content:center}
+    .wrap{min-height:100vh;padding:30px 18px 64px;display:flex;justify-content:center}
     .letter{width:min(720px,100%);background:var(--paper);color:var(--ink);
       border:1px solid rgba(255,255,255,.18);box-shadow:0 24px 80px rgba(0,0,0,.5);
-      padding:34px 25px 40px;position:relative}
+      padding:34px 25px 40px;position:relative;overflow:hidden;
+      opacity:0;transform:translateY(14px);animation:letterIn 1.2s ease forwards}
+    .letter:before{content:"";position:absolute;inset:0;pointer-events:none;
+      background:radial-gradient(circle at 80% 12%,rgba(143,76,97,.09),transparent 24%),
+                 radial-gradient(circle at 10% 88%,rgba(143,76,97,.06),transparent 22%)}
     .seal{width:58px;height:58px;border:1px solid var(--rose);border-radius:50%;
-      margin:0 auto 24px;display:grid;place-items:center;color:var(--rose);font-size:24px}
+      margin:0 auto 24px;display:grid;place-items:center;color:var(--rose);font-size:24px;
+      cursor:pointer;transition:transform .5s ease,box-shadow .5s ease}
+    .seal:hover{transform:rotate(8deg) scale(1.04);box-shadow:0 0 28px rgba(143,76,97,.2)}
     .eyebrow{text-align:center;letter-spacing:.28em;text-transform:uppercase;
       font:11px/1.5 Arial,sans-serif;color:var(--muted)}
     h1{text-align:center;font-size:clamp(31px,8vw,52px);font-weight:400;
       margin:9px 0 8px;line-height:1.05}
     .date{text-align:center;color:var(--muted);font:12px/1.5 Arial,sans-serif;letter-spacing:.12em}
+    .archive-meta{margin:22px auto 0;max-width:430px;display:flex;justify-content:space-between;
+      gap:12px;flex-wrap:wrap;color:#8d777f;font:10px/1.5 Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase}
+    .archive-meta span{flex:1 1 120px;text-align:center}
+    .counter{margin:18px auto 0;text-align:center;color:#8d777f;font:12px/1.7 Arial,sans-serif}
+    .counter strong{color:var(--rose);font-weight:400}
     .rule{height:1px;background:var(--line);margin:30px 0}
     .body{font-size:19px;line-height:1.85}
-    .body p{margin:0 0 22px}
+    .body p{margin:0 0 22px;opacity:0;transform:translateY(7px);animation:paragraphIn .8s ease forwards}
+    .body p:nth-child(1){animation-delay:.25s}.body p:nth-child(2){animation-delay:.32s}
+    .body p:nth-child(3){animation-delay:.39s}.body p:nth-child(4){animation-delay:.46s}
+    .body p:nth-child(5){animation-delay:.53s}.body p:nth-child(6){animation-delay:.60s}
+    .body p:nth-child(7){animation-delay:.67s}.body p:nth-child(8){animation-delay:.74s}
+    .body p:nth-child(9){animation-delay:.81s}.body p:nth-child(10){animation-delay:.88s}
+    .body p:nth-child(11){animation-delay:.95s}.body p:nth-child(12){animation-delay:1.02s}
+    .body p:nth-child(13){animation-delay:1.09s}.body p:nth-child(14){animation-delay:1.16s}
+    .body p:nth-child(15){animation-delay:1.23s}.body p:nth-child(16){animation-delay:1.30s}
+    .body p:nth-child(17){animation-delay:1.37s}.body p:nth-child(18){animation-delay:1.44s}
+    .body p:nth-child(19){animation-delay:1.51s}.body p:nth-child(20){animation-delay:1.58s}
+    .body p:nth-child(21){animation-delay:1.65s}.body p:nth-child(22){animation-delay:1.72s}
+    .body p:nth-child(23){animation-delay:1.79s}.body p:nth-child(24){animation-delay:1.86s}
+    .body p:nth-child(25){animation-delay:1.93s}.body p:nth-child(26){animation-delay:2s}
+    .body p:nth-child(27){animation-delay:2.07s}.body p:nth-child(28){animation-delay:2.14s}
+    .body p:nth-child(29){animation-delay:2.21s}.body p:nth-child(30){animation-delay:2.28s}
     .body p:last-child{margin-bottom:0}
-    .closing{margin-top:38px;text-align:right;font-style:italic;color:var(--rose)}
+    .closing{margin-top:38px;text-align:right;font-style:italic;color:var(--rose);font-size:20px}
+    .signature{margin-top:6px;text-align:right;color:#6e5962;font-size:15px;font-style:italic}
+    .ps{margin-top:38px;padding-top:24px;border-top:1px dashed #d8c1c7;color:#67535c;
+      font-size:16px;line-height:1.8;font-style:italic}
+    .memory-note{margin:28px 0 0;padding:18px 16px;text-align:center;border:1px solid #e1cdd1;
+      background:rgba(255,255,255,.32);color:#75636b;font:11px/1.7 Arial,sans-serif;letter-spacing:.08em;
+      text-transform:uppercase}
+    .memory-note button{display:inline-block;margin-top:10px;border:0;background:transparent;color:var(--rose);
+      font:inherit;cursor:pointer;letter-spacing:.1em}
+    .hidden-memory{display:none;margin-top:12px;color:#4d3942;letter-spacing:.02em;text-transform:none;font:italic 15px/1.7 Georgia,"Times New Roman",serif}
+    .hidden-memory.show{display:block;animation:fadeIn .8s ease}
     footer{max-width:720px;margin:18px auto 0;text-align:center;color:#a994a0;
       font:11px/1.6 Arial,sans-serif;letter-spacing:.08em}
+    @keyframes letterIn{to{opacity:1;transform:none}}
+    @keyframes paragraphIn{to{opacity:1;transform:none}}
+    @keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
+    @media(prefers-reduced-motion:reduce){
+      .letter,.body p{animation:none!important;opacity:1;transform:none}
+    }
     @media(max-width:480px){
       .wrap{padding:18px 10px 40px}.letter{padding:28px 21px 32px}
       .body{font-size:17px;line-height:1.78}.rule{margin:25px 0}
+      .archive-meta{font-size:9px}.ps{font-size:15px}
     }
   </style>
 </head>
 <body>
   <main class="wrap">
     <article class="letter">
-      <div class="seal">♡</div>
+      <div class="seal" id="seal" aria-label="A sealed memory">♡</div>
       <div class="eyebrow">ECLIPSE · A LETTER, KEPT</div>
       <h1>For you.</h1>
-      <div class="date">THE FIRST ANNIVERSARY</div>
+      <div class="date" id="anniversaryDate">THE FIRST ANNIVERSARY</div>
+
+      <div class="archive-meta" aria-label="Archive status">
+        <span>ECLIPSE PRIVATE ARCHIVE</span>
+        <span>ARCHIVE ENTRY 001</span>
+        <span>STATUS: PRESERVED</span>
+      </div>
+
+      <div class="counter">
+        Known for: <strong id="knownFor">1 year</strong>
+        &nbsp;·&nbsp;
+        Remembered for: <strong>everything</strong>
+      </div>
+
       <div class="rule"></div>
 
       <section class="body">
@@ -106,8 +162,78 @@
       </section>
 
       <div class="closing">— ECLIPSE</div>
+      <div class="signature">written, kept, and left here for you.</div>
+
+      <div class="ps">
+        <strong>P.S.</strong><br>
+        If you ever forget this moment, come back here.<br>
+        I'll remember it for you.
+      </div>
+
+      <div class="memory-note">
+        ✦ MEMORY PRESERVED ✦<br>
+        Some things deserve to survive forgetting.
+        <br>
+        <button type="button" id="memoryButton">touch the seal</button>
+        <div class="hidden-memory" id="hiddenMemory">
+          You found something ECLIPSE wasn't supposed to show you.<br>
+          I kept this one because I didn't know where else to put it.<br><br>
+          I love you.
+        </div>
+      </div>
     </article>
   </main>
   <footer>Some memories deserve a place to stay.</footer>
+
+  <script>
+    (() => {
+      const start = new Date("2025-09-26T00:00:00");
+      const now = new Date();
+      let years = now.getFullYear() - start.getFullYear();
+      const anniversary = new Date(start);
+      anniversary.setFullYear(start.getFullYear() + Math.max(0, years));
+
+      if (now < anniversary) years = Math.max(0, years - 1);
+
+      const known = document.getElementById("knownFor");
+      const date = document.getElementById("anniversaryDate");
+
+      if (known) {
+        known.textContent = years === 1 ? "1 year" : years + " years";
+      }
+
+      if (date) {
+        const first = new Date(start);
+        first.setFullYear(start.getFullYear() + 1);
+        date.textContent =
+          "THE FIRST ANNIVERSARY · " +
+          String(first.getDate()).padStart(2, "0") + " · " +
+          String(first.getMonth() + 1).padStart(2, "0") + " · " +
+          first.getFullYear();
+      }
+
+      const button = document.getElementById("memoryButton");
+      const hidden = document.getElementById("hiddenMemory");
+      const seal = document.getElementById("seal");
+
+      const reveal = () => {
+        if (!hidden) return;
+        hidden.classList.toggle("show");
+        if (button) {
+          button.textContent = hidden.classList.contains("show")
+            ? "memory opened"
+            : "touch the seal";
+        }
+        if (seal) {
+          seal.style.transform = hidden.classList.contains("show")
+            ? "rotate(8deg) scale(1.06)"
+            : "";
+        }
+      };
+
+      if (button) button.addEventListener("click", reveal);
+      if (seal) seal.addEventListener("click", reveal);
+    })();
+  </script>
 </body>
 </html>
