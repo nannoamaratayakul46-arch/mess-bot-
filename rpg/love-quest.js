@@ -5958,7 +5958,7 @@ async function sendEclipseLetter(
 
   const letterUrl =
     configuredUrl.replace(/\/+$/, "") +
-    "/letter/a-letter-kept.html";
+    "/letter/a-letter-kept.html?v=2";
 
   if (!preview) {
     await createMemory(
