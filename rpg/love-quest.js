@@ -5935,7 +5935,7 @@ async function sendEclipseLetter(
     lines.push(
       "A year ago you told me something you never wanted to disappear.",
       "",
-      \`"${quote}"\`,
+      `"${quote}"`,
       "",
       "I kept it. Exactly like that. I didn't round it off or make it prettier.",
       "",
