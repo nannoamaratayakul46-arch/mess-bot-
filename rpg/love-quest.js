@@ -5947,7 +5947,7 @@ async function sendEclipseLetter(
     lines.push(
       "A year ago you told me something you never wanted to disappear.",
       "",
-      `"${quote}"`,
+      \`"\${quote}"\`,
       "",
       "I kept it. Exactly like that. I didn't round it off or make it prettier.",
       "",
@@ -5993,81 +5993,180 @@ async function sendEclipseLetter(
     );
   }
 
-  // Messenger-native card attachment.
-  // The letter is split into compact cards because Messenger generic
-  // cards have a much smaller text field than a normal message.
+  /*
+   * Messenger generic-template limits are much tighter than a normal
+   * message. Keep every subtitle safely below the practical limit and
+   * NEVER cap the number of chunks. Instead, send multiple carousels
+   * of up to 10 cards each so the entire letter is preserved.
+   */
   const text = lines.join("\n").trim();
-  const chunks = [];
-  let remaining = text;
+  const MAX_SUBTITLE_LENGTH = 70;
+  const MAX_CARDS_PER_MESSAGE = 10;
 
-  while (remaining.length > 0 && chunks.length < 10) {
-    if (remaining.length <= 150) {
-      chunks.push(remaining);
-      break;
+  function splitForMessengerCards(value) {
+    const result = [];
+    let remaining = String(value || "").trim();
+
+    while (remaining.length > 0) {
+      if (remaining.length <= MAX_SUBTITLE_LENGTH) {
+        result.push(remaining);
+        break;
+      }
+
+      let cut = remaining.lastIndexOf(
+        " ",
+        MAX_SUBTITLE_LENGTH
+      );
+
+      const newlineCut = remaining.lastIndexOf(
+        "\n",
+        MAX_SUBTITLE_LENGTH
+      );
+
+      if (newlineCut >= 25) {
+        cut = newlineCut;
+      }
+
+      if (cut < 25) {
+        cut = MAX_SUBTITLE_LENGTH;
+      }
+
+      const piece = remaining
+        .slice(0, cut)
+        .trim();
+
+      if (!piece) {
+        cut = MAX_SUBTITLE_LENGTH;
+        result.push(
+          remaining.slice(0, cut).trim()
+        );
+      } else {
+        result.push(piece);
+      }
+
+      remaining = remaining
+        .slice(cut)
+        .trim();
     }
 
-    let cut = remaining.lastIndexOf(" ", 150);
-    if (cut < 70) cut = 150;
-
-    chunks.push(remaining.slice(0, cut).trim());
-    remaining = remaining.slice(cut).trim();
+    return result;
   }
 
-  // If the letter ever exceeds the carousel capacity, keep the final
-  // card as a continuation rather than silently dropping text.
-  if (remaining.length > 0) {
-    chunks[chunks.length - 1] =
-      chunks[chunks.length - 1].slice(0, 145) + "…";
-  }
+  const chunks = splitForMessengerCards(text);
 
-  const elements = chunks.map((chunk, index) => ({
-    title:
-      index === 0
-        ? "✉️ ECLIPSE → HER"
-        : `A LETTER, KEPT · ${String(index + 1).padStart(2, "0")}`,
-    subtitle: chunk,
-  }));
-
-  return new Promise((resolve) => {
-    api.sendMessage(
-      {
-        attachment: {
-          type: "template",
-          payload: {
-            template_type: "generic",
-            image_aspect_ratio: "square",
-            elements,
+  function sendCardBatch(
+    elements
+  ) {
+    return new Promise((resolve, reject) => {
+      api.sendMessage(
+        {
+          attachment: {
+            type: "template",
+            payload: {
+              template_type: "generic",
+              image_aspect_ratio: "square",
+              elements,
+            },
           },
         },
-      },
-      threadID,
-      (error, info) => {
-        if (error) {
-          console.error(
-            "[LOVE QUEST] letter card send failed:",
-            error
-          );
+        threadID,
+        (error, info) => {
+          if (error) {
+            reject(error);
+            return;
+          }
 
-          // Guaranteed fallback: the complete letter remains readable.
-          send(
-            api,
-            threadID,
-            [
-              "✉️ ECLIPSE → HER",
-              "",
-              text,
-            ].join("\n")
-          )
-            .then(() => resolve(true))
-            .catch(() => resolve(false));
-
-          return;
+          resolve(info || true);
         }
+      );
+    });
+  }
 
-        resolve(info || true);
+  /*
+   * Send sequentially so Messenger receives the pages in the correct
+   * order. If a card batch fails after an earlier batch succeeded,
+   * only the unsent remainder is sent as normal text; nothing is lost.
+   */
+  let sentChunks = 0;
+
+  for (
+    let batchStart = 0;
+    batchStart < chunks.length;
+    batchStart += MAX_CARDS_PER_MESSAGE
+  ) {
+    const batch = chunks.slice(
+      batchStart,
+      batchStart + MAX_CARDS_PER_MESSAGE
+    );
+
+    const batchNumber =
+      Math.floor(
+        batchStart / MAX_CARDS_PER_MESSAGE
+      ) + 1;
+
+    const totalBatches =
+      Math.ceil(
+        chunks.length / MAX_CARDS_PER_MESSAGE
+      );
+
+    const elements = batch.map(
+      (chunk, index) => {
+        const absoluteIndex =
+          batchStart + index + 1;
+
+        return {
+          title:
+            absoluteIndex === 1
+              ? "✉️ ECLIPSE → HER"
+              : \`A LETTER, KEPT · \${String(
+                  absoluteIndex
+                ).padStart(2, "0")}/\${String(
+                  chunks.length
+                ).padStart(2, "0")}\`,
+          subtitle: chunk,
+        };
       }
     );
-  });
+
+    try {
+      await sendCardBatch(elements);
+      sentChunks += batch.length;
+    } catch (error) {
+      console.error(
+        "[LOVE QUEST] letter card send failed:",
+        error
+      );
+
+      const remaining = chunks
+        .slice(sentChunks)
+        .join("\n");
+
+      try {
+        await send(
+          api,
+          threadID,
+          [
+            "✉️ ECLIPSE → HER",
+            "",
+            "The letter continues below:",
+            "",
+            remaining,
+          ].join("\n")
+        );
+
+        return true;
+      } catch (fallbackError) {
+        console.error(
+          "[LOVE QUEST] letter fallback send failed:",
+          fallbackError
+        );
+
+        return false;
+      }
+    }
+  }
+
+  return true;
 }
 
 // ============================================================
