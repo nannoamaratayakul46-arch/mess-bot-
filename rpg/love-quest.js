@@ -6787,6 +6787,7 @@ async function help(
       "!rpg laststar garden",
       "!rpg laststar lettertest",
       "!rpg laststar seal <text>",
+      "!rpg laststar future <text>",
       "!rpg laststar reward",
       "",
       "Some things are not commands.",
@@ -6999,6 +7000,9 @@ async function handleLoveQuestCommand(
       );
 
     case "seal":
+    case "future":
+    case "timecapsule":
+    case "time-capsule":
       return sealMessage(
         api,
         threadID,
