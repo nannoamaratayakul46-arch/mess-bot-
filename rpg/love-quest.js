@@ -6888,6 +6888,21 @@ async function handleLoveQuestCommand(
     action
   );
 
+  // Test commands must run before the automatic anniversary hook.
+  // This prevents !rpg laststar lettertest from triggering the
+  // real one-time anniversary delivery during a preview.
+  if (
+    action === "lettertest" ||
+    action === "testletter"
+  ) {
+    return sendEclipseLetter(
+      api,
+      threadID,
+      playerID,
+      { preview: true }
+    );
+  }
+
   await checkAnniversary(
     api,
     threadID,
@@ -6958,15 +6973,6 @@ async function handleLoveQuestCommand(
         api,
         threadID,
         playerID
-      );
-
-    case "lettertest":
-    case "testletter":
-      return sendEclipseLetter(
-        api,
-        threadID,
-        playerID,
-        { preview: true }
       );
 
     case "seal":
