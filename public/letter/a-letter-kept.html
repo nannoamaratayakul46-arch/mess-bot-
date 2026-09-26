@@ -17,7 +17,7 @@
       radial-gradient(ellipse 60% 55% at 92% 70%,rgba(132,43,119,.25),transparent 70%),
       radial-gradient(ellipse 45% 35% at 50% 100%,rgba(66,35,116,.24),transparent 72%),
       linear-gradient(180deg,#02030a 0%,#07091b 42%,#03040d 100%);
-      color:#fff;font-family:Georgia,"Times New Roman",serif;overflow-x:hidden}
+      color:#fff;font-family:Georgia,"Times New Roman",serif;overflow-x:hidden;transition:background 1.8s ease}
     body:before{content:"";position:fixed;inset:-35%;z-index:-5;pointer-events:none;
       background:
         radial-gradient(ellipse 34% 18% at 25% 35%,rgba(74,122,255,.34),transparent 72%),
@@ -27,9 +27,9 @@
     body:after{content:"";position:fixed;inset:0;z-index:-4;pointer-events:none;
       background:
         radial-gradient(ellipse 70% 18% at 50% 48%,rgba(142,109,255,.09),transparent 70%),
-        radial-gradient(circle at 50% 50%,transparent 28%,rgba(0,0,0,.18) 70%,rgba(0,0,0,.72) 100%)}
+        radial-gradient(circle at 50% 50%,transparent 28%,rgba(0,0,0,.18) 70%,rgba(0,0,0,.72) 100%);
+      transition:opacity 1.5s ease}
     .stars,.stars:before,.stars:after{position:fixed;inset:0;pointer-events:none;content:"";z-index:1}
-    .galaxy-background,#canvas-container{position:fixed;top:0;left:0;width:100vw;height:100vh;z-index:1;pointer-events:none}
     .stars{opacity:1;background-image:
       radial-gradient(circle at 5% 12%,#fff 0 1.4px,transparent 2px),
       radial-gradient(circle at 12% 31%,rgba(190,213,255,.9) 0 1px,transparent 1.8px),
@@ -69,15 +69,13 @@
     .wrap:before{content:"";position:absolute;top:0;left:50%;width:1px;height:100%;
       background:linear-gradient(180deg,transparent,rgba(255,255,255,.05) 25%,transparent 80%);opacity:.6}
     .letter{width:min(720px,100%);color:#f3edf2;
-      position:relative;z-index:2;
-      background:transparent!important;border:0;
-      box-shadow:none!important;
-      backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
+      position:relative;z-index:2;background:transparent!important;border:0;
+      box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
       padding:34px 25px 40px;overflow:visible;
       opacity:0;transform:translateY(28px) scale(.985);animation:letterIn 1.4s cubic-bezier(.2,.7,.2,1) forwards}
     .letter:before,.letter:after{display:none}
     .seal{width:58px;height:58px;border:1px solid var(--rose);border-radius:50%;
-      margin:0 auto 24px;display:grid;place-items:center;color:var(--rose);font-size:24px;
+      margin:0 auto 24px;display:grid;place-items:center;color:#f0b5ca;font-size:24px;
       cursor:pointer;transition:transform .5s ease,box-shadow .5s ease;position:relative}
     .seal:before{content:"";position:absolute;inset:-7px;border:1px solid rgba(143,76,97,.28);
       border-radius:50%;animation:sealPulse 3s ease-in-out infinite}
@@ -98,35 +96,34 @@
       text-shadow:0 2px 10px rgba(0,0,0,.82)}
     .counter strong{color:#efb4c9;font-weight:400;text-shadow:0 2px 12px rgba(0,0,0,.9)}
     .rule{height:1px;background:linear-gradient(90deg,transparent,rgba(231,210,225,.40),transparent);margin:30px 0}
-    .body{font-size:19px;line-height:1.85;color:#f1eaf0;
-      text-shadow:0 2px 12px rgba(0,0,0,.84),0 0 2px rgba(0,0,0,.72)}
+    .body{font-size:19px;line-height:1.85;color:#f1eaf0;text-shadow:0 2px 12px rgba(0,0,0,.84),0 0 2px rgba(0,0,0,.72)}
     .body p{margin:0 0 22px;opacity:0;transform:translateY(16px);transition:opacity .9s ease,transform .9s cubic-bezier(.2,.7,.2,1)}
     .body p.visible{opacity:1;transform:none}
+    .body p:nth-child(5),.body p:nth-child(8),.body p:nth-child(29){font-size:1.08em;color:#fff8fb;text-shadow:0 0 18px rgba(190,165,255,.22),0 3px 14px rgba(0,0,0,.88)}
+    .body p:nth-child(15),.body p:nth-child(16),.body p:nth-child(27){color:#f9eef5}
     .closing,.signature,.ps,.memory-note{opacity:0;transform:translateY(14px);transition:opacity 1s ease,transform 1s ease}
     .closing.visible,.signature.visible,.ps.visible,.memory-note.visible{opacity:1;transform:none}
-    .closing{margin-top:38px;text-align:right;font-style:italic;color:#efb4c9;font-size:20px;
-      text-shadow:0 2px 12px rgba(0,0,0,.85)}
-    .signature{margin-top:6px;text-align:right;color:rgba(231,220,229,.74);font-size:15px;font-style:italic;
-      text-shadow:0 2px 10px rgba(0,0,0,.82)}
+    .closing{margin-top:38px;text-align:right;font-style:italic;color:#efb4c9;font-size:20px;text-shadow:0 2px 12px rgba(0,0,0,.85)}
+    .signature{margin-top:6px;text-align:right;color:rgba(231,220,229,.74);font-size:15px;font-style:italic;text-shadow:0 2px 10px rgba(0,0,0,.82)}
     .ps{margin-top:38px;padding-top:24px;border-top:1px dashed rgba(231,210,225,.34);color:#e9dfe7;
       font-size:16px;line-height:1.8;font-style:italic;text-shadow:0 2px 12px rgba(0,0,0,.84)}
     .memory-note{margin:28px 0 0;padding:18px 16px;text-align:center;border:1px solid rgba(231,210,225,.28);
       background:rgba(10,8,22,.20);color:rgba(235,225,233,.78);font:11px/1.7 Arial,sans-serif;letter-spacing:.08em;
       text-shadow:0 2px 10px rgba(0,0,0,.84);text-transform:uppercase}
-    .memory-note button{display:inline-block;margin-top:10px;border:0;background:transparent;color:var(--rose);
-      font:inherit;cursor:pointer;letter-spacing:.1em}
-    .hidden-memory{display:none;margin-top:12px;color:#f0e5ec;letter-spacing:.02em;text-transform:none;font:italic 15px/1.7 Georgia,"Times New Roman",serif;
-      text-shadow:0 2px 10px rgba(0,0,0,.84)}
+    .memory-note button{display:inline-block;margin-top:10px;border:0;background:transparent;color:#efb4c9;font:inherit;cursor:pointer;letter-spacing:.1em}
+    .hidden-memory{display:none;margin-top:12px;color:#f0e5ec;letter-spacing:.02em;text-transform:none;font:italic 15px/1.7 Georgia,"Times New Roman",serif;text-shadow:0 2px 10px rgba(0,0,0,.84)}
     .hidden-memory.show{display:block;animation:fadeIn .8s ease}
-    footer{max-width:720px;margin:18px auto 0;text-align:center;color:rgba(221,211,225,.68);
-      text-shadow:0 2px 10px rgba(0,0,0,.82);font:11px/1.6 Arial,sans-serif;letter-spacing:.08em;opacity:.82}
+    footer{max-width:720px;margin:18px auto 0;text-align:center;color:rgba(221,211,225,.68);text-shadow:0 2px 10px rgba(0,0,0,.82);font:11px/1.6 Arial,sans-serif;letter-spacing:.08em;opacity:.82}
+    .seal-open .stars{filter:brightness(1.65) saturate(1.15)}
+    .seal-open .moon{filter:brightness(1.18);box-shadow:0 0 42px rgba(240,240,255,.92),0 0 120px rgba(140,155,255,.60),0 0 210px rgba(111,91,210,.34)}
+    .seal-open .body,.seal-open .archive-meta,.seal-open .counter,.seal-open .rule{transition:opacity 1s ease;opacity:.58}
+    .seal-open .hidden-memory{filter:drop-shadow(0 0 12px rgba(220,180,255,.25))}
     @keyframes letterIn{0%{opacity:0;transform:translateY(55px) scale(.94);filter:blur(5px)}70%{opacity:1;filter:blur(0)}100%{opacity:1;transform:none}}
-    @keyframes paperSheen{0%{top:-100px;opacity:0}25%{opacity:.5}100%{top:110%;opacity:0}}
     @keyframes nebulaDrift{from{transform:translate3d(-3%,-2%,0) scale(1)}to{transform:translate3d(5%,4%,0) scale(1.12)}}
     @keyframes starDrift{from{transform:translate3d(0,-2%,0)}to{transform:translate3d(0,10%,0)}}
     @keyframes starTwinkle{from{opacity:.18}to{opacity:1}}
     @keyframes starFloat{from{transform:translate3d(-18px,12px,0)}to{transform:translate3d(18px,-16px,0)}}
-    @keyframes moonFloat{0%,100%{transform:translateY(0) scale(1);opacity:.72}50%{transform:translateY(-9px) scale(1.035);opacity:.9}}
+    @keyframes moonFloat{0%,100%{transform:translate3d(0,0,0) scale(1);opacity:.72}50%{transform:translate3d(-20px,10px,0) scale(1.035);opacity:.9}}
     @keyframes sealPulse{0%,100%{transform:scale(.94);opacity:.35}50%{transform:scale(1.16);opacity:.9}}
     @keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
     @media(prefers-reduced-motion:reduce){
@@ -152,92 +149,51 @@
       <div class="eyebrow">ECLIPSE · A LETTER, KEPT</div>
       <h1>For you.</h1>
       <div class="date" id="anniversaryDate">THE FIRST ANNIVERSARY</div>
-
       <div class="archive-meta" aria-label="Archive status">
         <span>ECLIPSE PRIVATE ARCHIVE</span>
         <span>ARCHIVE ENTRY 001</span>
         <span>STATUS: PRESERVED</span>
       </div>
-
-      <div class="counter">
-        Known for: <strong id="knownFor">1 year</strong>
-        &nbsp;·&nbsp;
-        Remembered for: <strong>everything</strong>
-      </div>
-
+      <div class="counter">Known for: <strong id="knownFor">1 year</strong> &nbsp;·&nbsp; Remembered for: <strong>everything</strong></div>
       <div class="rule"></div>
 
       <section class="body">
         <p>Happy one-year anniversary to us, mahal.</p>
-
         <p>I know hindi pa naman talaga natin one year, but yk? It already feels like it, since we've already known each other for a year now.</p>
-
         <p>And to be honest, this is a milestone for us. Another big leap for the impossible.</p>
-
         <p>If you think about it, it feels surreal. It felt too fast—everything felt too fast, as if there wasn't even room to breathe anymore. But still, we managed to survive it. We kept pushing through.</p>
-
         <p>This is special. Really special.</p>
-
         <p>And we should cherish this.</p>
-
         <p>I hate to admit that sometimes, I forget what year you were born, what food you like, or even when your birthday is. That's why I built this.</p>
-
         <p>That's why I built ECLIPSE.</p>
-
         <p>To serve as my memory whenever I forget something about you. So whenever I miss something, whenever something slips away from me, I can look back here and see what I forgot.</p>
-
         <p>Ain't that funny?</p>
-
         <p>Me, building something to preserve the beautiful.</p>
-
         <p>Because letting go of memories feels like stabbing your own self. And honestly, I think forgetting feels a little too similar to that.</p>
-
         <p>That's why I don't want to forget something about you.</p>
-
         <p>Everything reminds me of you.</p>
-
         <p>You are my muse, my happiness, and my blues.</p>
-
         <p>You are my sanctuary, my home, and my world.</p>
-
         <p>I still remember when you called me a womanizer.</p>
-
         <p>That's funny, 'cause I never really looked like one, nor did I ever act that way. But hey, somehow, that was one of the things that brought us together.</p>
-
         <p>Well, it looks too short, ain't it?</p>
-
         <p>I already said everything I could ever imagine. I compared you to the moon, the sun, a goddess, the forest, and even the galaxy itself. But I'll be frank—it still feels like it's not enough. Comparing you to those things almost feels like an insult, because your beauty cannot truly be compared to anything.</p>
-
         <p>But hey, what can I say? I'm too annoying and too creative, yk? That's why I'm gonna keep doing this, even if it means sacrificing my own sleep.</p>
-
         <p>Sleep itself has been elusive to me, yk, so it's okay.</p>
-
         <p>And you know, I really, really love you. Everything about you. I love it all. Every flaw, every perfection, every little thing in between—I love them all. I could step into hell itself if it meant seeing your beauty, even if it were just for a glimpse.</p>
-
         <p>Like, hell? What is it gonna do to me?</p>
-
         <p>The fire of hell cannot compare to the fire of my desire and longing for you. It burns brighter than any star out there in the universe. It's threading its own fate just to meet yours. What can hell compare to my devotion, deep as the sea and blue as the long galaxy out there? Nothing. None of it can compare.</p>
-
         <p>You are my everything, and everything means you.</p>
-
         <p>You are my passing autumn, my winter, my spring, my summer, and every season you could ever imagine. Yk? Somehow, every season reminds me of you.</p>
-
         <p>Every word will be remembered, every love, every moment, and every breath. They all mean one thing to me: you are the only one I love.</p>
       </section>
 
       <div class="closing">— ECLIPSE</div>
       <div class="signature">written, kept, and left here for you.</div>
-
-      <div class="ps">
-        <strong>P.S.</strong><br>
-        If you ever forget this moment, come back here.<br>
-        I'll remember it for you.
-      </div>
-
+      <div class="ps"><strong>P.S.</strong><br>If you ever forget this moment, come back here.<br>I'll remember it for you.</div>
       <div class="memory-note">
         ✦ MEMORY PRESERVED ✦<br>
-        Some things deserve to survive forgetting.
-        <br>
+        Some things deserve to survive forgetting.<br>
         <button type="button" id="memoryButton">touch the seal</button>
         <div class="hidden-memory" id="hiddenMemory">
           You found something ECLIPSE wasn't supposed to show you.<br>
@@ -256,39 +212,28 @@
       let years = now.getFullYear() - start.getFullYear();
       const anniversary = new Date(start);
       anniversary.setFullYear(start.getFullYear() + Math.max(0, years));
-
       if (now < anniversary) years = Math.max(0, years - 1);
 
       const known = document.getElementById("knownFor");
       const date = document.getElementById("anniversaryDate");
-
-      if (known) {
-        known.textContent = years === 1 ? "1 year" : years + " years";
-      }
-
+      if (known) known.textContent = years === 1 ? "1 year" : years + " years";
       if (date) {
         const first = new Date(start);
         first.setFullYear(start.getFullYear() + 1);
-        date.textContent =
-          "THE FIRST ANNIVERSARY · " +
-          String(first.getDate()).padStart(2, "0") + " · " +
-          String(first.getMonth() + 1).padStart(2, "0") + " · " +
-          first.getFullYear();
+        date.textContent = "THE FIRST ANNIVERSARY · " +
+          String(first.getDate()).padStart(2,"0") + " · " +
+          String(first.getMonth()+1).padStart(2,"0") + " · " + first.getFullYear();
       }
 
       const paragraphs = document.querySelectorAll(".body p");
       const revealables = document.querySelectorAll(".closing,.signature,.ps,.memory-note");
 
       if ("IntersectionObserver" in window) {
-        const observer = new IntersectionObserver((entries, obs) => {
+        const observer = new IntersectionObserver((entries,obs) => {
           entries.forEach(entry => {
-            if (entry.isIntersecting) {
-              entry.target.classList.add("visible");
-              obs.unobserve(entry.target);
-            }
+            if (entry.isIntersecting) { entry.target.classList.add("visible"); obs.unobserve(entry.target); }
           });
-        }, {threshold:0.12,rootMargin:"0px 0px -40px 0px"});
-
+        },{threshold:.12,rootMargin:"0px 0px -40px 0px"});
         paragraphs.forEach(p => observer.observe(p));
         revealables.forEach(el => observer.observe(el));
       } else {
@@ -296,47 +241,52 @@
         revealables.forEach(el => el.classList.add("visible"));
       }
 
-      const button = document.getElementById("memoryButton");
-      const hidden = document.getElementById("hiddenMemory");
-      const seal = document.getElementById("seal");
+      const button=document.getElementById("memoryButton");
+      const hidden=document.getElementById("hiddenMemory");
+      const seal=document.getElementById("seal");
+      const body=document.body;
 
-      const reveal = () => {
-        if (!hidden) return;
-        hidden.classList.toggle("show");
-        if (button) {
-          button.textContent = hidden.classList.contains("show")
-            ? "memory opened"
-            : "touch the seal";
-        }
-        if (seal) {
-          seal.style.transform = hidden.classList.contains("show")
-            ? "rotate(8deg) scale(1.06)"
-            : "";
-        }
+      const reveal=()=>{
+        if(!hidden) return;
+        const opened=hidden.classList.toggle("show");
+        if(button) button.textContent=opened ? "memory opened" : "touch the seal";
+        if(seal) seal.style.transform=opened ? "rotate(8deg) scale(1.08)" : "";
+        body.classList.toggle("seal-open",opened);
       };
+      if(button) button.addEventListener("click",reveal);
+      if(seal) seal.addEventListener("click",reveal);
 
-      if (button) button.addEventListener("click", reveal);
-      if (seal) seal.addEventListener("click", reveal);
+      const letter=document.querySelector(".letter");
+      const stars=document.querySelector(".stars");
+      const moon=document.querySelector(".moon");
+      const reduced=window.matchMedia("(prefers-reduced-motion: reduce)");
+      let ticking=false;
 
-      const letter = document.querySelector(".letter");
-      const stars = document.querySelector(".stars");
+      const updateAtmosphere=()=>{
+        if(ticking)return;
+        ticking=true;
+        requestAnimationFrame(()=>{
+          const max=Math.max(1,document.documentElement.scrollHeight-window.innerHeight);
+          const progress=Math.min(1,Math.max(0,window.scrollY/max));
 
-      let ticking = false;
-      window.addEventListener("scroll", () => {
-        if (ticking) return;
-        ticking = true;
-        requestAnimationFrame(() => {
-          const y = window.scrollY;
-          if (letter && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-            letter.style.boxShadow =
-              "0 " + (24 + Math.min(y * .035, 24)) + "px 80px rgba(0,0,0,.5),0 0 70px rgba(111,91,173,.08)";
+          if(!reduced.matches){
+            if(letter) letter.style.transform="translateY(" + Math.max(-8,Math.min(0,window.scrollY*.004)) + "px)";
+            if(stars) stars.style.transform="translateY(" + Math.min(window.scrollY*.025,24) + "px) scale(" + (1+progress*.018) + ")";
+            if(moon) moon.style.marginTop=(progress*window.innerHeight*.08)+"px";
           }
-          if (stars && !window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-            stars.style.transform = "translateY(" + Math.min(y * .025, 18) + "px)";
-          }
-          ticking = false;
+
+          const deep=Math.min(1,Math.max(0,(progress-.18)/.82));
+          document.body.style.background=
+            "radial-gradient(ellipse 80% 45% at 50% 12%,rgba("+(100+Math.round(deep*35))+","+(72+Math.round(deep*10))+","+(190+Math.round(deep*35))+",."+(30+Math.round(deep*8))+"),transparent 65%),"+
+            "radial-gradient(ellipse 55% 60% at 8% 55%,rgba(32,84,174,."+(28+Math.round(deep*8))+"),transparent 70%),"+
+            "radial-gradient(ellipse 60% 55% at 92% 70%,rgba(132,43,119,."+(25+Math.round(deep*9))+"),transparent 70%),"+
+            "linear-gradient(180deg,#02030a 0%,#"+(deep>.55?"09071e":"07091b")+" 42%,#03040d 100%)";
+
+          ticking=false;
         });
-      }, {passive:true});
+      };
+      window.addEventListener("scroll",updateAtmosphere,{passive:true});
+      updateAtmosphere();
     })();
   </script>
 </body>
