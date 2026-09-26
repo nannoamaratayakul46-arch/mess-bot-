@@ -2697,6 +2697,23 @@ async function checkDatabaseHealth() {
 
 const app = express();
 
+// ============================================================
+// ECLIPSE — PRIVATE ANNIVERSARY LETTER
+// ============================================================
+// Served from the same Render service so Messenger can open the
+// full mobile letter in a normal browser.
+app.use(
+  "/letter",
+  express.static(
+    path.join(__dirname, "public", "letter"),
+    {
+      extensions: ["html"],
+      maxAge: "1h",
+    }
+  )
+);
+
+
 app.get("/", (_req, res) => {
   res.status(200).send(
     "ECLIPSE is running ♡"
