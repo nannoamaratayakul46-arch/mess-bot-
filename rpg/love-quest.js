@@ -6199,12 +6199,6 @@ async function followQuest(
 ) {
   if (!privateAccess(playerID)) return null;
 
-  await checkAnniversary(
-    api,
-    threadID,
-    playerID
-  );
-
   let quest = await getQuest(
     threadID,
     playerID
