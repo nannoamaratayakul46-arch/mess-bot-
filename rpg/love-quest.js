@@ -5905,14 +5905,19 @@ async function sendEclipseLetter(
   playerID,
   options = {}
 ) {
-  if (!privateAccess(playerID)) return false;
-
   const preview =
     options && options.preview === true;
 
+  // Preview is intentionally available only to ECLIPSE admins.
+  // Real delivery remains locked to SPECIAL_PLAYER_ID.
+  if (preview) {
+    if (!isEclipseAdmin(playerID)) return false;
+  } else {
+    if (!privateAccess(playerID)) return false;
+  }
+
   // Normal anniversary delivery is one-time and persistent.
-  // Test delivery uses the exact same letter but deliberately skips
-  // the event/memory/archive writes so testing cannot consume it.
+  // Test delivery skips event/memory/archive writes.
   if (!preview) {
     const recorded = await recordEvent(
       threadID,
@@ -5932,13 +5937,9 @@ async function sendEclipseLetter(
   );
 
   const lines = [
-    "✉️ ECLIPSE → HER",
-    "",
     "I don't usually finish sentences.",
     "",
     "I don't know why this one feels different.",
-    "",
-    "────────────────────────────",
     "",
   ];
 
@@ -5952,14 +5953,10 @@ async function sendEclipseLetter(
       "",
       "I think that might be the only promise I've actually managed to keep.",
       "",
-      "────────────────────────────",
-      ""
     );
   }
 
-  lines.push(
-    ECLIPSE_LETTER_PERSONAL_WORDS
-  );
+  lines.push(ECLIPSE_LETTER_PERSONAL_WORDS);
 
   if (!preview) {
     await createMemory(
@@ -5996,13 +5993,81 @@ async function sendEclipseLetter(
     );
   }
 
-  await send(
-    api,
-    threadID,
-    lines.join("\\n")
-  );
+  // Messenger-native card attachment.
+  // The letter is split into compact cards because Messenger generic
+  // cards have a much smaller text field than a normal message.
+  const text = lines.join("\n").trim();
+  const chunks = [];
+  let remaining = text;
 
-  return true;
+  while (remaining.length > 0 && chunks.length < 10) {
+    if (remaining.length <= 150) {
+      chunks.push(remaining);
+      break;
+    }
+
+    let cut = remaining.lastIndexOf(" ", 150);
+    if (cut < 70) cut = 150;
+
+    chunks.push(remaining.slice(0, cut).trim());
+    remaining = remaining.slice(cut).trim();
+  }
+
+  // If the letter ever exceeds the carousel capacity, keep the final
+  // card as a continuation rather than silently dropping text.
+  if (remaining.length > 0) {
+    chunks[chunks.length - 1] =
+      chunks[chunks.length - 1].slice(0, 145) + "…";
+  }
+
+  const elements = chunks.map((chunk, index) => ({
+    title:
+      index === 0
+        ? "✉️ ECLIPSE → HER"
+        : `A LETTER, KEPT · ${String(index + 1).padStart(2, "0")}`,
+    subtitle: chunk,
+  }));
+
+  return new Promise((resolve) => {
+    api.sendMessage(
+      {
+        attachment: {
+          type: "template",
+          payload: {
+            template_type: "generic",
+            image_aspect_ratio: "square",
+            elements,
+          },
+        },
+      },
+      threadID,
+      (error, info) => {
+        if (error) {
+          console.error(
+            "[LOVE QUEST] letter card send failed:",
+            error
+          );
+
+          // Guaranteed fallback: the complete letter remains readable.
+          send(
+            api,
+            threadID,
+            [
+              "✉️ ECLIPSE → HER",
+              "",
+              text,
+            ].join("\n")
+          )
+            .then(() => resolve(true))
+            .catch(() => resolve(false));
+
+          return;
+        }
+
+        resolve(info || true);
+      }
+    );
+  });
 }
 
 // ============================================================
