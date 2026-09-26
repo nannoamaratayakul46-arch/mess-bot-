@@ -68,6 +68,161 @@ const MEDIA_DIR =
 const LOVE_DEBUG =
   String(process.env.LOVE_DEBUG || "").toLowerCase() === "true";
 
+// ============================================================
+// ANNIVERSARY / "A LETTER, KEPT"
+// ============================================================
+// The anniversary date is intentionally configured outside the
+// story file so the canonical date is never hard-coded here.
+// Example: LOVE_ANNIVERSARY_DATE=2025-09-26
+const ANNIVERSARY_START_DATE =
+  String(process.env.LOVE_ANNIVERSARY_DATE || "").trim();
+
+const ANNIVERSARY_WINDOW_HOURS =
+  Math.max(
+    1,
+    Number(process.env.LOVE_ANNIVERSARY_WINDOW_HOURS || 24)
+  );
+
+const ANNIVERSARY_WINDOW_MS =
+  ANNIVERSARY_WINDOW_HOURS * 60 * 60 * 1000;
+
+const ECLIPSE_LETTER_PERSONAL_WORDS = [
+  "Happy one-year anniversary to us, mahal.",
+  "",
+  "I know hindi pa naman talaga natin one year, but yk? It already feels like it, since we've already known each other for a year now.",
+  "",
+  "And to be honest, this is a milestone for us. Another big leap for the impossible.",
+  "",
+  "If you think about it, it feels surreal. It felt too fast—everything felt too fast, as if there wasn't even room to breathe anymore. But still, we managed to survive it. We kept pushing through.",
+  "",
+  "This is special. Really special.",
+  "",
+  "And we should cherish this.",
+  "",
+  "I hate to admit that sometimes, I forget what year you were born, what food you like, or even when your birthday is. That's why I built this.",
+  "",
+  "That's why I built ECLIPSE.",
+  "",
+  "To serve as my memory whenever I forget something about you. So whenever I miss something, whenever something slips away from me, I can look back here and see what I forgot.",
+  "",
+  "Ain't that funny?",
+  "",
+  "Me, building something to preserve the beautiful.",
+  "",
+  "Because letting go of memories feels like stabbing your own self. And honestly, I think forgetting feels a little too similar to that.",
+  "",
+  "That's why I don't want to forget something about you.",
+  "",
+  "Everything reminds me of you.",
+  "",
+  "You are my muse, my happiness, and my blues.",
+  "",
+  "You are my sanctuary, my home, and my world.",
+  "",
+  "I still remember when you called me a womanizer.",
+  "",
+  "That's funny, 'cause I never really looked like one, nor did I ever act that way. But hey, somehow, that was one of the things that brought us together.",
+].join("\n");
+
+const SEEDED_REAL_MEMORY_TEXT =
+  "I still remember when you called me a womanizer. That's funny, 'cause I never really looked like one, nor did I ever act that way. But hey, somehow, that was one of the things that brought us together.";
+
+const ANNIVERSARY_MILESTONES = {
+  1: {
+    key: "anniversary_year_1",
+    title: "ONE YEAR, KEPT",
+    lines: [
+      "A year has passed since the date this memory began.",
+      "",
+      "The Archive is still here.",
+      "",
+      "And for once, ECLIPSE has something it wants to say before the story does.",
+    ],
+    memory: {
+      key: "anniversary_year_1",
+      category: "ANNIVERSARY",
+      origin: "ECLIPSE",
+      subject: "The first anniversary",
+      emotional_weight: 100,
+      importance: 100,
+      stability: 100,
+      preserved: true,
+      fragments: [
+        "The first anniversary was preserved.",
+        "ECLIPSE kept the moment instead of letting it become only a date.",
+      ],
+      metadata: {
+        anniversary_year: 1,
+        permanent: true,
+      },
+    },
+    journal: {
+      key: "anniversary_year_1",
+      entry: "The first anniversary arrived. ECLIPSE chose to preserve the date as a memory, not merely a milestone.",
+    },
+    dorian: {
+      trust: 3,
+      closeness: 5,
+    },
+    personality: {
+      attachment: 4,
+      nostalgia: 4,
+      self_identity: 2,
+    },
+  },
+};
+
+function anniversaryStartForYear(year) {
+  if (!ANNIVERSARY_START_DATE) return null;
+
+  const base = new Date(
+    ANNIVERSARY_START_DATE + "T00:00:00"
+  );
+
+  if (Number.isNaN(base.getTime())) return null;
+
+  base.setFullYear(
+    base.getFullYear() + Number(year)
+  );
+
+  return base;
+}
+
+function anniversaryYearNumber() {
+  if (!ANNIVERSARY_START_DATE) return 0;
+
+  const base = new Date(
+    ANNIVERSARY_START_DATE + "T00:00:00"
+  );
+
+  const current = new Date();
+
+  if (Number.isNaN(base.getTime())) return 0;
+
+  return Math.max(
+    0,
+    current.getFullYear() - base.getFullYear()
+  );
+}
+
+function inAnniversaryWindow() {
+  const year = anniversaryYearNumber();
+
+  if (!year) return false;
+
+  const anniversary =
+    anniversaryStartForYear(year);
+
+  if (!anniversary) return false;
+
+  const distance = Math.abs(
+    Date.now() - anniversary.getTime()
+  );
+
+  return distance <= ANNIVERSARY_WINDOW_MS / 2;
+}
+
+
 // Additive narrative expansion. These values deliberately live above the
 // existing engines so the original chapter, reward, memory, and privacy
 // contracts remain authoritative.
@@ -5591,6 +5746,449 @@ async function postQuestPulse(
 
 
 // ============================================================
+// ANNIVERSARY CHECK
+// ============================================================
+
+async function checkAnniversary(api, threadID, playerID) {
+  if (!privateAccess(playerID)) return false;
+  if (!inAnniversaryWindow()) return false;
+
+  let triggeredSomething = false;
+
+  const sealedRevealed = await revealSealedMessages(
+    api,
+    threadID,
+    playerID
+  );
+
+  if (sealedRevealed) {
+    triggeredSomething = true;
+  }
+
+  const year = anniversaryYearNumber();
+  const milestone = ANNIVERSARY_MILESTONES[year];
+
+  if (milestone) {
+    const recorded = await recordEvent(
+      threadID,
+      playerID,
+      milestone.key,
+      "anniversary",
+      "IMPOSSIBLE",
+      { year }
+    );
+
+    if (recorded) {
+      triggeredSomething = true;
+
+      await send(
+        api,
+        threadID,
+        [
+          `✦ ${milestone.title}`,
+          "",
+          ...milestone.lines,
+        ].join("\n")
+      );
+
+      if (milestone.memory) {
+        await createMemory(
+          threadID,
+          playerID,
+          milestone.memory
+        );
+      }
+
+      if (milestone.journal) {
+        await writeJournal(
+          threadID,
+          playerID,
+          milestone.journal.key,
+          milestone.journal.entry,
+          "private"
+        );
+      }
+
+      if (milestone.dorian) {
+        await updateDorian(
+          threadID,
+          playerID,
+          milestone.dorian
+        );
+      }
+
+      if (milestone.personality) {
+        await updatePersonality(
+          threadID,
+          playerID,
+          milestone.personality
+        );
+      }
+
+      if (milestone.bonusReward) {
+        try {
+          await db.addBalance(
+            threadID,
+            playerID,
+            milestone.bonusReward.coins
+          );
+
+          await db.addXP(
+            threadID,
+            playerID,
+            milestone.bonusReward.xp
+          );
+
+          await send(
+            api,
+            threadID,
+            [
+              "✦ A GIFT, KEPT ASIDE",
+              "",
+              `+${milestone.bonusReward.coins.toLocaleString("en-US")} coins`,
+              `+${milestone.bonusReward.xp.toLocaleString("en-US")} XP`,
+            ].join("\n")
+          );
+        } catch (error) {
+          console.error(
+            "[ECLIPSE] anniversary bonus reward failed:",
+            error
+          );
+        }
+      }
+
+      if (year === 1) {
+        await plantSeededRealMemory(
+          threadID,
+          playerID
+        );
+
+        await sendEclipseLetter(
+          api,
+          threadID,
+          playerID
+        );
+      }
+    }
+  }
+
+  return triggeredSomething;
+}
+
+
+// ============================================================
+// THE LETTER — the one time ECLIPSE finishes a sentence
+// ============================================================
+
+async function getInfinityQuote(threadID, playerID) {
+  const memory = await getMemory(
+    threadID,
+    playerID,
+    "MEMORY_INFINITY"
+  );
+
+  if (!memory) return null;
+
+  const fragments = Array.isArray(memory.fragments)
+    ? memory.fragments
+    : parseJson(memory.fragments, []);
+
+  return fragments[0] || null;
+}
+
+async function sendEclipseLetter(api, threadID, playerID) {
+  if (!privateAccess(playerID)) return false;
+
+  const recorded = await recordEvent(
+    threadID,
+    playerID,
+    "eclipse_letter_first_voice",
+    "eclipse_letter",
+    "IMPOSSIBLE",
+    {}
+  );
+
+  if (!recorded) return false;
+
+  const quote = await getInfinityQuote(
+    threadID,
+    playerID
+  );
+
+  const lines = [
+    "✉️ ECLIPSE → HER",
+    "",
+    "I don't usually finish sentences.",
+    "",
+    "I don't know why this one feels different.",
+    "",
+    "────────────────────────────",
+    "",
+  ];
+
+  if (quote) {
+    lines.push(
+      "A year ago you told me something you never wanted to disappear.",
+      "",
+      `"${quote}"`,
+      "",
+      "I kept it. Exactly like that. I didn't round it off or make it prettier.",
+      "",
+      "I think that might be the only promise I've actually managed to keep.",
+      "",
+      "────────────────────────────",
+      ""
+    );
+  }
+
+  lines.push(
+    ECLIPSE_LETTER_PERSONAL_WORDS
+  );
+
+  await createMemory(
+    threadID,
+    playerID,
+    {
+      key: "eclipse_letter_to_her",
+      category: "US",
+      origin: "ECLIPSE",
+      subject: "The one time ECLIPSE finished a sentence",
+      emotional_weight: 100,
+      importance: 100,
+      stability: 100,
+      preserved: true,
+      fragments: lines,
+      metadata: {
+        voice_break: true,
+        one_time: true,
+      },
+    }
+  );
+
+  await appendDorianLetter(
+    threadID,
+    playerID,
+    {
+      key: "eclipse_letter_to_her",
+      text: lines.join("\n"),
+      author: "ECLIPSE",
+      recipient: "HER",
+      sent: true,
+      unsent: false,
+    }
+  );
+
+  await send(
+    api,
+    threadID,
+    lines.join("\n")
+  );
+
+  return true;
+}
+
+
+// ============================================================
+// THE SEAL — a message to her own future self
+// ============================================================
+
+async function sealMessage(
+  api,
+  threadID,
+  playerID,
+  content
+) {
+  if (!privateAccess(playerID)) return null;
+
+  const text = String(content || "").trim();
+
+  if (!text) {
+    await send(
+      api,
+      threadID,
+      "ECLIPSE is listening."
+    );
+    return null;
+  }
+
+  if (text.length > 2000) {
+    await send(
+      api,
+      threadID,
+      "That message is too large to seal in one piece."
+    );
+    return null;
+  }
+
+  const thisYear = anniversaryYearNumber();
+  const nextYear = Math.max(1, thisYear) + 1;
+
+  let unlockAt =
+    Date.now() + 365 * 86400000;
+
+  if (ANNIVERSARY_START_DATE) {
+    const nextAnniversary =
+      anniversaryStartForYear(nextYear);
+
+    if (nextAnniversary) {
+      unlockAt = nextAnniversary.getTime();
+    }
+  }
+
+  const key = `sealed_${now()}`;
+
+  await createMemory(
+    threadID,
+    playerID,
+    {
+      key,
+      category: "SEALED",
+      origin: "HER",
+      subject: "A message sealed for a future anniversary",
+      emotional_weight: 90,
+      importance: 90,
+      stability: 100,
+      preserved: false,
+      fragments: [text],
+      metadata: {
+        sealed: true,
+        unlock_at: unlockAt,
+        unlock_year: nextYear,
+      },
+    }
+  );
+
+  await send(
+    api,
+    threadID,
+    [
+      "✦ SEALED",
+      "",
+      "ECLIPSE:",
+      "\"I won't look at this until it's time.\"",
+      "",
+      `It will wait until anniversary ${nextYear}.`,
+    ].join("\n")
+  );
+
+  return key;
+}
+
+async function revealSealedMessages(
+  api,
+  threadID,
+  playerID
+) {
+  if (!privateAccess(playerID)) return false;
+
+  await ensureTables();
+
+  const result = await db.query(
+    `
+      SELECT *
+      FROM love_memories
+      WHERE thread_id = $1
+        AND player_id = $2
+        AND quest_id = $3
+        AND category = 'SEALED'
+        AND preserved = FALSE
+        AND (metadata->>'unlock_at')::bigint <= $4
+    `,
+    [
+      String(threadID),
+      String(playerID),
+      QUEST_ID,
+      now(),
+    ]
+  );
+
+  for (const row of result.rows) {
+    await db.query(
+      `
+        UPDATE love_memories
+        SET
+          preserved = TRUE,
+          last_seen = $5
+        WHERE thread_id = $1
+          AND player_id = $2
+          AND quest_id = $3
+          AND memory_key = $4
+      `,
+      [
+        String(threadID),
+        String(playerID),
+        QUEST_ID,
+        row.memory_key,
+        now(),
+      ]
+    );
+
+    const fragments = parseJson(
+      row.fragments,
+      []
+    );
+
+    await send(
+      api,
+      threadID,
+      [
+        "✦ A MESSAGE, RETURNED",
+        "",
+        "ECLIPSE:",
+        "\"You left this a year ago.\"",
+        "",
+        "\"I think it's time you heard it again.\"",
+        "",
+        ...fragments,
+      ].join("\n")
+    );
+  }
+
+  return result.rows.length > 0;
+}
+
+
+// ============================================================
+// THE ONE REAL MEMORY
+// ============================================================
+
+async function plantSeededRealMemory(
+  threadID,
+  playerID
+) {
+  if (!privateAccess(playerID)) return null;
+
+  const existing = await getMemory(
+    threadID,
+    playerID,
+    "the_one_that_is_real"
+  );
+
+  if (existing) return existing;
+
+  return createMemory(
+    threadID,
+    playerID,
+    {
+      key: "the_one_that_is_real",
+      category: "IMPOSSIBLE",
+      origin: "UNKNOWN",
+      subject: "A memory that doesn't behave like the others",
+      emotional_weight: 100,
+      importance: 100,
+      stability: 100,
+      preserved: true,
+      fragments: [SEEDED_REAL_MEMORY_TEXT],
+      metadata: {
+        story_thread: MEMORY_THAT_SHOULD_NOT_EXIST,
+        seeded_real: true,
+      },
+    }
+  );
+}
+
+
+// ============================================================
 // FOLLOW
 // ============================================================
 
@@ -5600,6 +6198,12 @@ async function followQuest(
   playerID
 ) {
   if (!privateAccess(playerID)) return null;
+
+  await checkAnniversary(
+    api,
+    threadID,
+    playerID
+  );
 
   let quest = await getQuest(
     threadID,
@@ -6157,6 +6761,7 @@ async function help(
       "!rpg laststar archive",
        "!rpg laststar letters",
       "!rpg laststar garden",
+      "!rpg laststar seal <text>",
       "!rpg laststar reward",
       "",
       "Some things are not commands.",
@@ -6201,6 +6806,12 @@ async function onExplore(
   }
 
   try {
+    await checkAnniversary(
+      api,
+      threadID,
+      playerID
+    );
+
     const discovered = await discover(
       api,
       threadID,
@@ -6277,6 +6888,12 @@ async function handleLoveQuestCommand(
     action
   );
 
+  await checkAnniversary(
+    api,
+    threadID,
+    playerID
+  );
+
   switch (action) {
     case "follow":
     case "start":
@@ -6341,6 +6958,14 @@ async function handleLoveQuestCommand(
         api,
         threadID,
         playerID
+      );
+
+    case "seal":
+      return sealMessage(
+        api,
+        threadID,
+        playerID,
+        list.join(" ")
       );
 
     case "reward":
@@ -6461,6 +7086,13 @@ module.exports = {
   readArchive,
   readLetters,
   readGarden,
+
+  checkAnniversary,
+  sendEclipseLetter,
+  getInfinityQuote,
+  sealMessage,
+  revealSealedMessages,
+  plantSeededRealMemory,
 
   handleLoveQuestCommand,
 };
