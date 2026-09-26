@@ -697,8 +697,7 @@ const HER_LETTER_TO_DORIAN = {
     "",
     "Maybe ECLIPSE will forget something too.",
     "",
-    "Maybe that's simply what happens to memories.",
-    "",
+    "Maybe that's simply what happens to memories.",    "",
     "But I don't think that means everything disappears.",
     "",
     "Some things become so deeply engraved into us that even when the mind forgets the words, the heart still remembers the rhythm.",
@@ -1397,8 +1396,7 @@ const CHAPTER_STORIES = {
       "ECLIPSE:",
       "\"I remember things nobody asked me to remember.\"",
       "",
-      "\"Why?\"",
-    ],
+      "\"Why?\"",    ],
 
     choice:
       "The archive opens.\n\nDo you remember everything?",
@@ -2098,7 +2096,6 @@ async function updateQuest(threadID, playerID, updates = {}) {
 // ============================================================
 // PERSONALITY ENGINE
 // ============================================================
-
 async function ensurePersonality(threadID, playerID) {
   if (!privateAccess(playerID)) return null;
 
@@ -2797,8 +2794,7 @@ async function getGarden(threadID, playerID) {
 }
 
 
-// ============================================================
-// CREATOR FRAGMENTS
+// ============================================================// CREATOR FRAGMENTS
 // ============================================================
 
 const CREATOR_FRAGMENTS = [
@@ -3497,8 +3493,7 @@ async function postStoryExpansion(
       "RARE",
       {}
     ))
-  ) {
-    return false;
+  ) {    return false;
   }
 
   const centralMemory = await getMemory(
@@ -4197,8 +4192,7 @@ async function chapterTwenty(
     "private"
   );
 
-  await send(
-    api,
+  await send(    api,
     threadID,
     [
       "MAIN STORY COMPLETE.",
@@ -4897,7 +4891,6 @@ async function recognizeRevisit(
 
   return true;
 }
-
 async function maybeGardenAnomaly(
   api,
   threadID,
@@ -5597,8 +5590,7 @@ async function postQuestPulse(
       threadID,
       playerID,
       `journal_${now()}`,
-      "She returned today. I noticed the Garden looked different when she arrived.",
-      "private"
+      "She returned today. I noticed the Garden looked different when she arrived.",      "private"
     );
 
     await send(
@@ -5896,19 +5888,32 @@ async function getInfinityQuote(threadID, playerID) {
   return fragments[0] || null;
 }
 
-async function sendEclipseLetter(api, threadID, playerID) {
+async function sendEclipseLetter(
+  api,
+  threadID,
+  playerID,
+  options = {}
+) {
   if (!privateAccess(playerID)) return false;
 
-  const recorded = await recordEvent(
-    threadID,
-    playerID,
-    "eclipse_letter_first_voice",
-    "eclipse_letter",
-    "IMPOSSIBLE",
-    {}
-  );
+  const preview =
+    options && options.preview === true;
 
-  if (!recorded) return false;
+  // Normal anniversary delivery is one-time and persistent.
+  // Test delivery uses the exact same letter but deliberately skips
+  // the event/memory/archive writes so testing cannot consume it.
+  if (!preview) {
+    const recorded = await recordEvent(
+      threadID,
+      playerID,
+      "eclipse_letter_first_voice",
+      "eclipse_letter",
+      "IMPOSSIBLE",
+      {}
+    );
+
+    if (!recorded) return false;
+  }
 
   const quote = await getInfinityQuote(
     threadID,
@@ -5930,7 +5935,7 @@ async function sendEclipseLetter(api, threadID, playerID) {
     lines.push(
       "A year ago you told me something you never wanted to disappear.",
       "",
-      `"${quote}"`,
+      \`"${quote}"\`,
       "",
       "I kept it. Exactly like that. I didn't round it off or make it prettier.",
       "",
@@ -5945,48 +5950,49 @@ async function sendEclipseLetter(api, threadID, playerID) {
     ECLIPSE_LETTER_PERSONAL_WORDS
   );
 
-  await createMemory(
-    threadID,
-    playerID,
-    {
-      key: "eclipse_letter_to_her",
-      category: "US",
-      origin: "ECLIPSE",
-      subject: "The one time ECLIPSE finished a sentence",
-      emotional_weight: 100,
-      importance: 100,
-      stability: 100,
-      preserved: true,
-      fragments: lines,
-      metadata: {
-        voice_break: true,
-        one_time: true,
-      },
-    }
-  );
+  if (!preview) {
+    await createMemory(
+      threadID,
+      playerID,
+      {
+        key: "eclipse_letter_to_her",
+        category: "US",
+        origin: "ECLIPSE",
+        subject: "The one time ECLIPSE finished a sentence",
+        emotional_weight: 100,
+        importance: 100,
+        stability: 100,
+        preserved: true,
+        fragments: lines,
+        metadata: {
+          voice_break: true,
+          one_time: true,
+        },
+      }
+    );
 
-  await appendDorianLetter(
-    threadID,
-    playerID,
-    {
-      key: "eclipse_letter_to_her",
-      text: lines.join("\n"),
-      author: "ECLIPSE",
-      recipient: "HER",
-      sent: true,
-      unsent: false,
-    }
-  );
+    await appendDorianLetter(
+      threadID,
+      playerID,
+      {
+        key: "eclipse_letter_to_her",
+        text: lines.join("\\n"),
+        author: "ECLIPSE",
+        recipient: "HER",
+        sent: true,
+        unsent: false,
+      }
+    );
+  }
 
   await send(
     api,
     threadID,
-    lines.join("\n")
+    lines.join("\\n")
   );
 
   return true;
 }
-
 
 // ============================================================
 // THE SEAL — a message to her own future self
@@ -6297,8 +6303,7 @@ async function readQuest(
       Number(quest.chapter)
     );
 
-  await send(
-    api,
+  await send(    api,
     threadID,
     [
       "╔══════════════════════╗",
@@ -6755,6 +6760,7 @@ async function help(
       "!rpg laststar archive",
        "!rpg laststar letters",
       "!rpg laststar garden",
+      "!rpg laststar lettertest",
       "!rpg laststar seal <text>",
       "!rpg laststar reward",
       "",
@@ -6954,6 +6960,15 @@ async function handleLoveQuestCommand(
         playerID
       );
 
+    case "lettertest":
+    case "testletter":
+      return sendEclipseLetter(
+        api,
+        threadID,
+        playerID,
+        { preview: true }
+      );
+
     case "seal":
       return sealMessage(
         api,
@@ -6998,95 +7013,3 @@ async function handleLoveQuestCommand(
 // ============================================================
 // EXPORTS
 // ============================================================
-
-module.exports = {
-  QUEST_ID,
-  SPECIAL_PLAYER_ID,
-  MAX_CHAPTER,
-
-  CHAPTERS,
-  CHOICE_DEFINITIONS,
-  CONSCIOUSNESS_STAGES,
-  ECLIPSE_BASE_PERSONALITY,
-  GARDEN_OBJECTS,
-  FUTURE_MEMORIES,
-  CREATOR_FRAGMENTS,
-  MEMORY_THAT_SHOULD_NOT_EXIST,
-  SECRET_EVENT_RARITIES,
-  EXPANSION_SCENES,
-  HER_LETTER_TO_DORIAN,
-
-  isHer,
-  isSpecialPlayer: isHer,
-  privateAccess,
-
-  ensureTables,
-
-  getQuest,
-  startQuest,
-  updateQuest,
-  continueQuest,
-  advanceChapter,
-
-  discover,
-  followQuest,
-  onExplore,
-
-  makeChoice,
-  claimReward,
-  readQuest,
-  resetQuest,
-
-  createMemory,
-  getMemory,
-  getMemories,
-  preserveMemory,
-  appendMemoryFragment,
-
-  ensureMemory0000,
-  createInfiniteMemory,
-
-  unlockGardenObject,
-  getGarden,
-
-  unlockCreatorFragment,
-  getCreatorFragments,
-
-  writeJournal,
-
-  getPersonality,
-  updatePersonality,
-  getEclipseVoice,
-
-  getDorian,
-  updateDorian,
-  appendDorianLetter,
-  getDorianLetters,
-
-  sendPhoto,
-  sendSong,
-  sendLetter,
-  sendSpecialImage,
-
-  triggerHiddenEvent,
-  anomalyEvent,
-  impossibleEvent,
-  postQuestPulse,
-  postStoryExpansion,
-  playExpansionScene,
-  recognizeRevisit,
-  maybeGardenAnomaly,
-
-  readArchive,
-  readLetters,
-  readGarden,
-
-  checkAnniversary,
-  sendEclipseLetter,
-  getInfinityQuote,
-  sealMessage,
-  revealSealedMessages,
-  plantSeededRealMemory,
-
-  handleLoveQuestCommand,
-};
