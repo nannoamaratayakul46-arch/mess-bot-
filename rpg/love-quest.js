@@ -5931,32 +5931,34 @@ async function sendEclipseLetter(
     if (!recorded) return false;
   }
 
-  const quote = await getInfinityQuote(
-    threadID,
-    playerID
-  );
+  // The anniversary letter is now a full hosted HTML experience.
+  // LOVE_LETTER_URL can explicitly override the public URL.
+  // Render automatically exposes RENDER_EXTERNAL_URL.
+  const configuredUrl =
+    String(
+      process.env.LOVE_LETTER_URL ||
+      process.env.RENDER_EXTERNAL_URL ||
+      process.env.APP_URL ||
+      ""
+    ).trim();
 
-  const lines = [
-    "I don't usually finish sentences.",
-    "",
-    "I don't know why this one feels different.",
-    "",
-  ];
-
-  if (quote) {
-    lines.push(
-      "A year ago you told me something you never wanted to disappear.",
-      "",
-      \`"\${quote}"\`,
-      "",
-      "I kept it. Exactly like that. I didn't round it off or make it prettier.",
-      "",
-      "I think that might be the only promise I've actually managed to keep.",
-      "",
+  if (!configuredUrl) {
+    console.error(
+      "[LOVE QUEST] No public letter URL configured. Set LOVE_LETTER_URL, APP_URL, or use Render's RENDER_EXTERNAL_URL."
     );
+
+    await send(
+      api,
+      threadID,
+      "✉️ ECLIPSE has a letter for you, but its private page is not configured yet."
+    );
+
+    return false;
   }
 
-  lines.push(ECLIPSE_LETTER_PERSONAL_WORDS);
+  const letterUrl =
+    configuredUrl.replace(/\\/+$/, "") +
+    "/letter/a-letter-kept.html";
 
   if (!preview) {
     await createMemory(
@@ -5971,10 +5973,13 @@ async function sendEclipseLetter(
         importance: 100,
         stability: 100,
         preserved: true,
-        fragments: lines,
+        fragments: ECLIPSE_LETTER_PERSONAL_WORDS
+          .split("\\n"),
         metadata: {
           voice_break: true,
           one_time: true,
+          delivery: "hosted_html",
+          url_path: "/letter/a-letter-kept.html",
         },
       }
     );
@@ -5984,7 +5989,7 @@ async function sendEclipseLetter(
       playerID,
       {
         key: "eclipse_letter_to_her",
-        text: lines.join("\\n"),
+        text: ECLIPSE_LETTER_PERSONAL_WORDS,
         author: "ECLIPSE",
         recipient: "HER",
         sent: true,
@@ -5993,182 +5998,22 @@ async function sendEclipseLetter(
     );
   }
 
-  /*
-   * Messenger generic-template limits are much tighter than a normal
-   * message. Keep every subtitle safely below the practical limit and
-   * NEVER cap the number of chunks. Instead, send multiple carousels
-   * of up to 10 cards each so the entire letter is preserved.
-   */
-  const text = lines.join("\n").trim();
-  const MAX_SUBTITLE_LENGTH = 70;
-  const MAX_CARDS_PER_MESSAGE = 10;
-
-  function splitForMessengerCards(value) {
-    const result = [];
-    let remaining = String(value || "").trim();
-
-    while (remaining.length > 0) {
-      if (remaining.length <= MAX_SUBTITLE_LENGTH) {
-        result.push(remaining);
-        break;
-      }
-
-      let cut = remaining.lastIndexOf(
-        " ",
-        MAX_SUBTITLE_LENGTH
-      );
-
-      const newlineCut = remaining.lastIndexOf(
-        "\n",
-        MAX_SUBTITLE_LENGTH
-      );
-
-      if (newlineCut >= 25) {
-        cut = newlineCut;
-      }
-
-      if (cut < 25) {
-        cut = MAX_SUBTITLE_LENGTH;
-      }
-
-      const piece = remaining
-        .slice(0, cut)
-        .trim();
-
-      if (!piece) {
-        cut = MAX_SUBTITLE_LENGTH;
-        result.push(
-          remaining.slice(0, cut).trim()
-        );
-      } else {
-        result.push(piece);
-      }
-
-      remaining = remaining
-        .slice(cut)
-        .trim();
-    }
-
-    return result;
-  }
-
-  const chunks = splitForMessengerCards(text);
-
-  function sendCardBatch(
-    elements
-  ) {
-    return new Promise((resolve, reject) => {
-      api.sendMessage(
-        {
-          attachment: {
-            type: "template",
-            payload: {
-              template_type: "generic",
-              image_aspect_ratio: "square",
-              elements,
-            },
-          },
-        },
-        threadID,
-        (error, info) => {
-          if (error) {
-            reject(error);
-            return;
-          }
-
-          resolve(info || true);
-        }
-      );
-    });
-  }
-
-  /*
-   * Send sequentially so Messenger receives the pages in the correct
-   * order. If a card batch fails after an earlier batch succeeded,
-   * only the unsent remainder is sent as normal text; nothing is lost.
-   */
-  let sentChunks = 0;
-
-  for (
-    let batchStart = 0;
-    batchStart < chunks.length;
-    batchStart += MAX_CARDS_PER_MESSAGE
-  ) {
-    const batch = chunks.slice(
-      batchStart,
-      batchStart + MAX_CARDS_PER_MESSAGE
-    );
-
-    const batchNumber =
-      Math.floor(
-        batchStart / MAX_CARDS_PER_MESSAGE
-      ) + 1;
-
-    const totalBatches =
-      Math.ceil(
-        chunks.length / MAX_CARDS_PER_MESSAGE
-      );
-
-    const elements = batch.map(
-      (chunk, index) => {
-        const absoluteIndex =
-          batchStart + index + 1;
-
-        return {
-          title:
-            absoluteIndex === 1
-              ? "✉️ ECLIPSE → HER"
-              : \`A LETTER, KEPT · \${String(
-                  absoluteIndex
-                ).padStart(2, "0")}/\${String(
-                  chunks.length
-                ).padStart(2, "0")}\`,
-          subtitle: chunk,
-        };
-      }
-    );
-
-    try {
-      await sendCardBatch(elements);
-      sentChunks += batch.length;
-    } catch (error) {
-      console.error(
-        "[LOVE QUEST] letter card send failed:",
-        error
-      );
-
-      const remaining = chunks
-        .slice(sentChunks)
-        .join("\n");
-
-      try {
-        await send(
-          api,
-          threadID,
-          [
-            "✉️ ECLIPSE → HER",
-            "",
-            "The letter continues below:",
-            "",
-            remaining,
-          ].join("\n")
-        );
-
-        return true;
-      } catch (fallbackError) {
-        console.error(
-          "[LOVE QUEST] letter fallback send failed:",
-          fallbackError
-        );
-
-        return false;
-      }
-    }
-  }
+  await send(
+    api,
+    threadID,
+    [
+      "✉️ A LETTER, KEPT",
+      "",
+      "I made something for you.",
+      "",
+      letterUrl,
+      "",
+      "Open it when you're ready.",
+    ].join("\n")
+  );
 
   return true;
 }
-
 // ============================================================
 // THE SEAL — a message to her own future self
 // ============================================================
