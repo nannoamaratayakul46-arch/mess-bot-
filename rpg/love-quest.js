@@ -5958,7 +5958,7 @@ async function sendEclipseLetter(
 
   const letterUrl =
     configuredUrl.replace(/\/+$/, "") +
-    "/letter/a-letter-kept.html?v=2";
+    "/letter/a-letter-kept.html?v=3";
 
   if (!preview) {
     await createMemory(
@@ -6002,13 +6002,18 @@ async function sendEclipseLetter(
     api,
     threadID,
     [
-      "✉️ A LETTER, KEPT",
+      "✉️ ECLIPSE",
+      "",
+      "Mahal.",
       "",
       "I made something for you.",
       "",
-      letterUrl,
+      "I don't want you to read it here.",
       "",
-      "Open it when you're ready.",
+      "Open this when you're ready.",
+      "",
+      "✦ A LETTER, KEPT",
+      letterUrl,
     ].join("\n")
   );
 
