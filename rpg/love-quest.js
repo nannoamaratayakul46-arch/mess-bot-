@@ -5957,7 +5957,7 @@ async function sendEclipseLetter(
   }
 
   const letterUrl =
-    configuredUrl.replace(/\\/+$/, "") +
+    configuredUrl.replace(/\/+$/, "") +
     "/letter/a-letter-kept.html";
 
   if (!preview) {
@@ -5974,7 +5974,7 @@ async function sendEclipseLetter(
         stability: 100,
         preserved: true,
         fragments: ECLIPSE_LETTER_PERSONAL_WORDS
-          .split("\\n"),
+          .split("\n"),
         metadata: {
           voice_break: true,
           one_time: true,
