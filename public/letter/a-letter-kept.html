@@ -68,14 +68,12 @@
     .wrap:before{content:"";position:absolute;top:0;left:50%;width:1px;height:100%;
       background:linear-gradient(180deg,transparent,rgba(255,255,255,.05) 25%,transparent 80%);opacity:.6}
     .letter{width:min(720px,100%);color:var(--ink);
-      background:
-        linear-gradient(135deg,rgba(255,250,246,.90),rgba(247,239,232,.82)),
-        rgba(247,239,232,.84);
-      border:1px solid rgba(255,255,255,.46);
+      background:rgba(247,239,232,.70);
+      border:1px solid rgba(255,255,255,.25);
       box-shadow:
-        0 24px 80px rgba(0,0,0,.5),
-        0 0 70px rgba(111,91,173,.16),
-        inset 0 1px 0 rgba(255,255,255,.62),
+        0 10px 30px rgba(0,0,0,.35),
+        0 0 70px rgba(111,91,173,.14),
+        inset 0 1px 0 rgba(255,255,255,.42),
         inset 0 -1px 0 rgba(120,82,96,.08);
       backdrop-filter:blur(14px) saturate(120%);
       -webkit-backdrop-filter:blur(14px) saturate(120%);
@@ -143,11 +141,9 @@
     @media(max-width:480px){
       .wrap{padding:34px 10px 40px}.letter{
         padding:28px 21px 32px;
-        background:
-          linear-gradient(135deg,rgba(255,250,246,.93),rgba(247,239,232,.89)),
-          rgba(247,239,232,.90);
-        backdrop-filter:blur(11px) saturate(115%);
-        -webkit-backdrop-filter:blur(11px) saturate(115%);
+        background:rgba(247,239,232,.70);
+        backdrop-filter:blur(14px) saturate(115%);
+        -webkit-backdrop-filter:blur(14px) saturate(115%);
       }
       .body{font-size:17px;line-height:1.78}.rule{margin:25px 0}
       .archive-meta{font-size:9px}.ps{font-size:15px}
