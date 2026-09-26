@@ -785,6 +785,17 @@ function isHer(playerID) {
   return String(playerID) === SPECIAL_PLAYER_ID;
 }
 
+// ECLIPSE admin identity. This is used ONLY for the letter preview.
+// It does not grant access to the actual Last Star quest.
+const ECLIPSE_ADMIN_IDS = String(process.env.ADMIN_IDS || "")
+  .split(",")
+  .map((id) => id.trim())
+  .filter(Boolean);
+
+function isEclipseAdmin(playerID) {
+  return ECLIPSE_ADMIN_IDS.includes(String(playerID || "").trim());
+}
+
 /**
  * Absolutely do not change this into a public permission system.
  *
@@ -6848,16 +6859,6 @@ async function handleLoveQuestCommand(
   playerID,
   args = []
 ) {
-  /**
-   * FIRST SECURITY GATE.
-   *
-   * Do not move this lower.
-   * Do not send an unauthorized response.
-   */
-  if (!privateAccess(playerID)) {
-    return false;
-  }
-
   const list = Array.isArray(args)
     ? args
     : String(args || "")
@@ -6888,19 +6889,27 @@ async function handleLoveQuestCommand(
     action
   );
 
-  // Test commands must run before the automatic anniversary hook.
-  // This prevents !rpg laststar lettertest from triggering the
-  // real one-time anniversary delivery during a preview.
+  // Admin-only preview. This is checked before the private
+  // Last Star gate so the ECLIPSE admin can test the letter.
   if (
     action === "lettertest" ||
     action === "testletter"
   ) {
+    if (!isEclipseAdmin(playerID)) {
+      return false;
+    }
+
     return sendEclipseLetter(
       api,
       threadID,
       playerID,
       { preview: true }
     );
+  }
+
+  // Real Last Star commands remain locked to SPECIAL_PLAYER_ID.
+  if (!privateAccess(playerID)) {
+    return false;
   }
 
   await checkAnniversary(
@@ -7019,3 +7028,14 @@ async function handleLoveQuestCommand(
 // ============================================================
 // EXPORTS
 // ============================================================
+
+module.exports = {
+  isSpecialPlayer: isHer,
+  isHer,
+  isEclipseAdmin,
+  privateAccess,
+  discover,
+  onExplore,
+  handleLoveQuestCommand,
+  help,
+};
