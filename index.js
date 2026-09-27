@@ -2822,7 +2822,6 @@ app.post(
 
     // Never log or persist these credentials.
     dashboardFacebookCredentials = {
-      appState: "",
       email,
       password,
     };
