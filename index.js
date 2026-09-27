@@ -2781,6 +2781,74 @@ app.get(
 );
 
 app.post(
+  "/api/dashboard/connect-credentials",
+  requireDashboardAccess,
+  (req, res) => {
+    if (loginInProgress) {
+      return res.status(409).json({
+        ok: false,
+        error: "A Facebook login is already in progress. Wait for it to finish, then try again.",
+      });
+    }
+
+    const email = String(
+      req.body?.email || ""
+    ).trim();
+
+    const password = String(
+      req.body?.password || ""
+    );
+
+    if (
+      !email ||
+      !password
+    ) {
+      return res.status(400).json({
+        ok: false,
+        error: "Facebook email/phone and password are required.",
+      });
+    }
+
+    if (
+      email.length > 320 ||
+      password.length > 1024
+    ) {
+      return res.status(400).json({
+        ok: false,
+        error: "Facebook login credentials are too long.",
+      });
+    }
+
+    // Never log or persist these credentials.
+    dashboardFacebookCredentials = {
+      email,
+      password,
+    };
+
+    preferDashboardCredentials = true;
+    dashboardBotPaused = false;
+    listenerGeneration++;
+    activeListenerGeneration = 0;
+    activeMessengerApi = null;
+    watchdogSetMessengerConnected(false);
+
+    if (loginRetryTimer) {
+      clearTimeout(loginRetryTimer);
+      loginRetryTimer = null;
+    }
+
+    loginAttempt = 0;
+    listenFailureCount = 0;
+    attemptLogin();
+
+    return res.status(202).json({
+      ok: true,
+      action: "facebook_credentials_login_requested",
+    });
+  }
+);
+
+app.post(
   "/api/dashboard/connect-session",
   requireDashboardAccess,
   (req, res) => {
@@ -3193,6 +3261,11 @@ let dashboardBotPaused = false;
 let dashboardLastConnectedAt = null;
 let dashboardLastDisconnectedAt = null;
 
+// Dashboard-supplied Facebook credentials are kept only in process memory.
+// They are never written to logs, GitHub, browser storage, or the database.
+let dashboardFacebookCredentials = null;
+let preferDashboardCredentials = false;
+
 // Prevent accidentally attaching two MQTT listeners to the same
 // Messenger API object during reconnect races.
 const listenerStartedApis = new WeakSet();
@@ -3209,8 +3282,14 @@ function attemptLogin() {
   loginInProgress = true;
   const thisGeneration = ++listenerGeneration;
 
+  const credentials =
+    preferDashboardCredentials &&
+    dashboardFacebookCredentials
+      ? dashboardFacebookCredentials
+      : { appState };
+
   login(
-    appState,
+    credentials,
     {
       online: true,
       updatePresence: true,
@@ -3234,6 +3313,33 @@ function attemptLogin() {
       }
 
       if (loginError || !api) {
+        // If the saved session has expired, fall back to the
+        // dashboard credentials once before entering the normal
+        // exponential retry cycle.
+        if (
+          dashboardFacebookCredentials &&
+          !preferDashboardCredentials
+        ) {
+          preferDashboardCredentials = true;
+          loginAttempt = 0;
+          loginInProgress = false;
+
+          if (loginRetryTimer) {
+            clearTimeout(loginRetryTimer);
+          }
+
+          loginRetryTimer = setTimeout(() => {
+            loginRetryTimer = null;
+            attemptLogin();
+          }, 1000);
+
+          console.warn(
+            "[LOGIN] Saved session failed; retrying with dashboard Facebook credentials."
+          );
+
+          return;
+        }
+
         loginAttempt++;
 
         const backoffMs = Math.min(
@@ -3267,6 +3373,34 @@ function attemptLogin() {
       loginAttempt = 0;
       listenFailureCount = 0;
       loginInProgress = false;
+
+      // A successful credential login produces a fresh appState.
+      // Keep that session in memory so later reconnects prefer the
+      // session and only fall back to credentials if it expires.
+      if (
+        dashboardFacebookCredentials &&
+        preferDashboardCredentials
+      ) {
+        try {
+          if (typeof api.getAppState === "function") {
+            const refreshedAppState = api.getAppState();
+
+            if (
+              Array.isArray(refreshedAppState) &&
+              refreshedAppState.length > 0
+            ) {
+              appState = refreshedAppState;
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "[LOGIN] Could not refresh in-memory appState after credential login:",
+            error?.message || error
+          );
+        }
+
+        preferDashboardCredentials = false;
+      }
 
       if (loginRetryTimer) {
         clearTimeout(loginRetryTimer);
