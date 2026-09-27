@@ -2791,16 +2791,47 @@ app.post(
       });
     }
 
-    try {
-      appState = normalizeAppState(req.body?.appState);
-    } catch (error) {
+    const incoming = req.body?.appState;
+
+    if (!Array.isArray(incoming) || incoming.length === 0) {
       return res.status(400).json({
         ok: false,
-        error: error instanceof Error
-          ? error.message
-          : "Invalid Facebook appState.",
+        error: "Facebook appState must be a non-empty cookie array.",
       });
     }
+
+    for (const cookie of incoming) {
+      if (!cookie || typeof cookie !== "object" || Array.isArray(cookie)) {
+        return res.status(400).json({
+          ok: false,
+          error: "Each Facebook cookie must be an object.",
+        });
+      }
+
+      const key =
+        typeof cookie.key === "string"
+          ? cookie.key
+          : cookie.name;
+
+      if (
+        typeof key !== "string" ||
+        !key.trim() ||
+        typeof cookie.value !== "string"
+      ) {
+        return res.status(400).json({
+          ok: false,
+          error: "Every Facebook cookie must contain a string name/key and value.",
+        });
+      }
+    }
+
+    appState = incoming.map((cookie) => ({
+      ...cookie,
+      key:
+        typeof cookie.key === "string"
+          ? cookie.key
+          : cookie.name,
+    }));
 
     dashboardBotPaused = false;
     listenerGeneration++;
@@ -3039,54 +3070,88 @@ server.on(
 // FACEBOOK COOKIES
 // ============================================================
 
-function normalizeAppState(parsed) {
-  if (typeof parsed === "string") {
-    parsed = JSON.parse(parsed);
-  }
-
-  if (!Array.isArray(parsed) || parsed.length === 0) {
-    throw new Error("Facebook appState must be a non-empty cookie array.");
-  }
-
-  return parsed.map((cookie) => {
-    if (!cookie || typeof cookie !== "object" || Array.isArray(cookie)) {
-      throw new Error("Each Facebook cookie must be an object.");
-    }
-
-    const key =
-      typeof cookie.key === "string"
-        ? cookie.key
-        : cookie.name;
-
-    if (
-      typeof key !== "string" ||
-      !key.trim() ||
-      typeof cookie.value !== "string"
-    ) {
-      throw new Error(
-        "Every Facebook cookie must contain string name/key and value fields."
-      );
-    }
-
-    return {
-      ...cookie,
-      key,
-    };
-  });
-}
-
 function readAppState() {
-  const rawCookies = process.env.FB_COOKIES;
+  const rawCookies =
+    process.env.FB_COOKIES;
 
-  if (typeof rawCookies !== "string" || !rawCookies.trim()) {
-    throw new Error("FB_COOKIES is missing.");
+  if (
+    typeof rawCookies !== "string" ||
+    !rawCookies.trim()
+  ) {
+    throw new Error(
+      "FB_COOKIES is missing."
+    );
   }
+
+  let parsed;
 
   try {
-    return normalizeAppState(JSON.parse(rawCookies));
+    parsed =
+      JSON.parse(
+        rawCookies
+      );
+
+    if (
+      typeof parsed ===
+      "string"
+    ) {
+      parsed =
+        JSON.parse(
+          parsed
+        );
+    }
   } catch {
-    throw new Error("FB_COOKIES must contain valid JSON.");
+    throw new Error(
+      "FB_COOKIES must contain valid JSON."
+    );
   }
+
+  if (
+    !Array.isArray(parsed) ||
+    parsed.length === 0
+  ) {
+    throw new Error(
+      "FB_COOKIES must be a non-empty cookie array."
+    );
+  }
+
+  return parsed.map(
+    (cookie) => {
+      if (
+        !cookie ||
+        typeof cookie !==
+          "object" ||
+        Array.isArray(cookie)
+      ) {
+        throw new Error(
+          "Each FB_COOKIES entry must be an object."
+        );
+      }
+
+      const key =
+        typeof cookie.key ===
+        "string"
+          ? cookie.key
+          : cookie.name;
+
+      if (
+        typeof key !==
+          "string" ||
+        !key.trim() ||
+        typeof cookie.value !==
+          "string"
+      ) {
+        throw new Error(
+          "Every cookie must contain string name/key and value fields."
+        );
+      }
+
+      return {
+        ...cookie,
+        key,
+      };
+    }
+  );
 }
 
 let appState;
