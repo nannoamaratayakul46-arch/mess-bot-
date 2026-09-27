@@ -3209,7 +3209,6 @@ function attemptLogin() {
       );
 
       dashboardLastConnectedAt = new Date().toISOString();
-      dashboardBotPaused = false;
 
       console.log(
         "Logged in successfully."
