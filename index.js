@@ -5475,13 +5475,13 @@ async function handleMessage(
           setTimeout(() => {
             trafficSendMessage(
               api,
-              [
-                "୨୧ ECLIPSE BANAT",
-                "",
-                Math.random() < 0.5
-                  ? "https://www.facebook.com/profile.php?id=61590719390401"
-                  : "https://www.facebook.com/profile.php?id=61588685169649",
-              ].join("\n"),
+              {
+                body: "୨୧ ECLIPSE BANAT",
+                url:
+                  Math.random() < 0.5
+                    ? "https://www.facebook.com/profile.php?id=61590719390401"
+                    : "https://www.facebook.com/profile.php?id=61588685169649",
+              },
               threadID,
               (sendError) => {
                 if (sendError) {
@@ -5602,15 +5602,17 @@ async function handleMessage(
         }
 
         const banatMessage = banatLinkEnabled
-          ? [
-              triggerReply,
-              "",
-              "୨୧ ECLIPSE BANAT",
-              "",
-              Math.random() < 0.5
-                ? "https://www.facebook.com/profile.php?id=61590719390401"
-                : "https://www.facebook.com/profile.php?id=61588685169649",
-            ].join("\n")
+          ? {
+              body: [
+                triggerReply,
+                "",
+                "୨୧ ECLIPSE BANAT",
+              ].join("\n"),
+              url:
+                Math.random() < 0.5
+                  ? "https://www.facebook.com/profile.php?id=61590719390401"
+                  : "https://www.facebook.com/profile.php?id=61588685169649",
+            }
           : triggerReply;
 
         sendReplyWithTyping(
