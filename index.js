@@ -3280,6 +3280,91 @@ const listenerStartedApis = new WeakSet();
 const MAX_LOGIN_BACKOFF_MS = 5 * 60_000;
 const MAX_LISTEN_RETRIES = 5;
 
+function getFacebookLoginErrorMessage(error) {
+  const parts = [];
+  const visited = new Set();
+
+  function addPart(value) {
+    if (
+      value === null ||
+      value === undefined
+    ) {
+      return;
+    }
+
+    const text = String(value).trim();
+
+    if (text && !parts.includes(text)) {
+      parts.push(text);
+    }
+  }
+
+  function visit(value, depth = 0) {
+    if (
+      value === null ||
+      value === undefined ||
+      depth > 2
+    ) {
+      return;
+    }
+
+    if (
+      typeof value === "string" ||
+      typeof value === "number" ||
+      typeof value === "boolean"
+    ) {
+      addPart(value);
+      return;
+    }
+
+    if (
+      typeof value !== "object" ||
+      visited.has(value)
+    ) {
+      return;
+    }
+
+    visited.add(value);
+
+    for (
+      const key of [
+        "name",
+        "message",
+        "errorDescription",
+        "error_description",
+        "description",
+        "reason",
+        "error",
+        "code",
+        "type",
+      ]
+    ) {
+      if (key in value) {
+        visit(value[key], depth + 1);
+      }
+    }
+  }
+
+  visit(error);
+
+  const message = (
+    parts.length > 0
+      ? parts.join(" | ")
+      : "Facebook login failed."
+  )
+    .replace(
+      /(["']?(?:password|passwd|pass|cookie|appstate|access[_-]?token|refresh[_-]?token|session(?:[_-]?id|[_-]?token)?|authorization)["']?\s*[:=]\s*)[^,;\s}]+/gi,
+      "$1[redacted]"
+    )
+    .replace(
+      /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi,
+      "[redacted email]"
+    )
+    .slice(0, 500);
+
+  return message || "Facebook login failed.";
+}
+
 function attemptLogin() {
   if (
     !appState &&
@@ -3305,14 +3390,51 @@ function attemptLogin() {
       ? dashboardFacebookCredentials
       : { appState };
 
-  login(
-    credentials,
-    {
-      online: true,
-      updatePresence: true,
-      selfListen: false,
-      randomUserAgent: false,
-    },
+  let loginSettled = false;
+
+  const handleLoginInvocationFailure = (error) => {
+    if (
+      loginSettled ||
+      thisGeneration !== listenerGeneration
+    ) {
+      return;
+    }
+
+    loginSettled = true;
+    dashboardLoginError = getFacebookLoginErrorMessage(error);
+    loginInProgress = false;
+    watchdogSetMessengerConnected(false);
+
+    loginAttempt++;
+
+    const backoffMs = Math.min(
+      2 ** loginAttempt * 1000,
+      MAX_LOGIN_BACKOFF_MS
+    );
+
+    console.error(
+      `[LOGIN] Login invocation failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
+    );
+
+    if (loginRetryTimer) {
+      clearTimeout(loginRetryTimer);
+    }
+
+    loginRetryTimer = setTimeout(() => {
+      loginRetryTimer = null;
+      attemptLogin();
+    }, backoffMs);
+  };
+
+  try {
+    const loginResult = login(
+      credentials,
+      {
+        online: true,
+        updatePresence: true,
+        selfListen: false,
+        randomUserAgent: false,
+      },
 
     async (
       loginError,
@@ -3329,10 +3451,16 @@ function attemptLogin() {
         return;
       }
 
+      if (loginSettled) {
+        return;
+      }
+
+      loginSettled = true;
+
       if (loginError || !api) {
-        dashboardLoginError = String(
-          loginError?.error || loginError?.message || loginError || "Facebook login failed."
-        ).slice(0, 500);
+        dashboardLoginError = getFacebookLoginErrorMessage(
+          loginError || "No API object returned."
+        );
 
         // If the saved session has expired, fall back to the
         // dashboard credentials once before entering the normal
@@ -3369,8 +3497,7 @@ function attemptLogin() {
         );
 
         console.error(
-          `Login failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms.`,
-          loginError || "No API object returned."
+          `[LOGIN] Login failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
         );
 
         watchdogSetMessengerConnected(
@@ -3706,7 +3833,19 @@ function attemptLogin() {
         }
       );
     }
-  );
+    );
+
+    if (
+      loginResult &&
+      typeof loginResult.catch === "function"
+    ) {
+      loginResult.catch(
+        handleLoginInvocationFailure
+      );
+    }
+  } catch (error) {
+    handleLoginInvocationFailure(error);
+  }
 }
 
 attemptLogin();
