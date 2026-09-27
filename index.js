@@ -2695,7 +2695,169 @@ async function checkDatabaseHealth() {
 // RENDER HEALTH CHECK
 // ============================================================
 
+
 const app = express();
+
+app.use(express.json({ limit: "32kb" }));
+
+const DASHBOARD_API_KEY =
+  String(process.env.ECLIPSE_DASHBOARD_API_KEY || "").trim();
+
+function dashboardCors(req, res, next) {
+  const origin = String(req.headers.origin || "");
+  const allowedOrigin = String(
+    process.env.ECLIPSE_DASHBOARD_ORIGIN || "*"
+  ).trim();
+
+  res.setHeader(
+    "Access-Control-Allow-Origin",
+    allowedOrigin === "*" ? "*" : origin === allowedOrigin ? origin : allowedOrigin
+  );
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-ECLIPSE-DASHBOARD-KEY");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Vary", "Origin");
+
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(204);
+  }
+
+  next();
+}
+
+function requireDashboardAccess(req, res, next) {
+  if (!DASHBOARD_API_KEY) {
+    return res.status(503).json({
+      ok: false,
+      error: "Dashboard API key is not configured on Render.",
+    });
+  }
+
+  const bearer = String(
+    req.headers.authorization || ""
+  ).replace(/^Bearer\s+/i, "").trim();
+
+  const provided = String(
+    req.headers["x-eclipse-dashboard-key"] || bearer
+  ).trim();
+
+  if (!provided || provided !== DASHBOARD_API_KEY) {
+    return res.status(401).json({
+      ok: false,
+      error: "Dashboard authorization required.",
+    });
+  }
+
+  next();
+}
+
+app.use(dashboardCors);
+
+app.get(
+  "/api/dashboard/status",
+  requireDashboardAccess,
+  (_req, res) => {
+    const connected =
+      Boolean(watchdogMessengerConnected) &&
+      Boolean(activeMessengerApi) &&
+      activeListenerGeneration > 0;
+
+    res.json({
+      ok: true,
+      facebook_connected: connected,
+      facebook_user_name: connected
+        ? "Messenger account"
+        : null,
+      session_active: connected,
+      bot_running:
+        connected && !dashboardBotPaused,
+      bot_paused: dashboardBotPaused,
+      login_in_progress: loginInProgress,
+      last_connected_at: dashboardLastConnectedAt,
+      last_disconnected_at: dashboardLastDisconnectedAt,
+      watchdog: getWatchdogStatus(),
+      updated_at: new Date().toISOString(),
+    });
+  }
+);
+
+app.post(
+  "/api/dashboard/reconnect",
+  requireDashboardAccess,
+  (_req, res) => {
+    dashboardBotPaused = false;
+
+    if (
+      !activeMessengerApi ||
+      !watchdogMessengerConnected ||
+      activeListenerGeneration <= 0
+    ) {
+      attemptLogin();
+    }
+
+    res.json({
+      ok: true,
+      action: "reconnect_requested",
+    });
+  }
+);
+
+app.post(
+  "/api/dashboard/disconnect",
+  requireDashboardAccess,
+  (_req, res) => {
+    dashboardBotPaused = true;
+    listenerGeneration++;
+    activeListenerGeneration = 0;
+    activeMessengerApi = null;
+    watchdogSetMessengerConnected(false);
+    dashboardLastDisconnectedAt = new Date().toISOString();
+
+    if (loginRetryTimer) {
+      clearTimeout(loginRetryTimer);
+      loginRetryTimer = null;
+    }
+
+    res.json({
+      ok: true,
+      action: "listener_disconnected",
+      note: "The Messenger listener was detached. The stored FB_COOKIES credential remains on Render for the next reconnect.",
+    });
+  }
+);
+
+app.post(
+  "/api/dashboard/bot/start",
+  requireDashboardAccess,
+  (_req, res) => {
+    dashboardBotPaused = false;
+
+    if (
+      !activeMessengerApi ||
+      !watchdogMessengerConnected ||
+      activeListenerGeneration <= 0
+    ) {
+      attemptLogin();
+    }
+
+    res.json({
+      ok: true,
+      action: "bot_start_requested",
+    });
+  }
+);
+
+app.post(
+  "/api/dashboard/bot/stop",
+  requireDashboardAccess,
+  (_req, res) => {
+    dashboardBotPaused = true;
+
+    res.json({
+      ok: true,
+      action: "bot_paused",
+    });
+  );
+
 
 // ============================================================
 // ECLIPSE — PRIVATE ANNIVERSARY LETTER
@@ -2951,6 +3113,10 @@ let startupSchedulersInitialized = false;
 let loginRetryTimer = null;
 let activeMessengerApi = null;
 
+let dashboardBotPaused = false;
+let dashboardLastConnectedAt = null;
+let dashboardLastDisconnectedAt = null;
+
 // Prevent accidentally attaching two MQTT listeners to the same
 // Messenger API object during reconnect races.
 const listenerStartedApis = new WeakSet();
@@ -3041,6 +3207,9 @@ function attemptLogin() {
       watchdogSetMessengerConnected(
         true
       );
+
+      dashboardLastConnectedAt = new Date().toISOString();
+      dashboardBotPaused = false;
 
       console.log(
         "Logged in successfully."
@@ -3246,6 +3415,10 @@ function attemptLogin() {
           }
 
           listenFailureCount = 0;
+
+          if (dashboardBotPaused) {
+            return;
+          }
 
           watchdogSetMessengerConnected(
             true
