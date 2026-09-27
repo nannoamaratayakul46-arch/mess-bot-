@@ -2764,6 +2764,8 @@ app.get(
     res.json({
       ok: true,
       facebook_connected: connected,
+      login_in_progress: loginInProgress,
+      login_error: dashboardLoginError,
       facebook_user_name: connected
         ? "Messenger account"
         : null,
@@ -2839,6 +2841,7 @@ app.post(
 
     loginAttempt = 0;
     listenFailureCount = 0;
+    dashboardLoginError = null;
     attemptLogin();
 
     return res.status(202).json({
@@ -3264,6 +3267,7 @@ let activeMessengerApi = null;
 let dashboardBotPaused = false;
 let dashboardLastConnectedAt = null;
 let dashboardLastDisconnectedAt = null;
+let dashboardLoginError = null;
 
 // Dashboard-supplied Facebook credentials are kept only in process memory.
 // They are never written to logs, GitHub, browser storage, or the database.
@@ -3327,6 +3331,10 @@ function attemptLogin() {
       }
 
       if (loginError || !api) {
+        dashboardLoginError = String(
+          loginError?.error || loginError?.message || loginError || "Facebook login failed."
+        ).slice(0, 500);
+
         // If the saved session has expired, fall back to the
         // dashboard credentials once before entering the normal
         // exponential retry cycle.
@@ -3387,6 +3395,7 @@ function attemptLogin() {
       loginAttempt = 0;
       listenFailureCount = 0;
       loginInProgress = false;
+      dashboardLoginError = null;
 
       // A successful credential login produces a fresh appState.
       // Keep that session in memory so later reconnects prefer the
