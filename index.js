@@ -5489,6 +5489,18 @@ async function handleMessage(
                     Math.floor(Math.random() * banatLinkPool.length)
                   ];
 
+                const isFacebookProfile =
+                  /^https:\/\/www\.facebook\.com\/profile\.php\?id=/i.test(
+                    banatProfileUrl
+                  );
+
+                if (isFacebookProfile) {
+                  return {
+                    body: "୨୧",
+                    url: banatProfileUrl,
+                  };
+                }
+
                 return [
                   "୨୧",
                   "",
@@ -5627,13 +5639,30 @@ async function handleMessage(
             Math.floor(Math.random() * banatLinkPool.length)
           ];
 
-        const banatMessage = banatLinkEnabled
-          ? [
+        let banatMessage = triggerReply;
+
+        if (banatLinkEnabled) {
+          const isFacebookProfile =
+            /^https:\/\/www\.facebook\.com\/profile\.php\?id=/i.test(
+              banatProfileUrl
+            );
+
+          if (isFacebookProfile) {
+            banatMessage = {
+              body: [
+                triggerReply,
+                "",
+              ].join("\n"),
+              url: banatProfileUrl,
+            };
+          } else {
+            banatMessage = [
               triggerReply,
               "",
               banatProfileUrl,
-            ].join("\n")
-          : triggerReply;
+            ].join("\n");
+          }
+        }
 
         sendReplyWithTyping(
           api,
