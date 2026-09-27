@@ -5468,6 +5468,28 @@ async function handleMessage(
           ].join("\n"),
           threadID
         );
+
+        // When link spam is switched on, immediately send a test
+        // link message so the admin can verify the feature is live.
+        if (command === "link" && enabled) {
+          setTimeout(() => {
+            trafficSendMessage(
+              api,
+              [
+                "୨୧ ECLIPSE BANAT LINKS",
+                "https://www.facebook.com/profile.php?id=61590719390401",
+                "https://www.facebook.com/profile.php?id=61588685169649",
+              ].join("\n"),
+              threadID,
+              (sendError) => {
+                if (sendError) {
+                  console.error("[BANAT] Link test send failed:", sendError);
+                }
+              }
+            );
+          }, 1400);
+        }
+
         return;
       }
 
