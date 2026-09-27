@@ -2784,68 +2784,10 @@ app.get(
 app.post(
   "/api/dashboard/connect-credentials",
   requireDashboardAccess,
-  (req, res) => {
-    if (loginInProgress) {
-      return res.status(409).json({
-        ok: false,
-        error: "A Facebook login is already in progress. Wait for it to finish, then try again.",
-      });
-    }
-
-    const email = String(
-      req.body?.email || ""
-    ).trim();
-
-    const password = String(
-      req.body?.password || ""
-    );
-
-    if (
-      !email ||
-      !password
-    ) {
-      return res.status(400).json({
-        ok: false,
-        error: "Facebook email/phone and password are required.",
-      });
-    }
-
-    if (
-      email.length > 320 ||
-      password.length > 1024
-    ) {
-      return res.status(400).json({
-        ok: false,
-        error: "Facebook login credentials are too long.",
-      });
-    }
-
-    // Never log or persist these credentials.
-    dashboardFacebookCredentials = {
-      email,
-      password,
-    };
-
-    preferDashboardCredentials = true;
-    dashboardBotPaused = false;
-    listenerGeneration++;
-    activeListenerGeneration = 0;
-    activeMessengerApi = null;
-    watchdogSetMessengerConnected(false);
-
-    if (loginRetryTimer) {
-      clearTimeout(loginRetryTimer);
-      loginRetryTimer = null;
-    }
-
-    loginAttempt = 0;
-    listenFailureCount = 0;
-    dashboardLoginError = null;
-    attemptLogin();
-
-    return res.status(202).json({
-      ok: true,
-      action: "facebook_credentials_login_requested",
+  (_req, res) => {
+    return res.status(410).json({
+      ok: false,
+      error: "Facebook password login is disabled. Export a Facebook session cookie file and upload it instead.",
     });
   }
 );
@@ -2861,47 +2803,15 @@ app.post(
       });
     }
 
-    const incoming = req.body?.appState;
+    let incoming;
 
-    if (!Array.isArray(incoming) || incoming.length === 0) {
-      return res.status(400).json({
-        ok: false,
-        error: "Facebook appState must be a non-empty cookie array.",
-      });
+    try {
+      incoming = normalizeFacebookAppState(req.body?.appState, "Facebook appState");
+    } catch (error) {
+      return res.status(400).json({ ok: false, error: error?.message || "Invalid Facebook session export." });
     }
 
-    for (const cookie of incoming) {
-      if (!cookie || typeof cookie !== "object" || Array.isArray(cookie)) {
-        return res.status(400).json({
-          ok: false,
-          error: "Each Facebook cookie must be an object.",
-        });
-      }
-
-      const key =
-        typeof cookie.key === "string"
-          ? cookie.key
-          : cookie.name;
-
-      if (
-        typeof key !== "string" ||
-        !key.trim() ||
-        typeof cookie.value !== "string"
-      ) {
-        return res.status(400).json({
-          ok: false,
-          error: "Every Facebook cookie must contain a string name/key and value.",
-        });
-      }
-    }
-
-    appState = incoming.map((cookie) => ({
-      ...cookie,
-      key:
-        typeof cookie.key === "string"
-          ? cookie.key
-          : cookie.name,
-    }));
+    appState = incoming;
 
     dashboardBotPaused = false;
     listenerGeneration++;
@@ -3141,87 +3051,52 @@ server.on(
 // FACEBOOK COOKIES
 // ============================================================
 
-function readAppState() {
-  const rawCookies =
-    process.env.FB_COOKIES;
-
-  if (
-    typeof rawCookies !== "string" ||
-    !rawCookies.trim()
-  ) {
-    return null;
-  }
-
-  let parsed;
-
-  try {
-    parsed =
-      JSON.parse(
-        rawCookies
-      );
-
-    if (
-      typeof parsed ===
-      "string"
-    ) {
-      parsed =
-        JSON.parse(
-          parsed
-        );
+function parseFacebookCookieHeader(header, source) {
+    const cookies = header
+      .split(";")
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => {
+        const separator = part.indexOf("=");
+        if (separator <= 0) return null;
+        return { key: part.slice(0, separator).trim(), value: part.slice(separator + 1).trim() };
+      })
+      .filter(Boolean);
+    if (cookies.length === 0) throw new Error(\`${source} must contain Facebook cookies.\`);
+    return cookies;
     }
-  } catch {
-    throw new Error(
-      "FB_COOKIES must contain valid JSON."
-    );
-  }
 
-  if (
-    !Array.isArray(parsed) ||
-    parsed.length === 0
-  ) {
-    throw new Error(
-      "FB_COOKIES must be a non-empty cookie array."
-    );
-  }
-
-  return parsed.map(
-    (cookie) => {
-      if (
-        !cookie ||
-        typeof cookie !==
-          "object" ||
-        Array.isArray(cookie)
-      ) {
-        throw new Error(
-          "Each FB_COOKIES entry must be an object."
-        );
+    function normalizeFacebookAppState(input, source = "Facebook appState") {
+    let value = input;
+    for (let depth = 0; depth < 4; depth += 1) {
+      if (typeof value === "string") {
+        const text = value.trim();
+        if (!text) throw new Error(\`${source} must not be empty.\`);
+        try { value = JSON.parse(text); continue; } catch { return parseFacebookCookieHeader(text, source); }
       }
-
-      const key =
-        typeof cookie.key ===
-        "string"
-          ? cookie.key
-          : cookie.name;
-
-      if (
-        typeof key !==
-          "string" ||
-        !key.trim() ||
-        typeof cookie.value !==
-          "string"
-      ) {
-        throw new Error(
-          "Every cookie must contain string name/key and value fields."
-        );
+      if (Array.isArray(value)) {
+        if (value.length === 0) throw new Error(\`${source} must be a non-empty cookie array.\`);
+        return value.map((cookie) => {
+          if (!cookie || typeof cookie !== "object" || Array.isArray(cookie)) throw new Error(\`${source} contains an invalid cookie object.\`);
+          const key = typeof cookie.key === "string" ? cookie.key : cookie.name;
+          if (typeof key !== "string" || !key.trim() || typeof cookie.value !== "string") throw new Error(\`${source} contains a cookie without a string name/key and value.\`);
+          return { ...cookie, key: key.trim() };
+        });
       }
-
-      return {
-        ...cookie,
-        key,
-      };
+      if (value && typeof value === "object") {
+        const nestedKey = ["appState", "cookies", "data"].find((key) => Object.prototype.hasOwnProperty.call(value, key));
+        if (nestedKey) { value = value[nestedKey]; continue; }
+      }
+      break;
     }
-  );
-}
+    throw new Error(\`${source} must be a cookie array, a wrapped cookie export, JSON text, or a cookie-header string.\`);
+    }
+
+    function readAppState() {
+    const rawCookies = process.env.FB_COOKIES;
+    if (typeof rawCookies !== "string" || !rawCookies.trim()) return null;
+    return normalizeFacebookAppState(rawCookies, "FB_COOKIES");
+    }
 
 let appState;
 
@@ -3384,11 +3259,7 @@ function attemptLogin() {
   loginInProgress = true;
   const thisGeneration = ++listenerGeneration;
 
-  const credentials =
-    preferDashboardCredentials &&
-    dashboardFacebookCredentials
-      ? dashboardFacebookCredentials
-      : { appState };
+  const loginInput = appState;
 
   let loginSettled = false;
 
@@ -3428,7 +3299,7 @@ function attemptLogin() {
 
   try {
     const loginResult = login(
-      credentials,
+      loginInput,
       {
         online: true,
         updatePresence: true,
