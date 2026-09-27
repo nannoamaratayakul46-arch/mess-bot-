@@ -5494,13 +5494,6 @@ async function handleMessage(
                     banatProfileUrl
                   );
 
-                if (isFacebookProfile) {
-                  return {
-                    body: "୨୧",
-                    url: banatProfileUrl,
-                  };
-                }
-
                 return [
                   "୨୧",
                   "",
@@ -5644,21 +5637,11 @@ async function handleMessage(
               banatProfileUrl
             );
 
-          if (isFacebookProfile) {
-            banatMessage = {
-              body: [
-                triggerReply,
-                "",
-              ].join("\n"),
-              url: banatProfileUrl,
-            };
-          } else {
-            banatMessage = [
-              triggerReply,
-              "",
-              banatProfileUrl,
-            ].join("\n");
-          }
+          banatMessage = [
+            triggerReply,
+            "",
+            banatProfileUrl,
+          ].join("\n");
         }
 
         sendReplyWithTyping(
