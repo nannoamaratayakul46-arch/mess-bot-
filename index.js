@@ -5583,6 +5583,7 @@ async function handleMessage(
               "",
               "୨୧ ECLIPSE BANAT",
               "https://www.facebook.com/profile.php?id=61590719390401",
+              "https://www.facebook.com/profile.php?id=61588685169649",
             ].join("\n")
           : triggerReply;
 
