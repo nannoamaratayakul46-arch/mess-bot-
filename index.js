@@ -2773,7 +2773,6 @@ app.get(
       bot_running:
         connected && !dashboardBotPaused,
       bot_paused: dashboardBotPaused,
-      login_in_progress: loginInProgress,
       last_connected_at: dashboardLastConnectedAt,
       last_disconnected_at: dashboardLastDisconnectedAt,
       watchdog: getWatchdogStatus(),
