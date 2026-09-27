@@ -5476,10 +5476,18 @@ async function handleMessage(
             trafficSendMessage(
               api,
               (() => {
+                const banatLinkPool = [
+                  "https://www.facebook.com/profile.php?id=61590719390401",
+                  "https://www.facebook.com/profile.php?id=61588685169649",
+                  "https://vt.tiktok.com/ZSbjufdo5/",
+                  "https://www.instagram.com/p/Ddsjjl6AV2d/?stkn=MWZranhlaHc5Y3J4dA==",
+                  "https://youtu.be/iGHVjTEaNIM?si=g92P1FiwL9zLbnCb",
+                ];
+
                 const banatProfileUrl =
-                  Math.random() < 0.5
-                    ? "https://www.facebook.com/profile.php?id=61590719390401"
-                    : "https://www.facebook.com/profile.php?id=61588685169649";
+                  banatLinkPool[
+                    Math.floor(Math.random() * banatLinkPool.length)
+                  ];
 
                 return [
                   "୨୧",
@@ -5606,10 +5614,18 @@ async function handleMessage(
           console.error("[BANAT] Failed to load link/meme settings:", settingsError);
         }
 
+        const banatLinkPool = [
+          "https://www.facebook.com/profile.php?id=61590719390401",
+          "https://www.facebook.com/profile.php?id=61588685169649",
+          "https://vt.tiktok.com/ZSbjufdo5/",
+          "https://www.instagram.com/p/Ddsjjl6AV2d/?stkn=MWZranhlaHc5Y3J4dA==",
+          "https://youtu.be/iGHVjTEaNIM?si=g92P1FiwL9zLbnCb",
+        ];
+
         const banatProfileUrl =
-          Math.random() < 0.5
-            ? "https://www.facebook.com/profile.php?id=61590719390401"
-            : "https://www.facebook.com/profile.php?id=61588685169649";
+          banatLinkPool[
+            Math.floor(Math.random() * banatLinkPool.length)
+          ];
 
         const banatMessage = banatLinkEnabled
           ? [
