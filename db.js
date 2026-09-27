@@ -111,13 +111,17 @@ async function connect() {
     CREATE TABLE IF NOT EXISTS thread_settings (
       thread_id TEXT PRIMARY KEY,
       roast_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      fun_enabled BOOLEAN NOT NULL DEFAULT TRUE
+      fun_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      banat_link_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE
     );
   `);
 
   await pool.query(`
     ALTER TABLE thread_settings
-      ADD COLUMN IF NOT EXISTS fun_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+      ADD COLUMN IF NOT EXISTS fun_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS banat_link_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 
   // ═════════════════════════════════════════════════════════
@@ -3047,8 +3051,14 @@ async function getThreadSettings(threadId) {
   if (!rows.length) {
     await conn.query(
       `
-      INSERT INTO thread_settings(thread_id, roast_enabled, fun_enabled)
-      VALUES($1, TRUE, TRUE)
+      INSERT INTO thread_settings(
+        thread_id,
+        roast_enabled,
+        fun_enabled,
+        banat_link_enabled,
+        banat_meme_enabled
+      )
+      VALUES($1, TRUE, TRUE, TRUE, FALSE)
       ON CONFLICT(thread_id) DO NOTHING
       `,
       [id]
@@ -3073,7 +3083,12 @@ async function setThreadSettings(threadId, fields) {
 
   await getThreadSettings(id);
 
-  const allowedFields = ["roast_enabled", "fun_enabled"];
+  const allowedFields = [
+    "roast_enabled",
+    "fun_enabled",
+    "banat_link_enabled",
+    "banat_meme_enabled",
+  ];
 
   const safeFields = Object.keys(fields || {}).filter((key) =>
     allowedFields.includes(key)
@@ -3109,6 +3124,28 @@ async function isRoastEnabled(threadId) {
 async function setRoastEnabled(threadId, enabled) {
   return setThreadSettings(threadId, {
     roast_enabled: Boolean(enabled),
+  });
+}
+
+async function isBanatLinkEnabled(threadId) {
+  const settings = await getThreadSettings(threadId);
+  return settings.banat_link_enabled === true;
+}
+
+async function setBanatLinkEnabled(threadId, enabled) {
+  return setThreadSettings(threadId, {
+    banat_link_enabled: Boolean(enabled),
+  });
+}
+
+async function isBanatMemeEnabled(threadId) {
+  const settings = await getThreadSettings(threadId);
+  return settings.banat_meme_enabled === true;
+}
+
+async function setBanatMemeEnabled(threadId, enabled) {
+  return setThreadSettings(threadId, {
+    banat_meme_enabled: Boolean(enabled),
   });
 }
 
@@ -3205,6 +3242,10 @@ module.exports = {
   // Roast / Banat
   isRoastEnabled,
   setRoastEnabled,
+  isBanatLinkEnabled,
+  setBanatLinkEnabled,
+  isBanatMemeEnabled,
+  setBanatMemeEnabled,
 
   // Games
   isGameEnabled,
