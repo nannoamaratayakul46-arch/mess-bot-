@@ -3147,9 +3147,7 @@ function readAppState() {
     typeof rawCookies !== "string" ||
     !rawCookies.trim()
   ) {
-    throw new Error(
-      "FB_COOKIES is missing."
-    );
+    return null;
   }
 
   let parsed;
@@ -3228,6 +3226,12 @@ let appState;
 try {
   appState =
     readAppState();
+
+  if (!appState) {
+    console.warn(
+      "[LOGIN] FB_COOKIES is not configured; dashboard credential login remains available."
+    );
+  }
 } catch (error) {
   console.error(
     `Configuration error: ${error.message}`
@@ -3274,6 +3278,16 @@ const MAX_LOGIN_BACKOFF_MS = 5 * 60_000;
 const MAX_LISTEN_RETRIES = 5;
 
 function attemptLogin() {
+  if (
+    !appState &&
+    !dashboardFacebookCredentials
+  ) {
+    console.warn(
+      "[LOGIN] No Facebook session or dashboard credentials configured. Waiting for a dashboard login."
+    );
+    return;
+  }
+
   if (loginInProgress) {
     console.warn("[LOGIN] Login attempt already in progress; skipping duplicate attempt.");
     return;
