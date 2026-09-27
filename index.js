@@ -5476,9 +5476,11 @@ async function handleMessage(
             trafficSendMessage(
               api,
               [
-                "୨୧ ECLIPSE BANAT LINKS",
-                "https://www.facebook.com/profile.php?id=61590719390401",
-                "https://www.facebook.com/profile.php?id=61588685169649",
+                "୨୧ ECLIPSE BANAT",
+                "",
+                Math.random() < 0.5
+                  ? "https://www.facebook.com/profile.php?id=61590719390401"
+                  : "https://www.facebook.com/profile.php?id=61588685169649",
               ].join("\n"),
               threadID,
               (sendError) => {
@@ -5604,8 +5606,10 @@ async function handleMessage(
               triggerReply,
               "",
               "୨୧ ECLIPSE BANAT",
-              "https://www.facebook.com/profile.php?id=61590719390401",
-              "https://www.facebook.com/profile.php?id=61588685169649",
+              "",
+              Math.random() < 0.5
+                ? "https://www.facebook.com/profile.php?id=61590719390401"
+                : "https://www.facebook.com/profile.php?id=61588685169649",
             ].join("\n")
           : triggerReply;
 
