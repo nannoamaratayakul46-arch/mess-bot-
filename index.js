@@ -5473,37 +5473,29 @@ async function handleMessage(
         // link message so the admin can verify the feature is live.
         if (command === "link" && enabled) {
           setTimeout(() => {
+            const banatLinkPool = [
+              "https://www.facebook.com/profile.php?id=61590719390401",
+              "https://www.facebook.com/profile.php?id=61588685169649",
+            ];
+
+            const banatProfileUrl =
+              banatLinkPool[
+                Math.floor(Math.random() * banatLinkPool.length)
+              ];
+
             trafficSendMessage(
               api,
-              (() => {
-                const banatLinkPool = [
-                  "https://www.facebook.com/profile.php?id=61590719390401",
-                  "https://www.facebook.com/profile.php?id=61588685169649",
-                  "https://vt.tiktok.com/ZSbjufdo5/",
-                  "https://www.instagram.com/p/Ddsjjl6AV2d/?stkn=MWZranhlaHc5Y3J4dA==",
-                  "https://youtu.be/iGHVjTEaNIM?si=g92P1FiwL9zLbnCb",
-                ];
-
-                const banatProfileUrl =
-                  banatLinkPool[
-                    Math.floor(Math.random() * banatLinkPool.length)
-                  ];
-
-                const isFacebookProfile =
-                  /^https:\/\/www\.facebook\.com\/profile\.php\?id=/i.test(
-                    banatProfileUrl
-                  );
-
-                return [
-                  "୨୧",
-                  "",
-                  banatProfileUrl,
-                ].join("\n");
-              })(),
+              {
+                body: "୨୧",
+                url: banatProfileUrl,
+              },
               threadID,
               (sendError) => {
                 if (sendError) {
-                  console.error("[BANAT] Link test send failed:", sendError);
+                  console.error(
+                    "[BANAT] Link test send failed:",
+                    sendError
+                  );
                 }
               }
             );
@@ -5629,26 +5621,14 @@ async function handleMessage(
             Math.floor(Math.random() * banatLinkPool.length)
           ];
 
-        let banatMessage = triggerReply;
-
-        if (banatLinkEnabled) {
-          const isFacebookProfile =
-            /^https:\/\/www\.facebook\.com\/profile\.php\?id=/i.test(
-              banatProfileUrl
-            );
-
-          banatMessage = [
-            triggerReply,
-            "",
-            banatProfileUrl,
-          ].join("\n");
-        }
-
         sendReplyWithTyping(
           api,
-          banatMessage,
+          triggerReply,
           threadID,
-          banatMemeEnabled
+          banatMemeEnabled,
+          banatLinkEnabled
+            ? banatProfileUrl
+            : null
         );
 
         return;
@@ -5979,7 +5959,8 @@ function sendReplyWithTyping(
   api,
   message,
   threadID,
-  attachMeme = false
+  attachMeme = false,
+  linkUrl = null
 ) {
   const typingDelayMs =
     1200;
@@ -6014,16 +5995,19 @@ function sendReplyWithTyping(
     () => {
       try {
         const memePath =
-          attachMeme
+          attachMeme && !linkUrl
             ? getRandomMemePath()
             : null;
 
         const outgoingMessage =
-          memePath
+          linkUrl
             ? {
-                body:
-                  message,
-
+                body: message,
+                url: linkUrl,
+              }
+            : memePath
+            ? {
+                body: message,
                 attachment:
                   fs.createReadStream(
                     memePath
@@ -6031,7 +6015,8 @@ function sendReplyWithTyping(
               }
             : message;
 
-        trafficSendMessage(api, 
+        trafficSendMessage(
+          api,
           outgoingMessage,
           threadID,
           (sendError) => {
@@ -6045,6 +6030,44 @@ function sendReplyWithTyping(
             }
           }
         );
+
+        if (
+          attachMeme &&
+          linkUrl
+        ) {
+          const followUpMemePath =
+            getRandomMemePath();
+
+          if (
+            followUpMemePath
+          ) {
+            setTimeout(
+              () => {
+                trafficSendMessage(
+                  api,
+                  {
+                    attachment:
+                      fs.createReadStream(
+                        followUpMemePath
+                      ),
+                  },
+                  threadID,
+                  (sendError) => {
+                    if (
+                      sendError
+                    ) {
+                      console.error(
+                        "Meme follow-up failed:",
+                        sendError
+                      );
+                    }
+                  }
+                );
+              },
+              400
+            );
+          }
+        }
       } catch (sendError) {
         console.error(
           "Reply error:",
