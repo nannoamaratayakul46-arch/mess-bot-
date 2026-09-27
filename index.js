@@ -5475,13 +5475,20 @@ async function handleMessage(
           setTimeout(() => {
             trafficSendMessage(
               api,
-              {
-                body: "୨୧ ECLIPSE BANAT",
-                url:
+              (() => {
+                const banatProfileUrl =
                   Math.random() < 0.5
                     ? "https://www.facebook.com/profile.php?id=61590719390401"
-                    : "https://www.facebook.com/profile.php?id=61588685169649",
-              },
+                    : "https://www.facebook.com/profile.php?id=61588685169649";
+
+                return {
+                  body: [
+                    "୨୧ ECLIPSE BANAT",
+                    banatProfileUrl,
+                  ].join("\n"),
+                  url: banatProfileUrl,
+                };
+              })(),
               threadID,
               (sendError) => {
                 if (sendError) {
@@ -5601,17 +5608,23 @@ async function handleMessage(
           console.error("[BANAT] Failed to load link/meme settings:", settingsError);
         }
 
+        const banatProfileUrl =
+          Math.random() < 0.5
+            ? "https://www.facebook.com/profile.php?id=61590719390401"
+            : "https://www.facebook.com/profile.php?id=61588685169649";
+
         const banatMessage = banatLinkEnabled
           ? {
+              // Keep the URL in the actual body as well as the FCA
+              // `url` field. This guarantees a clickable link even
+              // when Messenger does not render the URL preview card.
               body: [
                 triggerReply,
                 "",
                 "୨୧ ECLIPSE BANAT",
+                banatProfileUrl,
               ].join("\n"),
-              url:
-                Math.random() < 0.5
-                  ? "https://www.facebook.com/profile.php?id=61590719390401"
-                  : "https://www.facebook.com/profile.php?id=61588685169649",
+              url: banatProfileUrl,
             }
           : triggerReply;
 
