@@ -5397,12 +5397,10 @@ async function handleMessage(
 
   const banatControlMatch =
     text.match(
-      /^!banat(?:\s+(on|off|status))?$/i
+      /^!banat(?:\s+(on|off|status|link|pics)(?:\s+(on|off))?)?$/i
     );
 
-  if (
-    banatControlMatch
-  ) {
+  if (banatControlMatch) {
     if (!isAdmin) {
       sendReplyWithTyping(
         api,
@@ -5419,61 +5417,62 @@ async function handleMessage(
       return;
     }
 
-    const banatSubcommand =
-      (
-        banatControlMatch[1] ||
-        ""
-      ).toLowerCase();
+    const command = String(banatControlMatch[1] || "status").toLowerCase();
+    const subcommand = String(banatControlMatch[2] || "").toLowerCase();
 
-    if (
-      !banatSubcommand
-    ) {
-      let enabled =
-        false;
+    try {
+      if (command === "link" || command === "pics") {
+        if (!subcommand) {
+          const settings = await db.getThreadSettings(threadId);
+          const enabled =
+            command === "link"
+              ? settings.banat_link_enabled === true
+              : settings.banat_meme_enabled === true;
 
-      try {
-        enabled =
-          await db.isRoastEnabled(
-            threadId
+          sendReplyWithTyping(
+            api,
+            [
+              "╭────── 🎀  BANAT CONTROL  🎀 ──────╮",
+              "",
+              command === "link" ? "🔗 LINK SPAM" : "🖼️ MEME PICS",
+              "",
+              `    ♡ ${enabled ? "🟢 ON" : "🔴 OFF"}`,
+              "",
+              `    ♡ !banat ${command} on`,
+              `    ♡ !banat ${command} off`,
+              "",
+              "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+            ].join("\n"),
+            threadID
           );
-      } catch (error) {
-        console.error(
-          "[BANAT] Failed to check status:",
-          error
+          return;
+        }
+
+        const enabled = subcommand === "on";
+        if (command === "link") {
+          await db.setBanatLinkEnabled(threadId, enabled);
+        } else {
+          await db.setBanatMemeEnabled(threadId, enabled);
+        }
+
+        sendReplyWithTyping(
+          api,
+          [
+            "╭────── 🎀  BANAT CONTROL  🎀 ──────╮",
+            "",
+            command === "link"
+              ? `🔗 LINK SPAM ${enabled ? "ON" : "OFF"}`
+              : `🖼️ MEME PICS ${enabled ? "ON" : "OFF"}`,
+            "",
+            "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+          ].join("\n"),
+          threadID
         );
+        return;
       }
 
-      sendReplyWithTyping(
-        api,
-        [
-          "╭────── 🎀  BANAT CONTROL  🎀 ──────╮",
-          "୨୧ status",
-          `    ♡ ${
-            enabled
-              ? "🟢 ON"
-              : "🔴 OFF"
-          }`,
-          "",
-          "୨୧ controls",
-          "    ♡ !banat on",
-          "    ♡ !banat off",
-          "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
-        ].join("\n"),
-        threadID
-      );
-
-      return;
-    }
-
-    if (
-      banatSubcommand ===
-      "status"
-    ) {
-      try {
-        const enabled =
-          await db.isRoastEnabled(
-            threadId
-          );
+      if (command === "status") {
+        const settings = await db.getThreadSettings(threadId);
 
         sendReplyWithTyping(
           api,
@@ -5481,44 +5480,31 @@ async function handleMessage(
             "╭────── 🎀  BANAT STATUS  🎀 ──────╮",
             "",
             "୨୧ automatic banat",
-            `    ♡ ${
-              enabled
-                ? "🟢 ON"
-                : "🔴 OFF"
-            }`,
+            `    ♡ ${settings.roast_enabled === true ? "🟢 ON" : "🔴 OFF"}`,
+            "",
+            "୨୧ link spam",
+            `    ♡ ${settings.banat_link_enabled === true ? "🟢 ON" : "🔴 OFF"}`,
+            "",
+            "୨୧ meme pics",
+            `    ♡ ${settings.banat_meme_enabled === true ? "🟢 ON" : "🔴 OFF"}`,
             "",
             "୨୧ controls",
-            "    ♡ !banat on",
-            "    ♡ !banat off",
+            "    ♡ !banat on / off",
+            "    ♡ !banat link on / off",
+            "    ♡ !banat pics on / off",
             "",
             "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
           ].join("\n"),
           threadID
         );
-      } catch (error) {
-        console.error(
-          "[BANAT] Status failed:",
-          error
-        );
+        return;
       }
 
-      return;
-    }
-
-    const enabled =
-      banatSubcommand ===
-      "on";
-
-    try {
-      await db.setRoastEnabled(
-        threadId,
-        enabled
-      );
+      const enabled = command === "on";
+      await db.setRoastEnabled(threadId, enabled);
 
       if (!enabled) {
-        lastRandomRoastByThread.delete(
-          threadId
-        );
+        lastRandomRoastByThread.delete(threadId);
       }
 
       sendReplyWithTyping(
@@ -5526,32 +5512,18 @@ async function handleMessage(
         [
           "╭────── 🎀  BANAT CONTROL  🎀 ──────╮",
           "",
-          enabled
-            ? "🟢 BANAT IS NOW ON"
-            : "🔴 BANAT IS NOW OFF",
+          enabled ? "🟢 BANAT IS NOW ON" : "🔴 BANAT IS NOW OFF",
           "",
           "୨୧ group status",
-          `    ♡ ${
-            enabled
-              ? "ON"
-              : "OFF"
-          }`,
+          `    ♡ ${enabled ? "ON" : "OFF"}`,
           "",
           "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
         ].join("\n"),
         threadID
       );
     } catch (error) {
-      console.error(
-        "[BANAT] Update failed:",
-        error
-      );
-
-      sendReplyWithTyping(
-        api,
-        "🔴 Failed to update banat.",
-        threadID
-      );
+      console.error("[BANAT] Update failed:", error);
+      sendReplyWithTyping(api, "🔴 Failed to update banat settings.", threadID);
     }
 
     return;
@@ -5594,11 +5566,31 @@ async function handleMessage(
       if (
         triggerReply
       ) {
+        let banatLinkEnabled = false;
+        let banatMemeEnabled = false;
+
+        try {
+          const settings = await db.getThreadSettings(threadId);
+          banatLinkEnabled = settings.banat_link_enabled === true;
+          banatMemeEnabled = settings.banat_meme_enabled === true;
+        } catch (settingsError) {
+          console.error("[BANAT] Failed to load link/meme settings:", settingsError);
+        }
+
+        const banatMessage = banatLinkEnabled
+          ? [
+              triggerReply,
+              "",
+              "୨୧ ECLIPSE BANAT",
+              "https://www.facebook.com/profile.php?id=61590719390401",
+            ].join("\n")
+          : triggerReply;
+
         sendReplyWithTyping(
           api,
-          triggerReply,
+          banatMessage,
           threadID,
-          false
+          banatMemeEnabled
         );
 
         return;
