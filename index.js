@@ -3062,7 +3062,7 @@ function parseFacebookCookieHeader(header, source) {
         return { key: part.slice(0, separator).trim(), value: part.slice(separator + 1).trim() };
       })
       .filter(Boolean);
-    if (cookies.length === 0) throw new Error(\`${source} must contain Facebook cookies.\`);
+    if (cookies.length === 0) throw new Error(`${source} must contain Facebook cookies.`);
     return cookies;
     }
 
@@ -3071,15 +3071,15 @@ function parseFacebookCookieHeader(header, source) {
     for (let depth = 0; depth < 4; depth += 1) {
       if (typeof value === "string") {
         const text = value.trim();
-        if (!text) throw new Error(\`${source} must not be empty.\`);
+        if (!text) throw new Error(`${source} must not be empty.`);
         try { value = JSON.parse(text); continue; } catch { return parseFacebookCookieHeader(text, source); }
       }
       if (Array.isArray(value)) {
-        if (value.length === 0) throw new Error(\`${source} must be a non-empty cookie array.\`);
+        if (value.length === 0) throw new Error(`${source} must be a non-empty cookie array.`);
         return value.map((cookie) => {
-          if (!cookie || typeof cookie !== "object" || Array.isArray(cookie)) throw new Error(\`${source} contains an invalid cookie object.\`);
+          if (!cookie || typeof cookie !== "object" || Array.isArray(cookie)) throw new Error(`${source} contains an invalid cookie object.`);
           const key = typeof cookie.key === "string" ? cookie.key : cookie.name;
-          if (typeof key !== "string" || !key.trim() || typeof cookie.value !== "string") throw new Error(\`${source} contains a cookie without a string name/key and value.\`);
+          if (typeof key !== "string" || !key.trim() || typeof cookie.value !== "string") throw new Error(`${source} contains a cookie without a string name/key and value.`);
           return { ...cookie, key: key.trim() };
         });
       }
@@ -3089,7 +3089,7 @@ function parseFacebookCookieHeader(header, source) {
       }
       break;
     }
-    throw new Error(\`${source} must be a cookie array, a wrapped cookie export, JSON text, or a cookie-header string.\`);
+    throw new Error(`${source} must be a cookie array, a wrapped cookie export, JSON text, or a cookie-header string.`);
     }
 
     function readAppState() {
