@@ -88,7 +88,7 @@ linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
 .realistic-canvas{z-index:0;pointer-events:auto;touch-action:manipulation}
 .realistic-copy{position:absolute;left:0;right:0;text-align:center;pointer-events:none;text-shadow:0 2px 18px #000;z-index:3;padding:0 22px}
 .realistic-copy h1,.realistic-copy h2{font-weight:300;font-size:clamp(22px,4.4vw,42px);margin:14px 0 6px}
-.realistic-copy p{font-style:italic;opacity:.65;margin:0;font-size:17px}
+.realistic-copy p{font-style:normal;opacity:.65;margin:0;font-size:17px}
 .realistic-copy.ocean-copy{bottom:22%}
 .realistic-copy.forest-copy{top:7%}
 .realistic-hint{position:absolute;left:0;right:0;bottom:9%;z-index:4;text-align:center;font:10px Arial,sans-serif;letter-spacing:.28em;text-transform:uppercase;color:rgba(247,241,231,.58);pointer-events:none;text-shadow:0 2px 18px #000;animation:realisticHint 3s infinite}
@@ -350,7 +350,7 @@ linear-gradient(180deg,#020207,#09050d 58%,#020207)}
   <div class="realistic-copy forest-copy">
     <div class="ey">THE PATH LEADS SOMEWHERE QUIET</div>
     <h2>A place that feels like home.</h2>
-    <p>Somewhere the night feels a little warmer.</p>
+    <p>Surrounded by trees, flowers, and everything the night refuses to forget.</p>
   </div>
   <div class="realistic-hint cabin-hint">TAP THE CABIN</div>
 </section>
@@ -518,7 +518,8 @@ let fr=0;function frame(t){if(!on)return;const T=t/1000;fr++;c.globalCompositeOp
  requestAnimationFrame(frame)}
 const near=e=>{const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;return x>cab.x&&x<cab.x+cab.w&&y>cab.y&&y<cab.y+cab.h};
 cv.onpointermove=e=>cv.style.cursor=near(e)?'pointer':'default';cv.onclick=e=>near(e)&&go();addEventListener('resize',()=>on&&build());
-return{start(){build();on=true;requestAnimationFrame(frame)},stop(){on=false}}}
+return{start(){build();on=true;requestAnimationFrame(frame)},stop(){on=false}}
+}
 
 function burst(x,y){const p=Array.from({length:700},()=>{const a=Math.random()*7,v=1+Math.random()*7;return{x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:.5+Math.random()*2,l:1}});let last=performance.now();function run(now){const dt=Math.min(2,(now-last)/16);last=now;xx.clearRect(0,0,W,H);p.forEach(q=>{q.x+=q.vx*dt;q.y+=q.vy*dt;q.vy+=.018*dt;q.l-=.012*dt;xx.globalAlpha=Math.max(0,q.l);xx.fillStyle=Math.random()>.5?"#fff":"#d6b77a";xx.beginPath();xx.arc(q.x,q.y,q.r,0,7);xx.fill()});if(p.some(q=>q.l>0))requestAnimationFrame(run);else xx.clearRect(0,0,W,H)}requestAnimationFrame(run)}
 let realisticOcean=null,realisticForest=null;
