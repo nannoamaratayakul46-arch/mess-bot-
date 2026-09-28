@@ -2765,7 +2765,9 @@ function requireDashboardAccess(req, res, next) {
   ).replace(/^Bearer\s+/i, "").trim();
 
   const provided = String(
-    req.headers["x-eclipse-dashboard-key"] || bearer
+    req.headers["x-eclipse-dashboard-key"] ||
+      bearer ||
+      (req.path === "/api/dashboard/events/stream" ? req.query.dashboard_key : "")
   ).trim();
 
   if (!provided || provided !== DASHBOARD_API_KEY) {
@@ -2809,6 +2811,38 @@ app.get(
   }
 );
 
+
+app.get(
+  "/api/dashboard/snapshot",
+  requireDashboardAccess,
+  async (_req, res) => {
+    try {
+      const snapshot = await db.getDashboardSnapshot();
+
+      res.json({
+        ok: true,
+        snapshot,
+        runtime: {
+          watchdog: getWatchdogStatus(),
+          traffic: trafficSafetyStatus(),
+          music: getMusicStats(),
+          database: await db.healthCheck().catch(() => false),
+          uptime_seconds: Math.floor(process.uptime()),
+          node_version: process.version,
+          memory: process.memoryUsage(),
+        },
+      });
+    } catch (error) {
+      console.error("[DASHBOARD] Snapshot query failed:", error);
+
+      res.status(503).json({
+        ok: false,
+        error: "Dashboard data is temporarily unavailable.",
+      });
+    }
+  }
+);
+
 app.post(
   "/api/dashboard/connect-credentials",
   requireDashboardAccess,
@@ -2842,6 +2876,7 @@ app.post(
     appState = incoming;
 
     dashboardBotPaused = false;
+    pushDashboardEvent("messenger", "Facebook session connect requested from Command Center.");
     listenerGeneration++;
     activeListenerGeneration = 0;
     activeMessengerApi = null;
@@ -2868,6 +2903,7 @@ app.post(
   requireDashboardAccess,
   (_req, res) => {
     dashboardBotPaused = false;
+    pushDashboardEvent("messenger", "Messenger reconnect requested from Command Center.");
 
     if (
       !activeMessengerApi ||
@@ -2889,6 +2925,7 @@ app.post(
   requireDashboardAccess,
   (_req, res) => {
     dashboardBotPaused = true;
+    pushDashboardEvent("messenger", "Messenger listener disconnected from Command Center.");
     listenerGeneration++;
     activeListenerGeneration = 0;
     activeMessengerApi = null;
@@ -2913,6 +2950,7 @@ app.post(
   requireDashboardAccess,
   (_req, res) => {
     dashboardBotPaused = false;
+    pushDashboardEvent("bot", "ECLIPSE message handling enabled from Command Center.");
 
     if (
       !activeMessengerApi ||
@@ -2934,6 +2972,7 @@ app.post(
   requireDashboardAccess,
   (_req, res) => {
     dashboardBotPaused = true;
+    pushDashboardEvent("bot", "ECLIPSE message handling paused from Command Center.");
 
     res.json({
       ok: true,
@@ -3049,6 +3088,174 @@ if (
     `Invalid PORT value: ${process.env.PORT}`
   );
 }
+
+
+// ============================================================
+// ECLIPSE COMMAND CENTER — LIVE CONTROL PLANE
+// ============================================================
+// Read-only data stays in db.js. This layer adds safe operational
+// events and narrowly scoped control endpoints; it never accepts
+// arbitrary SQL, JavaScript, or internal function names.
+// ============================================================
+
+const dashboardEventBuffer = [];
+const dashboardEventClients = new Set();
+const DASHBOARD_EVENT_LIMIT = 150;
+
+function pushDashboardEvent(type, message, meta = {}) {
+  const event = {
+    id: crypto.randomUUID(),
+    type: String(type || "system"),
+    message: String(message || ""),
+    meta: meta && typeof meta === "object" ? meta : {},
+    created_at: new Date().toISOString(),
+  };
+
+  dashboardEventBuffer.unshift(event);
+  if (dashboardEventBuffer.length > DASHBOARD_EVENT_LIMIT) {
+    dashboardEventBuffer.length = DASHBOARD_EVENT_LIMIT;
+  }
+
+  const payload = `data: ${JSON.stringify(event)}\\n\\n`;
+  for (const client of dashboardEventClients) {
+    try {
+      client.write(payload);
+    } catch {
+      dashboardEventClients.delete(client);
+    }
+  }
+
+  return event;
+}
+
+app.get(
+  "/api/dashboard/events",
+  requireDashboardAccess,
+  (req, res) => {
+    const limit = Math.min(
+      100,
+      Math.max(1, Number.parseInt(String(req.query.limit || "50"), 10) || 50)
+    );
+
+    res.json({
+      ok: true,
+      events: dashboardEventBuffer.slice(0, limit),
+      generated_at: new Date().toISOString(),
+    });
+  }
+);
+
+app.get(
+  "/api/dashboard/events/stream",
+  requireDashboardAccess,
+  (req, res) => {
+    res.status(200);
+    res.setHeader("Content-Type", "text/event-stream; charset=utf-8");
+    res.setHeader("Cache-Control", "no-cache, no-transform");
+    res.setHeader("Connection", "keep-alive");
+    res.flushHeaders?.();
+
+    const heartbeat = () => {
+      try { res.write(`: heartbeat ${Date.now()}\\n\\n`); } catch {}
+    };
+
+    dashboardEventClients.add(res);
+    res.write(`event: ready\\ndata: ${JSON.stringify({
+      ok: true,
+      generated_at: new Date().toISOString(),
+    })}\\n\\n`);
+
+    const heartbeatTimer = setInterval(heartbeat, 20_000);
+    heartbeatTimer.unref?.();
+
+    req.on("close", () => {
+      clearInterval(heartbeatTimer);
+      dashboardEventClients.delete(res);
+    });
+  }
+);
+
+app.get(
+  "/api/dashboard/user",
+  requireDashboardAccess,
+  async (req, res) => {
+    try {
+      const threadId = String(req.query.thread_id || "").trim();
+      const userId = String(req.query.user_id || "").trim();
+
+      if (!threadId || !userId) {
+        return res.status(400).json({
+          ok: false,
+          error: "thread_id and user_id are required.",
+        });
+      }
+
+      const inspector = await db.getDashboardUser(threadId, userId);
+
+      return res.json({
+        ok: true,
+        ...inspector,
+      });
+    } catch (error) {
+      console.error("[DASHBOARD] User inspector failed:", error);
+      return res.status(503).json({
+        ok: false,
+        error: "Dashboard user data is temporarily unavailable.",
+      });
+    }
+  }
+);
+
+app.get(
+  "/api/dashboard/analytics",
+  requireDashboardAccess,
+  async (req, res) => {
+    try {
+      const hours = Math.min(
+        168,
+        Math.max(
+          1,
+          Number.parseInt(String(req.query.hours || "24"), 10) || 24
+        )
+      );
+
+      const analytics = await db.getDashboardAnalytics(hours);
+
+      return res.json({
+        ok: true,
+        analytics,
+      });
+    } catch (error) {
+      console.error("[DASHBOARD] Analytics failed:", error);
+      return res.status(503).json({
+        ok: false,
+        error: "Dashboard analytics are temporarily unavailable.",
+      });
+    }
+  }
+);
+
+app.post(
+  "/api/dashboard/music/pause",
+  requireDashboardAccess,
+  (_req, res) => {
+    musicPaused = true;
+    pushDashboardEvent("music", "Music queue paused from Command Center.");
+    return res.json({ ok: true, paused: true });
+  }
+);
+
+app.post(
+  "/api/dashboard/music/resume",
+  requireDashboardAccess,
+  (_req, res) => {
+    musicPaused = false;
+    resumeMusicProcessing();
+    pushDashboardEvent("music", "Music queue resumed from Command Center.");
+    return res.json({ ok: true, paused: false });
+  }
+);
+
 
 const server =
   app.listen(
@@ -3681,6 +3888,11 @@ function attemptLogin() {
               String(
                 event.threadID
               );
+
+            pushDashboardEvent("messenger", "Incoming Messenger message received.", {
+              thread_id: threadID,
+              event_type: event.type,
+            });
 
             registerActiveThread(
               threadID

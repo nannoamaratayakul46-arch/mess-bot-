@@ -3,6 +3,7 @@ const { addBalance } = db;
 const { addItem, addXp, ensurePlayer } = require("./player");
 const { getItem } = require("./items");
 const { formatNumber, randomInt } = require("./utils");
+const { grantLoot, formatLoot } = require("./loot");
 const DUNGEONS = {
   abyssal_crypt: {
     name: "Abyssal Crypt",
@@ -177,10 +178,22 @@ async function advanceDungeon(threadID, userID) {
   await addBalance(threadID, userID, definition.reward);
   await addXp(threadID, userID, definition.xp);
   await addItem(threadID, userID, definition.loot, 1);
+
+  const bonusLoot = await grantLoot(
+    threadID,
+    userID,
+    {
+      context: "dungeon",
+      rolls: 1,
+    }
+  );
+
   return {
     status: "cleared",
     message: `You cleared ${definition.name} and claimed the final chest.`,
     reward: definition,
+    loot: bonusLoot,
+    lootText: formatLoot(bonusLoot),
   };
 }
 function questSummary(quest) {

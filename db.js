@@ -3238,6 +3238,356 @@ async function setGameEnabled(threadId, enabled) {
   });
 }
 
+
+// ═══════════════════════════════════════════════════════════
+// DASHBOARD READ MODEL
+// ═══════════════════════════════════════════════════════════
+//
+// Read-only aggregation for the private ECLIPSE command center.
+// This deliberately returns summarized operational data rather
+// than exposing arbitrary SQL or duplicating RPG/economy logic.
+//
+// ═══════════════════════════════════════════════════════════
+
+async function getDashboardSnapshot() {
+  const conn = requireConn();
+  const since24h = Date.now() - 24 * 60 * 60 * 1000;
+
+  const [
+    userStats,
+    recentUsers,
+    economyStats,
+    transactions,
+    rpgStats,
+    rpgClasses,
+    rpgRegions,
+    rpgRecentPlayers,
+    rpgInventory,
+    rpgEquipment,
+    rpgPets,
+    rpgCombat,
+    rpgDungeons,
+    rpgBattles,
+    rpgWorldBosses,
+    rpgGuildRaids,
+    rpgWorldEvents,
+    guildStats,
+    recentGuilds,
+    moderationStats,
+    recentIncidents,
+    gameStats,
+  ] = await Promise.all([
+    conn.query(`
+      SELECT
+        COUNT(*)::int AS total_users,
+        COUNT(*) FILTER (WHERE balance > 0 OR bank_balance > 0)::int AS funded_users,
+        COALESCE(SUM(balance), 0)::bigint AS wallet_circulation,
+        COALESCE(SUM(bank_balance), 0)::bigint AS bank_circulation,
+        COALESCE(SUM(xp), 0)::bigint AS total_xp,
+        COALESCE(SUM(games_played), 0)::bigint AS games_played,
+        COALESCE(SUM(wins), 0)::bigint AS wins
+      FROM users
+    `),
+    conn.query(`
+      SELECT
+        thread_id, user_id, display_name, balance, bank_balance,
+        xp, level, games_played, wins
+      FROM users
+      ORDER BY COALESCE(GREATEST(COALESCE(last_daily, 0), COALESCE(last_work, 0)), 0) DESC,
+               user_id ASC
+      LIMIT 12
+    `),
+    conn.query(`
+      SELECT
+        COUNT(*)::int AS transaction_count,
+        COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0)::bigint AS inflow,
+        COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0)::bigint AS outflow
+      FROM economy_transactions
+    `),
+    conn.query(`
+      SELECT id, thread_id, user_id, type, amount, description, created_at
+      FROM economy_transactions
+      ORDER BY created_at DESC, id DESC
+      LIMIT 12
+    `),
+    conn.query(`
+      SELECT
+        COUNT(*)::int AS players,
+        COUNT(*) FILTER (WHERE status = 'active')::int AS active_players,
+        COUNT(*) FILTER (WHERE status <> 'active')::int AS inactive_players,
+        COUNT(*) FILTER (WHERE property_tier > 0 OR property_level > 0)::int AS property_holders,
+        COALESCE(SUM(reputation), 0)::bigint AS reputation,
+        COALESCE(SUM(renown), 0)::bigint AS renown
+      FROM rpg_players
+    `),
+    conn.query(`
+      SELECT character_class, COUNT(*)::int AS count
+      FROM rpg_players
+      GROUP BY character_class
+      ORDER BY count DESC, character_class ASC
+    `),
+    conn.query(`
+      SELECT region_id, COUNT(*)::int AS count
+      FROM rpg_players
+      GROUP BY region_id
+      ORDER BY count DESC, region_id ASC
+    `),
+    conn.query(`
+      SELECT thread_id, user_id, character_class, subclass, region_id,
+             level, reputation, renown, updated_at
+      FROM rpg_players
+      ORDER BY updated_at DESC, user_id ASC
+      LIMIT 12
+    `),
+    conn.query(`
+      SELECT COALESCE(SUM(quantity), 0)::bigint AS inventory_items
+      FROM rpg_inventory_items
+      WHERE quantity > 0
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS equipment
+      FROM rpg_equipment
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS pets
+      FROM rpg_player_pets
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS active_combat
+      FROM rpg_combat_sessions
+      WHERE status = 'active'
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS active_dungeons
+      FROM rpg_dungeons
+      WHERE status = 'active'
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS battles_24h
+      FROM rpg_battles
+      WHERE created_at >= $1
+    `, [since24h]),
+    conn.query(`
+      SELECT COUNT(*)::int AS active_world_bosses
+      FROM rpg_world_bosses
+      WHERE status = 'active' AND (expires_at IS NULL OR expires_at > $1)
+    `, [Date.now()]),
+    conn.query(`
+      SELECT COUNT(*)::int AS active_guild_raids
+      FROM rpg_guild_raids
+      WHERE status = 'active'
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS active_world_events
+      FROM rpg_world_events
+      WHERE active = TRUE AND (expires_at IS NULL OR expires_at > $1)
+    `, [Date.now()]),
+    conn.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM rpg_guilds) AS guilds,
+        (SELECT COUNT(*)::int FROM rpg_guild_members) AS members,
+        (SELECT COALESCE(SUM(treasury), 0)::bigint FROM rpg_guilds) AS treasury,
+        (SELECT COALESCE(SUM(experience), 0)::bigint FROM rpg_guilds) AS experience
+    `),
+    conn.query(`
+      SELECT
+        g.id, g.thread_id, g.guild_id, g.name, g.level, g.treasury, g.experience,
+        COUNT(m.user_id)::int AS members
+      FROM rpg_guilds g
+      LEFT JOIN rpg_guild_members m ON m.guild_id = g.id
+      GROUP BY g.id
+      ORDER BY g.level DESC, g.experience DESC, g.id DESC
+      LIMIT 12
+    `),
+    conn.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM moderation_warnings WHERE active = TRUE) AS active_warnings,
+        (SELECT COUNT(*)::int FROM moderation_bans WHERE active = TRUE) AS active_bans,
+        (SELECT COUNT(*)::int FROM moderation_mutes WHERE active = TRUE AND expires_at > $1) AS active_mutes,
+        (SELECT COUNT(*)::int FROM automod_incidents WHERE created_at >= $1) AS incidents_24h
+    `, [since24h]),
+    conn.query(`
+      SELECT id, thread_id, user_id, category, severity, confidence,
+             suggested_action, action, reason, created_at
+      FROM automod_incidents
+      ORDER BY created_at DESC, id DESC
+      LIMIT 12
+    `),
+    conn.query(`
+      SELECT
+        COALESCE(SUM(games_played), 0)::bigint AS games_played,
+        COALESCE(SUM(wins), 0)::bigint AS wins,
+        COUNT(*) FILTER (WHERE games_played > 0)::int AS players_with_games
+      FROM users
+    `),
+  ]);
+
+  const row = (result) => result.rows[0] || {};
+
+  return {
+    generated_at: new Date().toISOString(),
+    users: {
+      ...row(userStats),
+      recent_users: recentUsers.rows,
+    },
+    economy: {
+      ...row(economyStats),
+      recent_transactions: transactions.rows,
+    },
+    rpg: {
+      ...row(rpgStats),
+      ...row(rpgInventory),
+      ...row(rpgEquipment),
+      ...row(rpgPets),
+      ...row(rpgCombat),
+      ...row(rpgDungeons),
+      ...row(rpgBattles),
+      ...row(rpgWorldBosses),
+      ...row(rpgGuildRaids),
+      ...row(rpgWorldEvents),
+      classes: rpgClasses.rows,
+      regions: rpgRegions.rows,
+      recent_players: rpgRecentPlayers.rows,
+    },
+    guilds: {
+      ...row(guildStats),
+      recent_guilds: recentGuilds.rows,
+    },
+    moderation: {
+      ...row(moderationStats),
+      recent_incidents: recentIncidents.rows,
+    },
+    games: row(gameStats),
+  };
+}
+
+async function healthCheck() {
+  await requireConn().query("SELECT 1");
+  return true;
+}
+
+
+/**
+ * Dashboard user inspector. Read-only; the bot remains the source of truth.
+ */
+async function getDashboardUser(threadId, userId) {
+  threadId = String(threadId || "").trim();
+  userId = String(userId || "").trim();
+  if (!threadId || !userId) throw new Error("thread_id and user_id are required.");
+
+  const conn = requireConn();
+  const [user, rpg, inventory, equipment, skills, spells, pets, transactions, incidents] =
+    await Promise.all([
+      conn.query(`
+        SELECT thread_id, user_id, display_name, balance, bank_balance, xp, level,
+               games_played, wins, daily_streak, last_daily, last_work,
+               credit_score, loan_remaining
+        FROM users WHERE thread_id = $1 AND user_id = $2 LIMIT 1
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT * FROM rpg_players
+        WHERE thread_id = $1 AND user_id = $2 LIMIT 1
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT item_id, quantity, updated_at FROM rpg_inventory_items
+        WHERE thread_id = $1 AND user_id = $2 AND quantity > 0
+        ORDER BY updated_at DESC, item_id LIMIT 50
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT slot, item_id, updated_at FROM rpg_equipment
+        WHERE thread_id = $1 AND user_id = $2 ORDER BY slot
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT skill_id, level, unlocked, updated_at FROM rpg_player_skills
+        WHERE thread_id = $1 AND user_id = $2
+        ORDER BY updated_at DESC, skill_id LIMIT 100
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT spell_id, unlocked, updated_at FROM rpg_player_spells
+        WHERE thread_id = $1 AND user_id = $2
+        ORDER BY updated_at DESC, spell_id LIMIT 100
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT * FROM rpg_player_pets
+        WHERE thread_id = $1 AND user_id = $2
+        ORDER BY updated_at DESC LIMIT 50
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT id, type, amount, description, created_at FROM economy_transactions
+        WHERE thread_id = $1 AND user_id = $2
+        ORDER BY created_at DESC, id DESC LIMIT 25
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT id, category, severity, confidence, suggested_action, action, reason, created_at
+        FROM automod_incidents
+        WHERE thread_id = $1 AND user_id = $2
+        ORDER BY created_at DESC LIMIT 25
+      `, [threadId, userId]),
+    ]);
+
+  return {
+    generated_at: new Date().toISOString(),
+    user: user.rows[0] || null,
+    rpg: rpg.rows[0] || null,
+    inventory: inventory.rows,
+    equipment: equipment.rows,
+    skills: skills.rows,
+    spells: spells.rows,
+    pets: pets.rows,
+    transactions: transactions.rows,
+    moderation: incidents.rows,
+  };
+}
+
+/**
+ * Historical operational metrics using tables already owned by ECLIPSE.
+ */
+async function getDashboardAnalytics(hours = 24) {
+  const safeHours = Math.min(168, Math.max(1, Math.floor(Number(hours) || 24)));
+  const since = Date.now() - safeHours * 60 * 60 * 1000;
+  const conn = requireConn();
+
+  const [economy, rpg, battles, moderation] = await Promise.all([
+    conn.query(`
+      SELECT date_trunc('hour', to_timestamp(created_at / 1000.0)) AS bucket,
+             COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0)::numeric AS inflow,
+             COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0)::numeric AS outflow,
+             COUNT(*)::int AS transactions
+      FROM economy_transactions WHERE created_at >= $1
+      GROUP BY 1 ORDER BY 1
+    `, [since]),
+    conn.query(`
+      SELECT date_trunc('hour', to_timestamp(updated_at / 1000.0)) AS bucket,
+             COUNT(*)::int AS players,
+             COALESCE(SUM(reputation), 0)::bigint AS reputation,
+             COALESCE(SUM(renown), 0)::bigint AS renown
+      FROM rpg_players WHERE updated_at >= $1
+      GROUP BY 1 ORDER BY 1
+    `, [since]),
+    conn.query(`
+      SELECT date_trunc('hour', to_timestamp(created_at / 1000.0)) AS bucket,
+             COUNT(*)::int AS battles
+      FROM rpg_battles WHERE created_at >= $1
+      GROUP BY 1 ORDER BY 1
+    `, [since]),
+    conn.query(`
+      SELECT date_trunc('hour', to_timestamp(created_at / 1000.0)) AS bucket,
+             COUNT(*)::int AS incidents
+      FROM automod_incidents WHERE created_at >= $1
+      GROUP BY 1 ORDER BY 1
+    `, [since]),
+  ]);
+
+  return {
+    generated_at: new Date().toISOString(),
+    hours: safeHours,
+    economy: economy.rows,
+    rpg: rpg.rows,
+    battles: battles.rows,
+    moderation: moderation.rows,
+  };
+}
+
 // ╔══════════════════════════════════════════════════════════╗
 // ║                         EXPORTS                          ║
 // ╚══════════════════════════════════════════════════════════╝
@@ -3246,6 +3596,10 @@ module.exports = {
   // Database
   query,
   connect,
+  healthCheck,
+  getDashboardSnapshot,
+  getDashboardUser,
+  getDashboardAnalytics,
 
   // Users
   getUser,

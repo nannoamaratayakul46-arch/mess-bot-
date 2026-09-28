@@ -211,6 +211,7 @@ const {
 
 const companions = require("./companions");
 const { RECIPES, forge } = require("./crafting");
+const { formatLootTable } = require("./loot");
 const specialAccess = require("./special-access");
 const worldBoss = require("./world-boss");
 const {
@@ -3077,6 +3078,14 @@ async function handleDungeon(
                   " XP",
               ]
             : []),
+
+          ...(result.lootText?.length
+            ? [
+                "",
+                "🎁 BONUS LOOT",
+                ...result.lootText,
+              ]
+            : []),
         ]
       )
     );
@@ -4196,6 +4205,17 @@ async function handleRpgCommand(
 
     else if (action === "worldboss" || action === "boss") {
       await handleWorldBossCommand(api,event,args);
+    }
+
+    else if (action === "loot" || action === "droprates") {
+      await ensurePlayer(event.threadID,event.senderID);
+      await send(api,event.threadID,box("🎁 ECLIPSE LOOT TABLE",[
+        "Rarity weights are shared across dungeon, world-boss and guild-raid bonus drops.",
+        "",
+        ...formatLootTable(),
+        "",
+        "Item rarity is visible; the secondary item weight remains hidden.",
+      ]));
     }
 
     /* =====================================================
