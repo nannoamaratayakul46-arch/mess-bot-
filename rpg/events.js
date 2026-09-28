@@ -559,7 +559,7 @@ async function getActiveWorldEvents(threadID) {
         AND active = TRUE
         AND (
           expires_at IS NULL
-          OR expires_at > $2
+          OR expires_at > $3
         )
       ORDER BY started_at DESC
     `,
@@ -717,7 +717,7 @@ async function endWorldEvent(threadID, eventID) {
         AND active = TRUE
       RETURNING *
     `,
-    [String(threadID), id]
+    [String(threadID), id, Date.now()]
   );
 
   return result.rows[0] || null;
@@ -741,7 +741,7 @@ async function expireWorldEvents(threadID) {
         AND expires_at <= $2
       RETURNING *
     `,
-    [String(threadID)]
+    [String(threadID), Date.now()]
   );
 
   return result.rows || [];
