@@ -840,6 +840,12 @@ async function connect() {
       UNIQUE(thread_id, event_id)
     );
 
+    ALTER TABLE rpg_world_events
+      ADD COLUMN IF NOT EXISTS event_type TEXT,
+      ADD COLUMN IF NOT EXISTS expires_at BIGINT,
+      ADD COLUMN IF NOT EXISTS ended_at BIGINT,
+      ADD COLUMN IF NOT EXISTS metadata JSONB NOT NULL DEFAULT '{}'::jsonb;
+
     ALTER TABLE rpg_location_states
       ADD COLUMN IF NOT EXISTS season_modifier TEXT,
       ADD COLUMN IF NOT EXISTS weather_modifier TEXT,
