@@ -1,293 +1,155 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#050711">
-  <meta property="og:title" content="A Letter, Kept">
-  <meta property="og:description" content="A private anniversary letter from ECLIPSE.">
-  <title>A Letter, Kept — ECLIPSE</title>
-  <style>
-    :root{--bg:#02030a;--paper:#f7efe8;--ink:#21161d;--muted:#796872;--rose:#a65370;--line:#dfc8cd}
-    *{box-sizing:border-box}
-    html{background:#02030a;scroll-behavior:smooth}
-    body{margin:0;min-height:100vh;background:
-      radial-gradient(ellipse 80% 45% at 50% 12%,rgba(100,72,190,.30),transparent 65%),
-      radial-gradient(ellipse 55% 60% at 8% 55%,rgba(32,84,174,.28),transparent 70%),
-      radial-gradient(ellipse 60% 55% at 92% 70%,rgba(132,43,119,.25),transparent 70%),
-      radial-gradient(ellipse 45% 35% at 50% 100%,rgba(66,35,116,.24),transparent 72%),
-      linear-gradient(180deg,#02030a 0%,#07091b 42%,#03040d 100%);
-      color:#fff;font-family:Georgia,"Times New Roman",serif;overflow-x:hidden;transition:background 1.8s ease}
-    body:before{content:"";position:fixed;inset:-35%;z-index:-5;pointer-events:none;
-      background:
-        radial-gradient(ellipse 34% 18% at 25% 35%,rgba(74,122,255,.34),transparent 72%),
-        radial-gradient(ellipse 30% 20% at 72% 25%,rgba(166,67,178,.34),transparent 72%),
-        radial-gradient(ellipse 40% 22% at 55% 75%,rgba(56,82,191,.28),transparent 72%);
-      filter:blur(42px);animation:nebulaDrift 14s ease-in-out infinite alternate}
-    body:after{content:"";position:fixed;inset:0;z-index:-4;pointer-events:none;
-      background:
-        radial-gradient(ellipse 70% 18% at 50% 48%,rgba(142,109,255,.09),transparent 70%),
-        radial-gradient(circle at 50% 50%,transparent 28%,rgba(0,0,0,.18) 70%,rgba(0,0,0,.72) 100%);
-      transition:opacity 1.5s ease}
-    .stars,.stars:before,.stars:after{position:fixed;inset:0;pointer-events:none;content:"";z-index:1}
-    .stars{opacity:1;background-image:
-      radial-gradient(circle at 5% 12%,#fff 0 1.4px,transparent 2px),
-      radial-gradient(circle at 12% 31%,rgba(190,213,255,.9) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 18% 76%,#fff 0 1.2px,transparent 2px),
-      radial-gradient(circle at 27% 18%,rgba(220,208,255,.9) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 34% 61%,#fff 0 1.5px,transparent 2.2px),
-      radial-gradient(circle at 43% 8%,rgba(185,215,255,.9) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 51% 31%,#fff 0 1.3px,transparent 2px),
-      radial-gradient(circle at 58% 86%,rgba(215,204,255,.9) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 66% 16%,#fff 0 1.4px,transparent 2px),
-      radial-gradient(circle at 73% 55%,rgba(190,215,255,.9) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 81% 27%,#fff 0 1.2px,transparent 2px),
-      radial-gradient(circle at 89% 73%,rgba(225,213,255,.9) 0 1px,transparent 1.8px),
-      radial-gradient(circle at 96% 39%,#fff 0 1.5px,transparent 2.2px);
-      animation:starDrift 24s linear infinite}
-    .stars:before{opacity:1;background-image:
-      radial-gradient(circle at 8% 58%,rgba(255,255,255,.9) 0 1px,transparent 1.7px),
-      radial-gradient(circle at 24% 44%,rgba(175,205,255,.85) 0 1.2px,transparent 2px),
-      radial-gradient(circle at 39% 91%,rgba(255,255,255,.8) 0 1px,transparent 1.7px),
-      radial-gradient(circle at 47% 53%,rgba(220,205,255,.9) 0 1.3px,transparent 2px),
-      radial-gradient(circle at 62% 69%,rgba(255,255,255,.85) 0 1px,transparent 1.7px),
-      radial-gradient(circle at 78% 91%,rgba(180,210,255,.85) 0 1.2px,transparent 2px),
-      radial-gradient(circle at 94% 15%,rgba(255,255,255,.9) 0 1px,transparent 1.7px);
-      animation:starTwinkle 3.8s ease-in-out infinite alternate}
-    .stars:after{opacity:.85;background-image:
-      radial-gradient(circle at 15% 9%,rgba(255,255,255,.95) 0 2px,transparent 3px),
-      radial-gradient(circle at 32% 35%,rgba(191,216,255,.9) 0 1.8px,transparent 3px),
-      radial-gradient(circle at 69% 44%,rgba(225,213,255,.95) 0 2px,transparent 3px),
-      radial-gradient(circle at 84% 82%,rgba(180,210,255,.9) 0 1.8px,transparent 3px);
-      filter:drop-shadow(0 0 6px rgba(190,205,255,.75));animation:starFloat 14s ease-in-out infinite alternate}
-    .moon{position:fixed;top:7vh;right:9vw;width:84px;height:84px;border-radius:50%;z-index:1;
-      background:radial-gradient(circle at 35% 32%,#fff,#dce5ff 58%,#9ca9d7 100%);
-      box-shadow:0 0 30px rgba(210,220,255,.72),0 0 90px rgba(126,143,255,.42),0 0 170px rgba(111,91,210,.22);
-      opacity:.82;animation:moonFloat 8s ease-in-out infinite}
-    .moon:after{content:"";position:absolute;width:82px;height:82px;border-radius:50%;left:21px;top:-9px;background:#050617}
-    .wrap{min-height:100vh;padding:64px 18px 64px;display:flex;justify-content:center;position:relative;z-index:2}
-    .wrap:before{content:"";position:absolute;top:0;left:50%;width:1px;height:100%;
-      background:linear-gradient(180deg,transparent,rgba(255,255,255,.05) 25%,transparent 80%);opacity:.6}
-    .letter{width:min(720px,100%);color:#f3edf2;
-      position:relative;z-index:2;background:transparent!important;border:0;
-      box-shadow:none!important;backdrop-filter:none!important;-webkit-backdrop-filter:none!important;
-      padding:34px 25px 40px;overflow:visible;
-      opacity:0;transform:translateY(28px) scale(.985);animation:letterIn 1.4s cubic-bezier(.2,.7,.2,1) forwards}
-    .letter:before,.letter:after{display:none}
-    .seal{width:58px;height:58px;border:1px solid var(--rose);border-radius:50%;
-      margin:0 auto 24px;display:grid;place-items:center;color:#f0b5ca;font-size:24px;
-      cursor:pointer;transition:transform .5s ease,box-shadow .5s ease;position:relative}
-    .seal:before{content:"";position:absolute;inset:-7px;border:1px solid rgba(143,76,97,.28);
-      border-radius:50%;animation:sealPulse 3s ease-in-out infinite}
-    .seal:hover{transform:rotate(8deg) scale(1.04);box-shadow:0 0 28px rgba(143,76,97,.2)}
-    .eyebrow{text-align:center;letter-spacing:.28em;text-transform:uppercase;
-      font:11px/1.5 Arial,sans-serif;color:rgba(231,220,235,.80);
-      text-shadow:0 2px 12px rgba(0,0,0,.85)}
-    h1{text-align:center;font-size:clamp(31px,8vw,52px);font-weight:400;
-      margin:9px 0 8px;line-height:1.05;color:#fff8fb;
-      text-shadow:0 3px 18px rgba(0,0,0,.85)}
-    .date{text-align:center;color:rgba(228,218,232,.82);font:12px/1.5 Arial,sans-serif;letter-spacing:.12em;
-      text-shadow:0 2px 10px rgba(0,0,0,.82)}
-    .archive-meta{margin:22px auto 0;max-width:430px;display:flex;justify-content:space-between;
-      gap:12px;flex-wrap:wrap;color:rgba(220,208,226,.74);font:10px/1.5 Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;
-      text-shadow:0 2px 10px rgba(0,0,0,.82)}
-    .archive-meta span{flex:1 1 120px;text-align:center}
-    .counter{margin:18px auto 0;text-align:center;color:rgba(222,211,228,.82);font:12px/1.7 Arial,sans-serif;
-      text-shadow:0 2px 10px rgba(0,0,0,.82)}
-    .counter strong{color:#efb4c9;font-weight:400;text-shadow:0 2px 12px rgba(0,0,0,.9)}
-    .rule{height:1px;background:linear-gradient(90deg,transparent,rgba(231,210,225,.40),transparent);margin:30px 0}
-    .body{font-size:19px;line-height:1.85;color:#f1eaf0;text-shadow:0 2px 12px rgba(0,0,0,.84),0 0 2px rgba(0,0,0,.72)}
-    .body p{margin:0 0 22px;opacity:0;transform:translateY(16px);transition:opacity .9s ease,transform .9s cubic-bezier(.2,.7,.2,1)}
-    .body p.visible{opacity:1;transform:none}
-    .body p:nth-child(5),.body p:nth-child(8),.body p:nth-child(29){font-size:1.08em;color:#fff8fb;text-shadow:0 0 18px rgba(190,165,255,.22),0 3px 14px rgba(0,0,0,.88)}
-    .body p:nth-child(15),.body p:nth-child(16),.body p:nth-child(27){color:#f9eef5}
-    .closing,.signature,.ps,.memory-note{opacity:0;transform:translateY(14px);transition:opacity 1s ease,transform 1s ease}
-    .closing.visible,.signature.visible,.ps.visible,.memory-note.visible{opacity:1;transform:none}
-    .closing{margin-top:38px;text-align:right;font-style:italic;color:#efb4c9;font-size:20px;text-shadow:0 2px 12px rgba(0,0,0,.85)}
-    .signature{margin-top:6px;text-align:right;color:rgba(231,220,229,.74);font-size:15px;font-style:italic;text-shadow:0 2px 10px rgba(0,0,0,.82)}
-    .ps{margin-top:38px;padding-top:24px;border-top:1px dashed rgba(231,210,225,.34);color:#e9dfe7;
-      font-size:16px;line-height:1.8;font-style:italic;text-shadow:0 2px 12px rgba(0,0,0,.84)}
-    .memory-note{margin:28px 0 0;padding:18px 16px;text-align:center;border:1px solid rgba(231,210,225,.28);
-      background:rgba(10,8,22,.20);color:rgba(235,225,233,.78);font:11px/1.7 Arial,sans-serif;letter-spacing:.08em;
-      text-shadow:0 2px 10px rgba(0,0,0,.84);text-transform:uppercase}
-    .memory-note button{display:inline-block;margin-top:10px;border:0;background:transparent;color:#efb4c9;font:inherit;cursor:pointer;letter-spacing:.1em}
-    .hidden-memory{display:none;margin-top:12px;color:#f0e5ec;letter-spacing:.02em;text-transform:none;font:italic 15px/1.7 Georgia,"Times New Roman",serif;text-shadow:0 2px 10px rgba(0,0,0,.84)}
-    .hidden-memory.show{display:block;animation:fadeIn .8s ease}
-    footer{max-width:720px;margin:18px auto 0;text-align:center;color:rgba(221,211,225,.68);text-shadow:0 2px 10px rgba(0,0,0,.82);font:11px/1.6 Arial,sans-serif;letter-spacing:.08em;opacity:.82}
-    .seal-open .stars{filter:brightness(1.65) saturate(1.15)}
-    .seal-open .moon{filter:brightness(1.18);box-shadow:0 0 42px rgba(240,240,255,.92),0 0 120px rgba(140,155,255,.60),0 0 210px rgba(111,91,210,.34)}
-    .seal-open .body,.seal-open .archive-meta,.seal-open .counter,.seal-open .rule{transition:opacity 1s ease;opacity:.58}
-    .seal-open .hidden-memory{filter:drop-shadow(0 0 12px rgba(220,180,255,.25))}
-    @keyframes letterIn{0%{opacity:0;transform:translateY(55px) scale(.94);filter:blur(5px)}70%{opacity:1;filter:blur(0)}100%{opacity:1;transform:none}}
-    @keyframes nebulaDrift{from{transform:translate3d(-3%,-2%,0) scale(1)}to{transform:translate3d(5%,4%,0) scale(1.12)}}
-    @keyframes starDrift{from{transform:translate3d(0,-2%,0)}to{transform:translate3d(0,10%,0)}}
-    @keyframes starTwinkle{from{opacity:.18}to{opacity:1}}
-    @keyframes starFloat{from{transform:translate3d(-18px,12px,0)}to{transform:translate3d(18px,-16px,0)}}
-    @keyframes moonFloat{0%,100%{transform:translate3d(0,0,0) scale(1);opacity:.72}50%{transform:translate3d(-20px,10px,0) scale(1.035);opacity:.9}}
-    @keyframes sealPulse{0%,100%{transform:scale(.94);opacity:.35}50%{transform:scale(1.16);opacity:.9}}
-    @keyframes fadeIn{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:none}}
-    @media(prefers-reduced-motion:reduce){
-      html{scroll-behavior:auto}
-      body:before,.stars,.stars:before,.stars:after,.moon,.seal:before,.letter:after{animation:none!important}
-      .letter,.body p,.closing,.signature,.ps,.memory-note{transition:none!important;animation:none!important;opacity:1;transform:none}
-    }
-    @media(max-width:480px){
-      .wrap{padding:34px 10px 40px}.letter{padding:28px 21px 32px}
-      .body{font-size:17px;line-height:1.78}.rule{margin:25px 0}
-      .archive-meta{font-size:9px}.ps{font-size:15px}
-      .moon{width:58px;height:58px;top:5vh;right:5vw;opacity:.72}.moon:after{width:57px;height:57px;left:15px;top:-6px}
-    }
-  </style>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#030208"><meta name="color-scheme" content="dark">
+<meta property="og:title" content="The Last Star — An Archive of Us">
+<meta property="og:description" content="Some things are not meant to be forgotten. They are meant to be preserved.">
+<title>The Last Star — An Archive of Us</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=Mrs+Saint+Delafield&display=swap" rel="stylesheet">
+<style>
+:root{--b:#030208;--m:#09060f;--v:#140b18;--r:#4a161c;--g:#d6b77a;--g2:#f0dca9;--w:#f7f1e7;--mut:#a79b91;--ease:cubic-bezier(.2,.75,.2,1)}
+*{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:var(--b)}body{color:var(--w);font-family:"Cormorant Garamond",Georgia,serif}
+button{font:inherit}#app{position:fixed;inset:0;overflow:hidden;background:#030208}
+canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#space{z-index:0}#fx{z-index:20}
+.vig{position:absolute;inset:0;z-index:2;pointer-events:none;background:radial-gradient(circle at 50% 45%,transparent 18%,rgba(0,0,0,.25) 58%,rgba(0,0,0,.86) 100%)}
+#grain{position:absolute;inset:-50%;z-index:30;pointer-events:none;opacity:.045;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 180 180'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.85' numOctaves='4'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");animation:grain .2s steps(2) infinite}
+@keyframes grain{50%{transform:translate(2%,-1%)}100%{transform:translate(-1%,2%)}}
+.scene{position:absolute;inset:0;z-index:5;display:grid;place-items:center;padding:24px;opacity:0;visibility:hidden;pointer-events:none;transition:opacity 1.2s var(--ease)}
+.scene.on{opacity:1;visibility:visible;pointer-events:auto}.gold{color:var(--g)}
+.k{font:10px Arial,sans-serif;letter-spacing:.34em;text-transform:uppercase;color:rgba(240,220,169,.72)}
+.ey{font:10px Arial,sans-serif;letter-spacing:.28em;text-transform:uppercase;color:rgba(247,241,231,.55)}
+.cta{border:1px solid rgba(214,183,122,.42);background:rgba(8,5,11,.62);color:var(--g2);padding:12px 25px;min-width:150px;cursor:pointer;letter-spacing:.25em;text-transform:uppercase;font:10px Arial,sans-serif;backdrop-filter:blur(8px);transition:.45s var(--ease)}
+.cta:hover,.cta:focus-visible{border-color:var(--g);box-shadow:0 0 35px rgba(214,183,122,.14);transform:translateY(-2px)}button:focus-visible{outline:1px solid var(--g);outline-offset:4px}
+#mute,#chapter,#progress{position:fixed;z-index:50}#mute{right:18px;top:18px;width:37px;height:37px;border:1px solid rgba(214,183,122,.25);background:rgba(3,2,8,.58);color:var(--g);cursor:pointer}
+#chapter{left:19px;top:22px;font:9px Arial;letter-spacing:.2em;color:rgba(247,241,231,.4);text-transform:uppercase}
+#progress{left:50%;bottom:18px;transform:translateX(-50%);width:min(300px,55vw);height:1px;background:rgba(255,255,255,.1)}#progress i{display:block;height:100%;width:0;background:var(--g);box-shadow:0 0 12px rgba(214,183,122,.5);transition:width .8s var(--ease)}
+#fade{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:100;transition:opacity 1s}
+#intro{text-align:center}.star{width:5px;height:5px;border-radius:50%;background:#fff;margin:0 auto 38px;box-shadow:0 0 10px #fff,0 0 35px var(--g),0 0 100px rgba(214,183,122,.35);animation:pulse 3s ease-in-out infinite}
+@keyframes pulse{50%{transform:scale(1.45);opacity:1}}
+#intro h1{font-weight:300;font-size:clamp(19px,3.2vw,31px);line-height:1.45;letter-spacing:.07em;margin:0}#intro h1 span{display:block}
+#intro .cta{margin-top:45px;opacity:0;transition:opacity 1.4s 2.1s}.ready .cta{opacity:1}
+.title{text-align:center}.title h2{font-size:14px;letter-spacing:.45em;font-weight:400;margin:20px 0 12px}.big{font-size:clamp(58px,13vw,145px);line-height:.78;font-weight:300;letter-spacing:-.045em}.sub{font:11px Arial;letter-spacing:.48em;text-transform:uppercase;color:rgba(247,241,231,.5);margin-top:24px}.seal{width:58px;height:58px;border:1px solid rgba(214,183,122,.5);border-radius:50%;display:grid;place-items:center;margin:30px auto;color:var(--g);position:relative}.seal:before{content:"";position:absolute;inset:6px;border:1px solid rgba(214,183,122,.17);border-radius:50%}
+#constellation{cursor:crosshair}.const-copy{position:absolute;left:50%;bottom:8%;transform:translateX(-50%);text-align:center;pointer-events:none}.const-copy h3{font-size:clamp(22px,4vw,38px);font-weight:300;margin:8px 0}.const-copy p{font:9px Arial;letter-spacing:.24em;color:rgba(247,241,231,.42);text-transform:uppercase}.help{position:absolute;right:5%;bottom:7%;font:9px Arial;letter-spacing:.18em;color:rgba(247,241,231,.3);text-transform:uppercase}
+.mem-card{width:min(690px,92vw);min-height:min(520px,76vh);border:1px solid rgba(214,183,122,.24);background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.01));box-shadow:0 35px 90px #0008,inset 0 0 50px rgba(255,255,255,.02);backdrop-filter:blur(16px);display:grid;place-items:center;padding:42px;position:relative;text-align:center}.mem-card:before{content:"";position:absolute;inset:9px;border:1px solid rgba(255,255,255,.06)}
+.mem-no{font:10px Arial;letter-spacing:.3em;color:var(--g);text-transform:uppercase}.mem-title{font-size:clamp(39px,8vw,75px);font-weight:300;line-height:.95;margin:14px 0 8px}.mem-cap{font:10px Arial;letter-spacing:.18em;text-transform:uppercase;color:#fff7}.mem-img{width:min(460px,75vw);height:min(200px,28vh);margin:24px auto;border:1px solid rgba(214,183,122,.18);background:linear-gradient(135deg,#4a161c55,#0c0812);background-size:cover;background-position:center;display:none}.mem-img.show{display:block}.mem-text{font-size:clamp(17px,2.4vw,23px);line-height:1.55;color:#f7f1e7dc}.mem-actions{margin-top:25px}.mem-count{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);font:8px Arial;letter-spacing:.18em;color:#fff5;text-transform:uppercase}
+#arch{text-align:center}.symbol{width:min(330px,65vw);height:min(330px,65vw);position:relative;margin:0 auto 30px}.symbol i{position:absolute;left:50%;top:50%;border:1px solid #d6b77a99;border-radius:50%;transform:translate(-50%,-50%);animation:orbit 16s linear infinite}.symbol i:nth-child(1){width:100%;height:31%}.symbol i:nth-child(2){width:31%;height:100%}.symbol i:nth-child(3){width:74%;height:74%;transform:translate(-50%,-50%) rotate(45deg)}.symbol i:nth-child(4){width:74%;height:74%;transform:translate(-50%,-50%) rotate(-45deg)}.symbol:after{content:"✦";position:absolute;inset:0;display:grid;place-items:center;color:var(--g);font-size:25px;text-shadow:0 0 30px #d6b77a88}@keyframes orbit{to{rotate:360deg}}
+#arch h2{font-size:clamp(28px,5vw,50px);font-weight:300;margin:0}#arch p{font:9px Arial;letter-spacing:.28em;text-transform:uppercase;color:#fff6;margin:15px 0}
+.room{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 35%,#4a161c33,transparent 45%),linear-gradient(#05040a,#09060d 58%,#020208)}.room-frame{position:absolute;left:9%;right:9%;top:13%;height:63%;border:1px solid #d6b77a20;box-shadow:inset 0 0 100px #d6b77a08}.window{position:absolute;left:50%;top:15%;width:min(430px,65vw);height:52%;transform:translateX(-50%);border:1px solid #d6b77a2e;background:#020207;overflow:hidden}.window:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 21% 26%,#fff 0 1px,transparent 2px),radial-gradient(circle at 73% 31%,#fff 0 1px,transparent 2px),radial-gradient(circle at 38% 71%,#d6b77a 0 1px,transparent 2px),radial-gradient(circle at 81% 78%,#fff 0 1px,transparent 2px)}.room-copy{position:absolute;left:50%;top:7%;transform:translateX(-50%);text-align:center;z-index:3;pointer-events:none}.room-copy h2{font-size:clamp(24px,4vw,42px);font-weight:300;margin:8px 0}.room-copy p{font:9px Arial;letter-spacing:.25em;text-transform:uppercase;color:#fff6}
+.desk{position:absolute;left:50%;bottom:15%;width:min(720px,86vw);height:24%;transform:translateX(-50%);border:1px solid #d6b77a2b;background:linear-gradient(#211016,#0b070b 20%,#050307);box-shadow:0 20px 70px #000b}.book{position:absolute;left:13%;top:18%;width:29%;height:42%;background:#10070b;border:1px solid #d6b77a33;transform:rotate(-4deg);box-shadow:0 10px 25px #000}.book:after{content:"THE LAST STAR";position:absolute;inset:0;display:grid;place-items:center;color:#d6b77a88;font:8px Arial;letter-spacing:.18em}.candle{position:absolute;right:16%;top:-34%;width:28px;height:75px;background:linear-gradient(90deg,#a58c78,#eee0cb,#8f7968)}.flame{position:absolute;left:50%;top:-25px;width:14px;height:25px;background:radial-gradient(ellipse at 50% 75%,#fff 0 16%,#e9b85e 35%,transparent 70%);transform:translateX(-50%);filter:drop-shadow(0 0 12px #e6a74d);animation:flame .12s infinite alternate}@keyframes flame{to{transform:translateX(-50%) scale(.86,.94) rotate(2deg)}}
+.envelope{position:absolute;right:34%;top:-38%;width:180px;height:115px;background:#e9dfcf;border:1px solid #a48e70;box-shadow:0 15px 35px #000;cursor:pointer;transform:rotate(3deg);transition:.5s var(--ease)}.envelope:hover{transform:rotate(0) translateY(-8px)}.envelope:before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,transparent 49%,#cdbfa7 50%,transparent 51%),linear-gradient(225deg,transparent 49%,#cdbfa7 50%,transparent 51%)}.envelope:after{content:"✦";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:31px;height:31px;border-radius:50%;background:#681d27;color:#e8c987;display:grid;place-items:center;border:1px solid #d6b77a}
+#letter{background:#08050a}.paper{width:min(650px,90vw);height:min(82vh,820px);overflow:hidden;background:radial-gradient(circle at 15% 20%,#4a161c0d,transparent 20%),linear-gradient(135deg,#eee5d5,#f6eddf 42%,#e4d8c4);color:#271c18;padding:clamp(35px,6vw,65px);box-shadow:0 30px 80px #000;position:relative;border:1px solid #d6b77a70;transform:rotateX(3deg)}.paper:before{content:"";position:absolute;inset:18px;border:1px solid #56362624}.paper-head{font:8px Arial;letter-spacing:.25em;color:#715a4a;text-transform:uppercase;text-align:center}.paper h2{font-size:clamp(28px,5vw,45px);font-weight:400;text-align:center;margin:12px 0 22px}#writing{font-size:clamp(16px,2.25vw,20px);line-height:1.65;white-space:pre-wrap;max-height:calc(100% - 100px);overflow:hidden}#pen{position:fixed;left:0;top:0;width:65px;height:65px;z-index:70;pointer-events:none;opacity:0;filter:drop-shadow(0 4px 5px #0006)}#letter-status{position:absolute;bottom:4%;left:50%;transform:translateX(-50%);font:8px Arial;letter-spacing:.2em;text-transform:uppercase;color:#fff5}
+#message{text-align:center}.lines div{font-size:clamp(25px,5vw,55px);font-weight:300;line-height:1.15;opacity:0;transform:translateY(18px);transition:1.2s var(--ease)}#message.show .lines div{opacity:1;transform:none}#message.show .lines div:nth-child(2){transition-delay:.9s}#message.show .lines div:nth-child(3){transition-delay:1.8s}.small{margin-top:35px;font:9px Arial;letter-spacing:.3em;text-transform:uppercase;color:#fff5}
+#void .void-copy{position:absolute;left:50%;bottom:12%;transform:translateX(-50%);text-align:center;opacity:0;transition:1s}#void.ready .void-copy{opacity:1}.void-copy p{font:9px Arial;letter-spacing:.28em;text-transform:uppercase;color:#fff6}
+#final{text-align:center}.reveal p{font-size:clamp(27px,5.5vw,64px);font-weight:300;line-height:1.05;margin:0;opacity:0;transform:translateY(18px)}#final.show .reveal p{animation:reveal 1.2s var(--ease) forwards}#final.show .reveal p:nth-child(2){animation-delay:1.1s}#final.show .reveal p:nth-child(3){animation-delay:2.2s;color:var(--g2)}@keyframes reveal{to{opacity:1;transform:none}}
+#end{text-align:center}.end-star{width:6px;height:6px;border-radius:50%;background:#fff;margin:0 auto 35px;box-shadow:0 0 15px #fff,0 0 55px var(--g),0 0 120px #d6b77a55}.end h2{font-size:clamp(24px,5vw,48px);font-weight:300;margin:0}.end p{font:9px Arial;letter-spacing:.3em;text-transform:uppercase;color:#fff6;margin:16px 0 32px}
+@media(max-width:600px){.help{display:none}.mem-card{padding:30px 23px;min-height:470px}.mem-img{height:145px}.window{height:45%;top:17%}.desk{bottom:13%;height:21%}.envelope{right:28%;width:135px;height:88px}.book{left:9%}.candle{right:10%}.paper{padding:32px 27px}.paper:before{inset:10px}}
+@media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
+</style>
 </head>
 <body>
-  <div class="stars" aria-hidden="true"></div>
-  <div class="moon" aria-hidden="true"></div>
+<div id="app"><canvas id="space"></canvas><canvas id="fx"></canvas><div class="vig"></div><div id="grain"></div>
+<div id="chapter">ARCHIVE 01 · THE LAST STAR</div><button id="mute" aria-label="Toggle sound">♫</button><div id="progress"><i></i></div><div id="fade"></div>
 
-  <main class="wrap">
-    <article class="letter">
-      <div class="seal" id="seal" aria-label="A sealed memory">♡</div>
-      <div class="eyebrow">ECLIPSE · A LETTER, KEPT</div>
-      <h1>For you.</h1>
-      <div class="date" id="anniversaryDate">THE FIRST ANNIVERSARY</div>
-      <div class="archive-meta" aria-label="Archive status">
-        <span>ECLIPSE PRIVATE ARCHIVE</span>
-        <span>ARCHIVE ENTRY 001</span>
-        <span>STATUS: PRESERVED</span>
-      </div>
-      <div class="counter">Known for: <strong id="knownFor">1 year</strong> &nbsp;·&nbsp; Remembered for: <strong>everything</strong></div>
-      <div class="rule"></div>
+<section class="scene on" id="intro"><div><div class="star"></div><div class="ey">A PRIVATE ARCHIVE</div><h1>SOME THINGS ARE NOT MEANT TO BE FORGOTTEN.<br><span class="gold">THEY ARE MEANT TO BE PRESERVED.</span></h1><button class="cta" id="enter">Enter the archive</button></div></section>
 
-      <section class="body">
-        <p>Happy one-year anniversary to us, mahal.</p>
-        <p>I know hindi pa naman talaga natin one year, but yk? It already feels like it, since we've already known each other for a year now.</p>
-        <p>And to be honest, this is a milestone for us. Another big leap for the impossible.</p>
-        <p>If you think about it, it feels surreal. It felt too fast—everything felt too fast, as if there wasn't even room to breathe anymore. But still, we managed to survive it. We kept pushing through.</p>
-        <p>This is special. Really special.</p>
-        <p>And we should cherish this.</p>
-        <p>I hate to admit that sometimes, I forget what year you were born, what food you like, or even when your birthday is. That's why I built this.</p>
-        <p>That's why I built ECLIPSE.</p>
-        <p>To serve as my memory whenever I forget something about you. So whenever I miss something, whenever something slips away from me, I can look back here and see what I forgot.</p>
-        <p>Ain't that funny?</p>
-        <p>Me, building something to preserve the beautiful.</p>
-        <p>Because letting go of memories feels like stabbing your own self. And honestly, I think forgetting feels a little too similar to that.</p>
-        <p>That's why I don't want to forget something about you.</p>
-        <p>Everything reminds me of you.</p>
-        <p>You are my muse, my happiness, and my blues.</p>
-        <p>You are my sanctuary, my home, and my world.</p>
-        <p>I still remember when you called me a womanizer.</p>
-        <p>That's funny, 'cause I never really looked like one, nor did I ever act that way. But hey, somehow, that was one of the things that brought us together.</p>
-        <p>Well, it looks too short, ain't it?</p>
-        <p>I already said everything I could ever imagine. I compared you to the moon, the sun, a goddess, the forest, and even the galaxy itself. But I'll be frank—it still feels like it's not enough. Comparing you to those things almost feels like an insult, because your beauty cannot truly be compared to anything.</p>
-        <p>But hey, what can I say? I'm too annoying and too creative, yk? That's why I'm gonna keep doing this, even if it means sacrificing my own sleep.</p>
-        <p>Sleep itself has been elusive to me, yk, so it's okay.</p>
-        <p>And you know, I really, really love you. Everything about you. I love it all. Every flaw, every perfection, every little thing in between—I love them all. I could step into hell itself if it meant seeing your beauty, even if it were just for a glimpse.</p>
-        <p>Like, hell? What is it gonna do to me?</p>
-        <p>The fire of hell cannot compare to the fire of my desire and longing for you. It burns brighter than any star out there in the universe. It's threading its own fate just to meet yours. What can hell compare to my devotion, deep as the sea and blue as the long galaxy out there? Nothing. None of it can compare.</p>
-        <p>You are my everything, and everything means you.</p>
-        <p>You are my passing autumn, my winter, my spring, my summer, and every season you could ever imagine. Yk? Somehow, every season reminds me of you.</p>
-        <p>Every word will be remembered, every love, every moment, and every breath. They all mean one thing to me: you are the only one I love.</p>
-      </section>
+<section class="scene" id="title"><div class="title"><div class="k">ARCHIVE 01</div><h2>THE</h2><div class="big">LAST<br>STAR</div><div class="sub">AN ARCHIVE OF US</div><div class="seal">✦</div><button class="cta" id="access">Access archive</button></div></section>
 
-      <div class="closing">— ECLIPSE</div>
-      <div class="signature">written, kept, and left here for you.</div>
-      <div class="ps"><strong>P.S.</strong><br>If you ever forget this moment, come back here.<br>I'll remember it for you.</div>
-      <div class="memory-note">
-        ✦ MEMORY PRESERVED ✦<br>
-        Some things deserve to survive forgetting.<br>
-        <button type="button" id="memoryButton">touch the seal</button>
-        <div class="hidden-memory" id="hiddenMemory">
-          You found something ECLIPSE wasn't supposed to show you.<br>
-          I kept this one because I didn't know where else to put it.<br><br>
-          I love you.
-        </div>
-      </div>
-    </article>
-  </main>
-  <footer>Some memories deserve a place to stay.</footer>
+<section class="scene" id="constellation"><div class="const-copy"><div class="k">THE CONSTELLATION</div><h3>Seven moments. One story.</h3><p>Follow the stars in the order they appeared.</p></div><div class="help">Tap a star to remember</div></section>
 
-  <script>
-    (() => {
-      const start = new Date("2025-09-26T00:00:00");
-      const now = new Date();
-      let years = now.getFullYear() - start.getFullYear();
-      const anniversary = new Date(start);
-      anniversary.setFullYear(start.getFullYear() + Math.max(0, years));
-      if (now < anniversary) years = Math.max(0, years - 1);
+<section class="scene" id="memory"><div class="mem-card"><div><div class="mem-no" id="mn"></div><div class="mem-title" id="mt"></div><div class="mem-cap" id="mc"></div><div class="mem-img" id="mi"></div><div class="mem-text" id="mx"></div><div class="mem-actions"><button class="cta" id="back">Return to constellation</button></div></div><div class="mem-count" id="mcount"></div></div></section>
 
-      const known = document.getElementById("knownFor");
-      const date = document.getElementById("anniversaryDate");
-      if (known) known.textContent = years === 1 ? "1 year" : years + " years";
-      if (date) {
-        const first = new Date(start);
-        first.setFullYear(start.getFullYear() + 1);
-        date.textContent = "THE FIRST ANNIVERSARY · " +
-          String(first.getDate()).padStart(2,"0") + " · " +
-          String(first.getMonth()+1).padStart(2,"0") + " · " + first.getFullYear();
-      }
+<section class="scene" id="arch"><div><div class="symbol"><i></i><i></i><i></i><i></i></div><div class="k">THE ARCHIVE REMEMBERS</div><h2>Everything led here.</h2><p>Seven stars become one celestial seal.</p></div></section>
 
-      const paragraphs = document.querySelectorAll(".body p");
-      const revealables = document.querySelectorAll(".closing,.signature,.ps,.memory-note");
+<section class="scene" id="room"><div class="room"><div class="room-frame"></div><div class="window"></div><div class="room-copy"><div class="k">CELESTIAL ARCHIVE</div><h2>The room beyond memory.</h2><p>There is one thing left to preserve.</p></div><div class="desk"><div class="book"></div><div class="candle"><div class="flame"></div></div><button class="envelope" id="envelope" aria-label="Open the sealed letter"></button></div></div></section>
 
-      if ("IntersectionObserver" in window) {
-        const observer = new IntersectionObserver((entries,obs) => {
-          entries.forEach(entry => {
-            if (entry.isIntersecting) { entry.target.classList.add("visible"); obs.unobserve(entry.target); }
-          });
-        },{threshold:.12,rootMargin:"0px 0px -40px 0px"});
-        paragraphs.forEach(p => observer.observe(p));
-        revealables.forEach(el => observer.observe(el));
-      } else {
-        paragraphs.forEach(p => p.classList.add("visible"));
-        revealables.forEach(el => el.classList.add("visible"));
-      }
+<section class="scene" id="letter"><div class="paper"><div class="paper-head">ECLIPSE · ARCHIVE ENTRY 001</div><h2 id="letterTitle">For you.</h2><div id="writing"></div></div><svg id="pen" viewBox="0 0 80 80"><path d="M18 61L57 22l9 9-39 39-13 3 4-12z" fill="#25202a" stroke="#d6b77a" stroke-width="2"/><path d="M57 22l5-5 9 9-5 5z" fill="#6a2631"/><path d="M18 61l-4 12 13-3" fill="#d6b77a"/></svg><div id="letter-status">the letter is being written</div></section>
 
-      const button=document.getElementById("memoryButton");
-      const hidden=document.getElementById("hiddenMemory");
-      const seal=document.getElementById("seal");
-      const body=document.body;
+<section class="scene" id="message"><div class="lines"><div>THE ARCHIVE IS COMPLETE.</div><div>but...</div><div class="gold">there is still one star missing.</div><div class="small">wait for it</div></div></section>
+<section class="scene" id="void"><div class="void-copy"><p>The final record has no name.</p><p class="gold">Touch the last star.</p></div></section>
+<section class="scene" id="final"><div class="reveal"><p>YOU WERE NEVER JUST A MEMORY.</p><p>YOU WERE THE REASON THE ARCHIVE EXISTED.</p><p>THE LAST STAR WAS ALWAYS YOU.</p></div></section>
+<section class="scene" id="end"><div class="end"><div class="end-star"></div><div class="k">ARCHIVE 01 COMPLETE</div><h2>The archive will remember.</h2><p>preserved · not forgotten · always</p><button class="cta" id="replay">Replay the archive</button></div></section>
+</div>
 
-      const reveal=()=>{
-        if(!hidden) return;
-        const opened=hidden.classList.toggle("show");
-        if(button) button.textContent=opened ? "memory opened" : "touch the seal";
-        if(seal) seal.style.transform=opened ? "rotate(8deg) scale(1.08)" : "";
-        body.classList.toggle("seal-open",opened);
-      };
-      if(button) button.addEventListener("click",reveal);
-      if(seal) seal.addEventListener("click",reveal);
+<script>
+"use strict";
+/* ===================== EDITABLE ARCHIVE DATA ===================== */
+const CFG={
+ memories:[
+  {title:"THE BEGINNING",caption:"where the impossible began",text:"Some stories begin quietly. Ours somehow became something I never wanted to lose.",image:""},
+  {title:"THE MOMENTS",caption:"the little things became everything",text:"The jokes, the late conversations, the tiny details I should remember forever — they became their own constellation.",image:""},
+  {title:"THE DISTANCE",caption:"even miles could not erase it",text:"There were days when distance felt heavier than anything else. Still, somehow, the thread between us stayed.",image:""},
+  {title:"THE LAUGHTER",caption:"proof that joy leaves a mark",text:"I kept the laughter because those moments are impossible to fake. They are the kind of memories that make a place feel like home.",image:""},
+  {title:"THE PROMISE",caption:"what was chosen and kept",text:"A promise is only beautiful when someone keeps choosing it. Again. And again. And again.",image:""},
+  {title:"THE YEARS",caption:"time passing without taking it away",text:"Time moves quickly. Memories blur. People change. But some things become clearer precisely because time tried to take them away.",image:""},
+  {title:"THE LAST STAR",caption:"the one memory that was never missing",text:"I built an archive because I was afraid of forgetting. Then I realized the most important thing was never lost in the first place.",image:""}
+ ],
+ letterTitle:"For you.",
+ letter:[
+ "Happy one-year anniversary to us, mahal.",
+ "I know hindi pa naman talaga natin one year, but yk? It already feels like it, since we've already known each other for a year now.",
+ "And to be honest, this is a milestone for us. Another big leap for the impossible.",
+ "If you think about it, it feels surreal. It felt too fast—everything felt too fast, as if there wasn't even room to breathe anymore. But still, we managed to survive it. We kept pushing through.",
+ "This is special. Really special.",
+ "And we should cherish this.",
+ "I hate to admit that sometimes, I forget what year you were born, what food you like, or even when your birthday is. That's why I built this.",
+ "That's why I built ECLIPSE.",
+ "To serve as my memory whenever I forget something about you. So whenever I miss something, whenever something slips away from me, I can look back here and see what I forgot.",
+ "Ain't that funny?",
+ "Me, building something to preserve the beautiful.",
+ "Because letting go of memories feels like stabbing your own self. And honestly, I think forgetting feels a little too similar to that.",
+ "That's why I don't want to forget something about you.",
+ "Everything reminds me of you.",
+ "You are my muse, my happiness, and my blues.",
+ "You are my sanctuary, my home, and my world.",
+ "I still remember when you called me a womanizer.",
+ "That's funny, 'cause I never really looked like one, nor did I ever act that way. But hey, somehow, that was one of the things that brought us together.",
+ "Well, it looks too short, ain't it?",
+ "I already said everything I could ever imagine. I compared you to the moon, the sun, a goddess, the forest, and even the galaxy itself. But I'll be frank—it still feels like it's not enough. Comparing you to those things almost feels like an insult, because your beauty cannot truly be compared to anything.",
+ "But hey, what can I say? I'm too annoying and too creative, yk? That's why I'm gonna keep doing this, even if it means sacrificing my own sleep.",
+ "Sleep itself has been elusive to me, yk, so it's okay.",
+ "And you know, I really, really love you. Everything about you. I love it all. Every flaw, every perfection, every little thing in between—I love them all. I could step into hell itself if it meant seeing your beauty, even if it were just for a glimpse.",
+ "Like, hell? What is it gonna do to me?",
+ "The fire of hell cannot compare to the fire of my desire and longing for you. It burns brighter than any star out there in the universe. It's threading its own fate just to meet yours. What can hell compare to my devotion, deep as the sea and blue as the long galaxy out there? Nothing. None of it can compare.",
+ "You are my everything, and everything means you.",
+ "You are my passing autumn, my winter, my spring, my summer, and every season you could ever imagine. Yk? Somehow, every season reminds me of you.",
+ "Every word will be remembered, every love, every moment, and every breath. They all mean one thing to me: you are the only one I love."
+ ],
+ finalLines:["YOU WERE NEVER JUST A MEMORY.","YOU WERE THE REASON THE ARCHIVE EXISTED.","THE LAST STAR WAS ALWAYS YOU."]
+};
+/* ================================================================= */
 
-      const letter=document.querySelector(".letter");
-      const stars=document.querySelector(".stars");
-      const moon=document.querySelector(".moon");
-      const reduced=window.matchMedia("(prefers-reduced-motion: reduce)");
-      let ticking=false;
-
-      const updateAtmosphere=()=>{
-        if(ticking)return;
-        ticking=true;
-        requestAnimationFrame(()=>{
-          const max=Math.max(1,document.documentElement.scrollHeight-window.innerHeight);
-          const progress=Math.min(1,Math.max(0,window.scrollY/max));
-
-          if(!reduced.matches){
-            if(letter) letter.style.transform="translateY(" + Math.max(-8,Math.min(0,window.scrollY*.004)) + "px)";
-            if(stars) stars.style.transform="translateY(" + Math.min(window.scrollY*.025,24) + "px) scale(" + (1+progress*.018) + ")";
-            if(moon) moon.style.marginTop=(progress*window.innerHeight*.08)+"px";
-          }
-
-          const deep=Math.min(1,Math.max(0,(progress-.18)/.82));
-          document.body.style.background=
-            "radial-gradient(ellipse 80% 45% at 50% 12%,rgba("+(100+Math.round(deep*35))+","+(72+Math.round(deep*10))+","+(190+Math.round(deep*35))+",."+(30+Math.round(deep*8))+"),transparent 65%),"+
-            "radial-gradient(ellipse 55% 60% at 8% 55%,rgba(32,84,174,."+(28+Math.round(deep*8))+"),transparent 70%),"+
-            "radial-gradient(ellipse 60% 55% at 92% 70%,rgba(132,43,119,."+(25+Math.round(deep*9))+"),transparent 70%),"+
-            "linear-gradient(180deg,#02030a 0%,#"+(deep>.55?"09071e":"07091b")+" 42%,#03040d 100%)";
-
-          ticking=false;
-        });
-      };
-      window.addEventListener("scroll",updateAtmosphere,{passive:true});
-      updateAtmosphere();
-    })();
-  </script>
-</body>
-</html>
+const $=id=>document.getElementById(id),scenes=[...document.querySelectorAll(".scene")],space=$("space"),fx=$("fx"),sx=space.getContext("2d"),xx=fx.getContext("2d");
+let W=innerWidth,H=innerHeight,D=Math.min(devicePixelRatio||1,2),scene="intro",visited=new Set(),busy=false,sound=true,audio=null,finalStar={x:0,y:0,ready:false};
+const nodes=[{x:.22,y:.38},{x:.37,y:.24},{x:.51,y:.41},{x:.66,y:.25},{x:.78,y:.43},{x:.62,y:.63},{x:.39,y:.66}],edges=[[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,2],[0,6]];
+const stars=Array.from({length:Math.min(260,Math.max(120,Math.floor(innerWidth*innerHeight/6500)))},()=>({x:Math.random(),y:Math.random(),z:Math.random(),s:.3+Math.random()*1.4,p:Math.random()*7,a:.3+Math.random()*.7}));
+function resize(){W=innerWidth;H=innerHeight;D=Math.min(devicePixelRatio||1,2);for(const c of[space,fx]){c.width=W*D;c.height=H*D;c.style.width=W+"px";c.style.height=H+"px"}sx.setTransform(D,0,0,D,0,0);xx.setTransform(D,0,0,D,0,0)}addEventListener("resize",resize);resize();
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+function show(id){scenes.forEach(s=>s.classList.toggle("on",s.id===id));scene=id;const names={intro:"PROLOGUE",title:"ACCESS",constellation:"CONSTELLATION",memory:"MEMORY CHAMBER",arch:"CELESTIAL SEAL",room:"CELESTIAL ARCHIVE",letter:"THE LETTER",message:"ARCHIVE STATUS",void:"THE MISSING STAR",final:"REVELATION",end:"COMPLETE"};$("chapter").textContent="ARCHIVE 01 · "+names[id];const order=["intro","title","constellation","memory","arch","room","letter","message","void","final","end"];$("progress").firstElementChild.style.width=Math.max(0,order.indexOf(id)/(order.length-1)*100)+"%";document.body.style.cursor=id==="constellation"?"crosshair":"default"}
+async function fade(v){$("fade").style.opacity=v?1:0;await sleep(v?850:1000)}
+function tone(f=440,d=.15,g=.025){if(!sound)return;try{audio||=new(window.AudioContext||window.webkitAudioContext)();if(audio.state==="suspended")audio.resume();const o=audio.createOscillator(),a=audio.createGain();o.frequency.value=f;a.gain.setValueAtTime(.0001,audio.currentTime);a.gain.exponentialRampToValueAtTime(g,audio.currentTime+.02);a.gain.exponentialRampToValueAtTime(.0001,audio.currentTime+d);o.connect(a).connect(audio.destination);o.start();o.stop(audio.currentTime+d+.02)}catch{}}
+function chord(a="soft"){({soft:[261.6,329.6,392],star:[293.7,440,587],warm:[220,277,330],impact:[130,196,262]}[a]||[261.6]).forEach((f,i)=>setTimeout(()=>tone(f,.6,.018),i*85))}
+function draw(t){sx.clearRect(0,0,W,H);const g=sx.createRadialGradient(W*.5,H*.45,0,W*.5,H*.5,Math.max(W,H)*.75);g.addColorStop(0,"#100a16");g.addColorStop(.5,"#07050c");g.addColorStop(1,"#010106");sx.fillStyle=g;sx.fillRect(0,0,W,H);
+for(const s of stars){const x=((s.x+t*.000006*(.3+s.z))%1)*W,y=((s.y+t*.000001)%1)*H;sx.globalAlpha=s.a*(.45+.55*Math.sin(t*.001+s.p)**2);sx.fillStyle=s.z>.78?"#f0dca9":"#fff";sx.beginPath();sx.arc(x,y,s.s*(.55+s.z),0,7);sx.fill()}sx.globalAlpha=1;
+if(["constellation","memory","arch"].includes(scene)){const cx=W/2,cy=H*.46,p=nodes.map(n=>({x:cx+(n.x-.5)*W*.74,y:cy+(n.y-.5)*H*.74}));sx.strokeStyle="#d6b77a3b";sx.lineWidth=1;edges.forEach(([a,b],i)=>{if(i<visited.size+1){sx.beginPath();sx.moveTo(p[a].x,p[a].y);sx.lineTo(p[b].x,p[b].y);sx.stroke()}});p.forEach((q,i)=>{const active=visited.has(i),allowed=i===visited.size;sx.globalAlpha=active?.95:allowed?.9:.32;sx.fillStyle=allowed?"#fff2c9":"#d6b77a";sx.beginPath();sx.arc(q.x,q.y,allowed?4.8:active?3.2:2.2,0,7);sx.fill();if(allowed){sx.globalAlpha=.2;sx.beginPath();sx.arc(q.x,q.y,14+Math.sin(t*.004)*3,0,7);sx.fill()}})}
+if(scene==="void"){finalStar.x=W*.5+Math.sin(t*.0004)*W*.12;finalStar.y=H*.43+Math.cos(t*.0003)*H*.1;const q=sx.createRadialGradient(finalStar.x,finalStar.y,0,finalStar.x,finalStar.y,100);q.addColorStop(0,"#fff");q.addColorStop(.06,"#f0dca977");q.addColorStop(1,"transparent");sx.fillStyle=q;sx.beginPath();sx.arc(finalStar.x,finalStar.y,100,0,7);sx.fill();sx.fillStyle="#fff";sx.shadowBlur=18;sx.shadowColor="#fff";sx.beginPath();sx.arc(finalStar.x,finalStar.y,4,0,7);sx.fill();sx.shadowBlur=0;finalStar.ready=true}requestAnimationFrame(draw)}
+requestAnimationFrame(draw);
+function burst(x,y){const p=Array.from({length:700},()=>{const a=Math.random()*7,v=1+Math.random()*7;return{x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:.5+Math.random()*2,l:1}});let last=performance.now();function run(now){const dt=Math.min(2,(now-last)/16);last=now;xx.clearRect(0,0,W,H);p.forEach(q=>{q.x+=q.vx*dt;q.y+=q.vy*dt;q.vy+=.018*dt;q.l-=.012*dt;xx.globalAlpha=Math.max(0,q.l);xx.fillStyle=Math.random()>.5?"#fff":"#d6b77a";xx.beginPath();xx.arc(q.x,q.y,q.r,0,7);xx.fill()});if(p.some(q=>q.l>0))requestAnimationFrame(run);else xx.clearRect(0,0,W,H)}requestAnimationFrame(run)}
+async function intro(){ $("intro").classList.add("ready");tone(220,.3,.02);await sleep(4200);if(scene!=="intro")return;await fade(1);show("title");await fade(0);chord()}
+$("enter").onclick=()=>{if(!busy){busy=true;intro().finally(()=>busy=false)}};
+$("access").onclick=async()=>{if(busy)return;busy=true;tone(440);await fade(1);show("constellation");await fade(0);chord("star");busy=false};
+function pos(i){return{x:W/2+(nodes[i].x-.5)*W*.74,y:H*.46+(nodes[i].y-.5)*H*.74}}
+function openMemory(i){if(i!==visited.size)return;visited.add(i);const m=CFG.memories[i];$("mn").textContent="MEMORY 0"+(i+1);$("mt").textContent=m.title;$("mc").textContent=m.caption;$("mx").textContent=m.text;const img=$("mi");img.style.backgroundImage=m.image?"url('"+m.image.replace(/'/g,"\\'")+"')":"linear-gradient(135deg,#4a161c55,#0c0812)";img.classList.add("show");$("mcount").textContent=visited.size+" / "+CFG.memories.length+" memories preserved";show("memory");tone(visited.size===7?587:330,.3,.03)}
+$("constellation").addEventListener("pointerup",e=>{if(busy||scene!=="constellation")return;const p=pos(visited.size),d=Math.hypot(e.clientX-p.x,e.clientY-p.y);if(d<40)openMemory(visited.size);else tone(150,.08,.01)});
+$("back").onclick=async()=>{if(busy)return;busy=true;if(visited.size===CFG.memories.length){await fade(1);show("arch");await fade(0);chord("star");await sleep(4000);await fade(1);show("room");await fade(0);chord("warm")}else show("constellation");busy=false};
+$("envelope").onclick=async()=>{if(busy)return;busy=true;tone(392,.2,.025);await fade(1);show("letter");await fade(0);await writeLetter()};
+function movePen(x,y,on=true){const p=$("pen");p.style.opacity=on?1:0;p.style.transform="translate("+x+"px,"+y+"px) rotate(-8deg)"}
+async function writeLetter(){const box=$("writing");box.textContent="";$("letterTitle").textContent=CFG.letterTitle;const full=CFG.letter.join("\n\n");const r=box.getBoundingClientRect();movePen(r.left+30,r.top+5);let n=0;for(const ch of full){box.textContent+=ch;n++;const range=document.createRange();range.selectNodeContents(box);range.collapse(false);const q=range.getBoundingClientRect();if(q.width)movePen(Math.min(W-25,q.right+2),Math.min(H-25,q.bottom-4));await sleep(ch==="\n"?180:n<45?38:28)}movePen(0,0,false);$("letter-status").textContent="preserved";await sleep(1700);await fade(1);show("message");$("message").classList.add("show");await fade(0);chord("warm");await sleep(5200);await fade(1);show("void");$("void").classList.add("ready");await fade(0);busy=false}
+$("void").addEventListener("pointerup",e=>{if(!finalStar.ready||busy)return;if(Math.hypot(e.clientX-finalStar.x,e.clientY-finalStar.y)<55)reveal()});
+async function reveal(){busy=true;tone(90,.25,.025);await sleep(250);burst(finalStar.x,finalStar.y);chord("impact");await fade(1);show("final");$("final").classList.add("show");await fade(0);await sleep(5600);await fade(1);show("end");await fade(0);busy=false}
+$("replay").onclick=()=>location.reload();
+$("mute").onclick=()=>{sound=!sound;$("mute").textContent=sound?"♫":"×";if(sound)tone(440,.15,.02)};
+document.addEventListener("visibilitychange",()=>{if(document.hidden&&audio)try{audio.suspend()}catch{}});
+document.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&scene==="void"){e.preventDefault();reveal()}if(e.key==="Escape"&&scene==="memory")$("back").click()});
+</script></body></html>
