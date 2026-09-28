@@ -1142,8 +1142,7 @@ async function trafficProcessQueue() {
                 }
 
                 resolve();
-              }
-            };
+              };
 
             if (job.replyToMessageID) {
               job.api.sendMessage(
@@ -6866,5 +6865,7 @@ setInterval(() => {
       `Music: ${music.activeDownloads}/${MUSIC_MAX_GLOBAL_DOWNLOADS} downloads`
   );
 }, 60_000);
+
+
 
 
