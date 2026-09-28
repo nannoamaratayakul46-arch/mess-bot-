@@ -3474,6 +3474,7 @@ module.exports = {
   // Database
   query,
   connect,
+  healthCheck,
   getDashboardSnapshot,
 
   // Users
