@@ -1,6 +1,7 @@
 "use strict";
 
 const { reply } = require("../util");
+const db = require("../db");
 
 const {
   CLASSES,
