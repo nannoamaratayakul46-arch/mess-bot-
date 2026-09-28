@@ -94,6 +94,7 @@ const { handleAiMessage } = require("./ai");
 
 const {
   handleModerationMessage,
+  isLocallyBanned,
 } = require("./moderation");
 
 // ============================================================
@@ -3770,6 +3771,38 @@ async function handleMessage(
       `[TRAFFIC] Command suppressed for sender=${senderId} thread=${threadId}`
     );
     return;
+  }
+
+  // ==========================================================
+  // LOCAL BAN ENFORCEMENT — HARD COMMAND GATE
+  // ==========================================================
+  //
+  // Keep this outside the moderation command router. If any
+  // moderation handler ever fails, a locally banned user must
+  // still be unable to reach economy, games, RPG, AI, etc.
+  // ==========================================================
+
+  if (!isAdmin) {
+    try {
+      if (await isLocallyBanned(threadId, senderId)) {
+        console.warn(
+          "[MODERATION] Blocked locally banned user sender=" +
+          senderId +
+          " thread=" +
+          threadId
+        );
+        return;
+      }
+    } catch (error) {
+      // Fail closed for moderation enforcement: do not let a
+      // database lookup failure accidentally grant a banned user
+      // access to bot commands.
+      console.error(
+        "[MODERATION] Local-ban enforcement failed:",
+        error
+      );
+      return;
+    }
   }
 
   // ==========================================================
