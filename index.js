@@ -3360,33 +3360,6 @@ function attemptLogin() {
           loginError || "No API object returned."
         );
 
-        // If the saved session has expired, fall back to the
-        // dashboard credentials once before entering the normal
-        // exponential retry cycle.
-        if (
-          dashboardFacebookCredentials &&
-          !preferDashboardCredentials
-        ) {
-          preferDashboardCredentials = true;
-          loginAttempt = 0;
-          loginInProgress = false;
-
-          if (loginRetryTimer) {
-            clearTimeout(loginRetryTimer);
-          }
-
-          loginRetryTimer = setTimeout(() => {
-            loginRetryTimer = null;
-            attemptLogin();
-          }, 1000);
-
-          console.warn(
-            "[LOGIN] Saved session failed; retrying with dashboard Facebook credentials."
-          );
-
-          return;
-        }
-
         loginAttempt++;
 
         const backoffMs = Math.min(
@@ -3421,33 +3394,31 @@ function attemptLogin() {
       loginInProgress = false;
       dashboardLoginError = null;
 
-      // A successful credential login produces a fresh appState.
-      // Keep that session in memory so later reconnects prefer the
-      // session and only fall back to credentials if it expires.
-      if (
-        dashboardFacebookCredentials &&
-        preferDashboardCredentials
-      ) {
-        try {
-          if (typeof api.getAppState === "function") {
-            const refreshedAppState = api.getAppState();
+      // Every successful login may return refreshed Facebook session
+      // state. Keep it in memory so native ws3-fca recovery can continue
+      // from the newest valid session instead of an old cookie snapshot.
+      try {
+        if (typeof api.getAppState === "function") {
+          const refreshedAppState = api.getAppState();
 
-            if (
-              Array.isArray(refreshedAppState) &&
-              refreshedAppState.length > 0
-            ) {
-              appState = refreshedAppState;
-            }
+          if (
+            Array.isArray(refreshedAppState) &&
+            refreshedAppState.length > 0
+          ) {
+            appState = refreshedAppState;
+            console.log(
+              "[AUTH] Refreshed Facebook appState captured in memory."
+            );
           }
-        } catch (error) {
-          console.warn(
-            "[LOGIN] Could not refresh in-memory appState after credential login:",
-            error?.message || error
-          );
         }
-
-        preferDashboardCredentials = false;
+      } catch (error) {
+        console.warn(
+          "[AUTH] Could not capture refreshed appState:",
+          error?.message || error
+        );
       }
+
+      preferDashboardCredentials = false;
 
       if (loginRetryTimer) {
         clearTimeout(loginRetryTimer);
@@ -3618,54 +3589,24 @@ function attemptLogin() {
           }
 
           if (listenError) {
-            if (thisGeneration === activeListenerGeneration) {
-              // Invalidate this listener immediately. Do not allow an
-              // old socket to keep processing events while reconnecting.
-              activeListenerGeneration = 0;
-              activeMessengerApi = null;
-            }
-
-            watchdogSetMessengerConnected(
-              false
-            );
+            // ws3-fca owns reconnect/relogin. ECLIPSE does not create
+            // a second login/reconnect loop that can race the library.
+            watchdogSetMessengerConnected(false);
 
             listenFailureCount++;
 
             console.error(
-              `Listener error (failure ${listenFailureCount}/${MAX_LISTEN_RETRIES}):`,
+              "[LISTENER] ws3-fca reported a listener error " +
+                "(failure " +
+                listenFailureCount +
+                "):",
               listenError
             );
 
-            if (
-              listenFailureCount <=
-              MAX_LISTEN_RETRIES
-            ) {
-              const backoffMs = Math.min(
-                2 ** listenFailureCount * 1000,
-                60_000
-              );
-
-              if (!loginRetryTimer) {
-                console.error(
-                  `[LISTENER] Attempting re-login in ${backoffMs}ms.`
-                );
-
-                loginRetryTimer = setTimeout(() => {
-                  loginRetryTimer = null;
-                  attemptLogin();
-                }, backoffMs);
-              } else {
-                console.warn(
-                  "[LISTENER] Re-login already scheduled; ignoring duplicate listener error."
-                );
-              }
-            } else {
-              console.error(
-                "[LISTENER] Retry limit reached. Exiting so Render can restart cleanly."
-              );
-
-              process.exit(1);
-            }
+            console.warn(
+              "[AUTH] ECLIPSE will not start a second login loop; " +
+                "ws3-fca owns listener/session recovery."
+            );
 
             return;
           }
@@ -4500,12 +4441,33 @@ async function handleMessage(
   // ==========================================================
   // GLOBAL DISABLED / PAUSED STATE
   // ==========================================================
+  //
+  // Shutdown/pause blocks normal commands, but Banat remains active.
+  // Explicit !banat controls are also allowed through this gate.
+  // ==========================================================
+
+  const banatControlAllowedWhileDisabled =
+    /^!banat(?:\s|$)/i.test(originalText);
 
   if (
     global.botDisabled === true ||
     global.botPaused === true
   ) {
-    return;
+    const banatHandled = await handleAutomaticBanatMessage({
+      api,
+      event,
+      body,
+      senderId,
+      threadId,
+    });
+
+    if (banatHandled) {
+      return;
+    }
+
+    if (!banatControlAllowedWhileDisabled) {
+      return;
+    }
   }
 
   // ==========================================================
@@ -6004,146 +5966,6 @@ async function handleMessage(
     return;
   }
 
-  // ==========================================================
-  // BANAT STATUS
-  // ==========================================================
-
-  let roastEnabled =
-    false;
-
-  try {
-    roastEnabled =
-      await db.isRoastEnabled(
-        threadId
-      );
-  } catch (error) {
-    console.error(
-      "[BANAT] Failed to check roast status:",
-      error
-    );
-  }
-
-  // ==========================================================
-  // TARGETED TRIGGER
-  // ==========================================================
-
-  if (
-    roastEnabled
-  ) {
-    try {
-      const triggerReply =
-        await getTriggerReply(
-          body,
-          senderId,
-          threadId
-        );
-
-      if (
-        triggerReply
-      ) {
-        let banatLinkEnabled = false;
-        let banatMemeEnabled = false;
-
-        try {
-          const settings = await db.getThreadSettings(threadId);
-          banatLinkEnabled = settings.banat_link_enabled === true;
-          banatMemeEnabled = settings.banat_meme_enabled === true;
-        } catch (settingsError) {
-          console.error("[BANAT] Failed to load link/meme settings:", settingsError);
-        }
-
-        const banatLinkPool = [
-          "https://www.facebook.com/profile.php?id=61590719390401",
-          "https://www.facebook.com/profile.php?id=61588685169649",
-        ];
-
-        const banatProfileUrl =
-          banatLinkPool[
-            Math.floor(Math.random() * banatLinkPool.length)
-          ];
-
-        const accepted = acceptBanatBurstMessage(
-          threadID,
-          {
-            api,
-            message: triggerReply,
-            replyToMessageID: event.messageID,
-            attachMeme: banatMemeEnabled,
-            linkUrl: banatLinkEnabled
-              ? banatProfileUrl
-              : null,
-          }
-        );
-
-        if (!accepted) {
-          console.log(
-            `[BANAT] Ignored burst message from ${senderId} in ${threadID}`
-          );
-        }
-
-        return;
-      }
-    } catch (error) {
-      console.error(
-        "Trigger system failed:",
-        error
-      );
-    }
-  }
-
-  // ==========================================================
-  // RANDOM ROAST
-  // ==========================================================
-
-  if (
-    !RANDOM_ROAST_ENABLED ||
-    !roastEnabled
-  ) {
-    return;
-  }
-
-  if (
-    canRandomRoastThread(
-      threadId
-    )
-  ) {
-    // Random public roasts remain text-only.
-    const randomRoastReply =
-      getRandomRoastReply();
-
-    if (
-      randomRoastReply
-    ) {
-      const randomReplyDelay = allowBanatBurstReply(
-        threadID,
-        senderId
-      );
-
-      if (randomReplyDelay === null) {
-        console.log(
-          `[BANAT] Ignored rapid-fire random roast from ${senderId} in ${threadID}`
-        );
-        return;
-      }
-
-      lastRandomRoastByThread.set(
-        threadId,
-        Date.now()
-      );
-
-      sendBanatReplyWithTyping(
-        api,
-        randomRoastReply,
-        threadID,
-        event.messageID,
-        false,
-        null,
-        randomReplyDelay
-      );
-    }
-  }
-}
-
 // ============================================================
 // GAME CENTER
 // ============================================================
@@ -6503,6 +6325,135 @@ async function runBanatBurstQueue(threadID) {
       banatBurstState.delete(key);
     }
   }
+}
+
+async function handleAutomaticBanatMessage({
+  api,
+  event,
+  body,
+  senderId,
+  threadId,
+}) {
+  const threadID = threadId;
+
+  let roastEnabled = false;
+
+  try {
+    roastEnabled = await db.isRoastEnabled(threadId);
+  } catch (error) {
+    console.error(
+      "[BANAT] Failed to check roast status:",
+      error
+    );
+    return false;
+  }
+
+  if (!roastEnabled) {
+    return false;
+  }
+
+  try {
+    const triggerReply = await getTriggerReply(
+      body,
+      senderId,
+      threadId
+    );
+
+    if (triggerReply) {
+      let banatLinkEnabled = false;
+      let banatMemeEnabled = false;
+
+      try {
+        const settings = await db.getThreadSettings(threadId);
+        banatLinkEnabled = settings.banat_link_enabled === true;
+        banatMemeEnabled = settings.banat_meme_enabled === true;
+      } catch (settingsError) {
+        console.error(
+          "[BANAT] Failed to load link/meme settings:",
+          settingsError
+        );
+      }
+
+      const banatLinkPool = [
+        "https://www.facebook.com/profile.php?id=61590719390401",
+        "https://www.facebook.com/profile.php?id=61588685169649",
+      ];
+
+      const banatProfileUrl =
+        banatLinkPool[
+          Math.floor(Math.random() * banatLinkPool.length)
+        ];
+
+      const accepted = acceptBanatBurstMessage(
+        threadID,
+        {
+          api,
+          message: triggerReply,
+          replyToMessageID: event.messageID,
+          attachMeme: banatMemeEnabled,
+          linkUrl: banatLinkEnabled
+            ? banatProfileUrl
+            : null,
+        }
+      );
+
+      if (!accepted) {
+        console.log(
+          "[BANAT] Ignored burst message from " +
+            senderId +
+            " in " +
+            threadID
+        );
+      }
+
+      return true;
+    }
+  } catch (error) {
+    console.error(
+      "Trigger system failed:",
+      error
+    );
+  }
+
+  if (canRandomRoastThread(threadId)) {
+    const randomRoastReply = getRandomRoastReply();
+
+    if (randomRoastReply) {
+      const randomReplyDelay = allowBanatBurstReply(
+        threadID,
+        senderId
+      );
+
+      if (randomReplyDelay === null) {
+        console.log(
+          "[BANAT] Ignored rapid-fire random roast from " +
+            senderId +
+            " in " +
+            threadID
+        );
+        return true;
+      }
+
+      lastRandomRoastByThread.set(
+        threadId,
+        Date.now()
+      );
+
+      sendBanatReplyWithTyping(
+        api,
+        randomRoastReply,
+        threadID,
+        event.messageID,
+        false,
+        null,
+        randomReplyDelay
+      );
+
+      return true;
+    }
+  }
+
+  return false;
 }
 
 function sendBanatReplyWithTyping(
