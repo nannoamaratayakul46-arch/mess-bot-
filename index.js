@@ -4592,11 +4592,11 @@ async function handleMessage(
   // ==========================================================
   //
   // Shutdown/pause blocks normal commands, but Banat remains active.
-  // Explicit !banat controls are also allowed through this gate.
+  // Explicit /banat controls are also allowed through this gate.
   // ==========================================================
 
   const banatControlAllowedWhileDisabled =
-    /^!banat(?:\s|$)/i.test(originalText);
+    /^\/banat(?:\s|$)/i.test(originalText);
 
   if (
     global.botDisabled === true ||
@@ -5937,7 +5937,7 @@ async function handleMessage(
 
   const banatControlMatch =
     text.match(
-      /^!banat(?:\s+(on|off|status|link|pics)(?:\s+(on|off))?)?$/i
+      /^\/banat(?:\s+(on|off|status|link|pics)(?:\s+(on|off))?)?$/i
     );
 
   if (banatControlMatch) {
@@ -5978,8 +5978,8 @@ async function handleMessage(
               "",
               `    ♡ ${enabled ? "🟢 ON" : "🔴 OFF"}`,
               "",
-              `    ♡ !banat ${command} on`,
-              `    ♡ !banat ${command} off`,
+              `    ♡ /banat ${command} on`,
+              `    ♡ /banat ${command} off`,
               "",
               "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
             ].join("\n"),
@@ -6063,9 +6063,9 @@ async function handleMessage(
             `    ♡ ${settings.banat_meme_enabled === true ? "🟢 ON" : "🔴 OFF"}`,
             "",
             "୨୧ controls",
-            "    ♡ !banat on / off",
-            "    ♡ !banat link on / off",
-            "    ♡ !banat pics on / off",
+            "    ♡ /banat on / off",
+            "    ♡ /banat link on / off",
+            "    ♡ /banat pics on / off",
             "",
             "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
           ].join("\n"),
@@ -6081,20 +6081,80 @@ async function handleMessage(
         lastRandomRoastByThread.delete(threadId);
       }
 
-      sendReplyWithTyping(
-        api,
-        [
-          "╭────── 🎀  BANAT CONTROL  🎀 ──────╮",
-          "",
-          enabled ? "🟢 BANAT IS NOW ON" : "🔴 BANAT IS NOW OFF",
-          "",
-          "୨୧ group status",
-          `    ♡ ${enabled ? "ON" : "OFF"}`,
-          "",
-          "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
-        ].join("\n"),
-        threadID
-      );
+      if (enabled) {
+        sendReplyWithTyping(
+          api,
+          "sino uupakan kong mukhang aso dito?",
+          threadID
+        );
+
+        setTimeout(() => {
+          // The self-listener normally reacts to outgoing Banat messages,
+          // but this explicit control reply guarantees the 🥷 reaction.
+          const reactionMessage = {
+            messageID: null,
+            threadID: threadId,
+          };
+
+          const reactionCallback = (reactionError) => {
+            if (reactionError) {
+              console.error(
+                "[BANAT] Control self-reaction failed:",
+                reactionError
+              );
+            }
+          };
+
+          // The normal send helper does not expose the sent message ID,
+          // so use the raw Messenger callback for this one control message.
+          try {
+            api.sendMessage(
+              "sino uupakan kong mukhang aso dito?",
+              threadID,
+              (sendError, messageInfo) => {
+                if (sendError) {
+                  console.error(
+                    "[BANAT] Control message failed:",
+                    sendError
+                  );
+                  return;
+                }
+
+                const messageID =
+                  messageInfo &&
+                  (messageInfo.messageID || messageInfo.messageId);
+
+                if (
+                  !messageID ||
+                  typeof api.setMessageReaction !== "function"
+                ) {
+                  return;
+                }
+
+                api.setMessageReaction(
+                  "🥷",
+                  {
+                    messageID: String(messageID),
+                    threadID: threadId,
+                  },
+                  reactionCallback
+                );
+              }
+            );
+          } catch (sendError) {
+            console.error(
+              "[BANAT] Control message send failed:",
+              sendError
+            );
+          }
+        }, 1200);
+      } else {
+        sendReplyWithTyping(
+          api,
+          "bawi ka pag malakas ka na tanga",
+          threadID
+        );
+      }
     } catch (error) {
       console.error("[BANAT] Update failed:", error);
       sendReplyWithTyping(api, "🔴 Failed to update banat settings.", threadID);
