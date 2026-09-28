@@ -2843,6 +2843,39 @@ app.get(
   }
 );
 
+app.get(
+  "/api/dashboard/health",
+  requireDashboardAccess,
+  async (_req, res) => {
+    try {
+      const watchdog = getWatchdogStatus();
+      const traffic = trafficSafetyStatus();
+      const music = getMusicStats();
+      const database = await db.healthCheck().catch(() => false);
+
+      return res.json({
+        ok: watchdog.ok === true && database === true,
+        runtime: {
+          watchdog,
+          traffic,
+          music,
+          database,
+          uptime_seconds: Math.floor(process.uptime()),
+          node_version: process.version,
+          memory: process.memoryUsage(),
+        },
+        generated_at: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("[DASHBOARD] Health query failed:", error);
+      return res.status(503).json({
+        ok: false,
+        error: "Runtime health is temporarily unavailable.",
+      });
+    }
+  }
+);
+
 app.post(
   "/api/dashboard/connect-credentials",
   requireDashboardAccess,
