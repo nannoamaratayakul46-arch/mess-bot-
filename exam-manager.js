@@ -428,7 +428,7 @@ async function handleExam(api, event, args = []) {
     await safeSend(api, String(event.threadID), [
       header(),
       "",
-      "20 questions · 5 minutes · pass mark 70%",
+      "20 questions · 15 minutes · pass mark 70%",
       "",
       "gaokao-inspired format · original English-language questions",
       "mathematics · English · physics · chemistry · biology · logic · geography",
