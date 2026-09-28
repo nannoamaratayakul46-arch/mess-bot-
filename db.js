@@ -3369,6 +3369,7 @@ module.exports = {
   // Database
   query,
   connect,
+  getDashboardSnapshot,
 
   // Users
   getUser,
