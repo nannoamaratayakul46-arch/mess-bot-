@@ -733,6 +733,29 @@ async function connect() {
     CREATE INDEX IF NOT EXISTS rpg_party_members_lookup_idx
       ON rpg_party_members(thread_id, user_id, party_id);
 
+    CREATE TABLE IF NOT EXISTS rpg_guilds (
+      id BIGSERIAL PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      guild_id TEXT NOT NULL,
+      name TEXT NOT NULL,
+      founder_id TEXT NOT NULL,
+      treasury BIGINT NOT NULL DEFAULT 0,
+      level INTEGER NOT NULL DEFAULT 1,
+      experience BIGINT NOT NULL DEFAULT 0,
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      UNIQUE(thread_id, guild_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS rpg_guild_members (
+      guild_id BIGINT NOT NULL REFERENCES rpg_guilds(id) ON DELETE CASCADE,
+      thread_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      role TEXT NOT NULL DEFAULT 'member',
+      joined_at BIGINT NOT NULL,
+      PRIMARY KEY(guild_id, user_id)
+    );
+
     CREATE TABLE IF NOT EXISTS rpg_guild_invites (
       guild_id BIGINT NOT NULL REFERENCES rpg_guilds(id) ON DELETE CASCADE,
       thread_id TEXT NOT NULL,
@@ -793,57 +816,6 @@ async function connect() {
       attacks INTEGER NOT NULL DEFAULT 0,
       last_attack_at BIGINT,
       PRIMARY KEY(boss_id, user_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS rpg_boss_sessions (
-      id BIGSERIAL PRIMARY KEY,
-      thread_id TEXT NOT NULL,
-      boss_id TEXT NOT NULL,
-      party_id BIGINT,
-      boss_hp INTEGER NOT NULL,
-      boss_max_hp INTEGER NOT NULL,
-      phase INTEGER NOT NULL DEFAULT 1,
-      turn_number INTEGER NOT NULL DEFAULT 1,
-      status TEXT NOT NULL DEFAULT 'active',
-      environment TEXT,
-      weather TEXT,
-      season TEXT,
-      created_at BIGINT NOT NULL,
-      updated_at BIGINT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS rpg_boss_participants (
-      boss_session_id BIGINT NOT NULL REFERENCES rpg_boss_sessions(id) ON DELETE CASCADE,
-      thread_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      damage_dealt INTEGER NOT NULL DEFAULT 0,
-      healing_done INTEGER NOT NULL DEFAULT 0,
-      damage_taken INTEGER NOT NULL DEFAULT 0,
-      active BOOLEAN NOT NULL DEFAULT TRUE,
-      PRIMARY KEY(boss_session_id, user_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS rpg_guilds (
-      id BIGSERIAL PRIMARY KEY,
-      thread_id TEXT NOT NULL,
-      guild_id TEXT NOT NULL,
-      name TEXT NOT NULL,
-      founder_id TEXT NOT NULL,
-      treasury BIGINT NOT NULL DEFAULT 0,
-      level INTEGER NOT NULL DEFAULT 1,
-      experience BIGINT NOT NULL DEFAULT 0,
-      created_at BIGINT NOT NULL,
-      updated_at BIGINT NOT NULL,
-      UNIQUE(thread_id, guild_id)
-    );
-
-    CREATE TABLE IF NOT EXISTS rpg_guild_members (
-      guild_id BIGINT NOT NULL REFERENCES rpg_guilds(id) ON DELETE CASCADE,
-      thread_id TEXT NOT NULL,
-      user_id TEXT NOT NULL,
-      role TEXT NOT NULL DEFAULT 'member',
-      joined_at BIGINT NOT NULL,
-      PRIMARY KEY(guild_id, user_id)
     );
 
     CREATE TABLE IF NOT EXISTS rpg_world_state (
