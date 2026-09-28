@@ -4439,6 +4439,28 @@ async function handleMessage(
   }
 
   // ==========================================================
+  // AUTOMATIC BANAT
+  // ==========================================================
+  //
+  // Banat must run while the bot is ON as well as while normal
+  // commands are paused/shut down. Never run it for commands.
+  // ==========================================================
+
+  if (!originalText.startsWith("!")) {
+    const banatHandled = await handleAutomaticBanatMessage({
+      api,
+      event,
+      body,
+      senderId,
+      threadId,
+    });
+
+    if (banatHandled) {
+      return;
+    }
+  }
+
+  // ==========================================================
   // GLOBAL DISABLED / PAUSED STATE
   // ==========================================================
   //
@@ -4453,18 +4475,6 @@ async function handleMessage(
     global.botDisabled === true ||
     global.botPaused === true
   ) {
-    const banatHandled = await handleAutomaticBanatMessage({
-      api,
-      event,
-      body,
-      senderId,
-      threadId,
-    });
-
-    if (banatHandled) {
-      return;
-    }
-
     if (!banatControlAllowedWhileDisabled) {
       return;
     }
