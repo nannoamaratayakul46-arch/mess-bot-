@@ -3175,82 +3175,112 @@ async function removeFromGroup(
     };
   }
 
-  return new Promise(
-    (resolve) => {
-      let settled = false;
+  return new Promise((resolve) => {
+    let settled = false;
 
-      const finish =
-        (result) => {
-          if (settled) {
-            return;
-          }
+    const finish = (result) => {
+      if (settled) {
+        return;
+      }
 
-          settled = true;
-          resolve(result);
-        };
+      settled = true;
+      clearTimeout(timeout);
 
-      try {
+      resolve(result);
+    };
+
+    const timeout = setTimeout(() => {
+      finish({
+        ok: false,
+        errorCode: "REMOVAL_TIMEOUT",
+        errorMessage:
+          "Facebook did not complete the group-removal request in time.",
+        rawError: null,
+      });
+    }, 15_000);
+
+    const handleError = (error) => {
+      console.error(
+        "[moderation] removeUserFromGroup:",
+        error
+      );
+
+      finish({
+        ok: false,
+        errorCode:
+          error?.code ||
+          error?.errorCode ||
+          "FACEBOOK_ERROR",
+        errorMessage:
+          error?.message ||
+          error?.errorDescription ||
+          error?.errorSummary ||
+          "Facebook rejected the group-removal request.",
+        rawError:
+          serializeFacebookError(
+            error
+          ),
+      });
+    };
+
+    const handleSuccess = () => {
+      finish({
+        ok: true,
+        errorCode: null,
+        errorMessage: null,
+        rawError: null,
+      });
+    };
+
+    try {
+      const callback = (error) => {
+        if (error) {
+          handleError(error);
+        } else {
+          handleSuccess();
+        }
+      };
+
+      const result =
         api.removeUserFromGroup(
           targetId,
           threadID,
-          (error) => {
-            if (error) {
-              console.error(
-                "[moderation] removeUserFromGroup:",
-                error
-              );
-
-              finish({
-                ok: false,
-                errorCode:
-                  error?.code ||
-                  error?.errorCode ||
-                  "FACEBOOK_ERROR",
-                errorMessage:
-                  error?.message ||
-                  error?.errorDescription ||
-                  error?.errorSummary ||
-                  "Facebook rejected the group-removal request.",
-                rawError:
-                  serializeFacebookError(
-                    error
-                  ),
-              });
-
-              return;
-            }
-
-            finish({
-              ok: true,
-              errorCode: null,
-              errorMessage: null,
-              rawError: null,
-            });
-          }
-        );
-      } catch (error) {
-        console.error(
-          "[moderation] Failed to remove user:",
-          error
+          callback
         );
 
-        finish({
-          ok: false,
-          errorCode:
-            error?.code ||
-            error?.errorCode ||
-            "EXCEPTION",
-          errorMessage:
-            error?.message ||
-            "An exception occurred while attempting to remove the user.",
-          rawError:
-            serializeFacebookError(
-              error
-            ),
-        });
+      // Support ws3-fca builds that return a Promise while
+      // retaining compatibility with callback-based builds.
+      if (
+        result &&
+        typeof result.then === "function"
+      ) {
+        result.then(
+          handleSuccess,
+          handleError
+        );
       }
+    } catch (error) {
+      console.error(
+        "[moderation] Failed to remove user:",
+        error
+      );
+
+      finish({
+        ok: false,
+        errorCode:
+          error?.code ||
+          error?.errorCode ||
+          "EXCEPTION",
+        errorMessage:
+          error?.message ||
+          "An exception occurred while attempting to remove the user.",
+        rawError:
+          serializeFacebookError(
+            error
+          ),
+      });
     }
-  );
+  });
 }
 
 function formatRemovalFailure(
