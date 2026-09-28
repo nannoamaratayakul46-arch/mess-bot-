@@ -773,14 +773,6 @@ async function connect() {
       PRIMARY KEY(guild_id, upgrade_key)
     );
 
-    CREATE TABLE IF NOT EXISTS rpg_guild_armory (
-      guild_id BIGINT NOT NULL REFERENCES rpg_guilds(id) ON DELETE CASCADE,
-      equipment_id BIGINT NOT NULL REFERENCES rpg_crafted_equipment(id) ON DELETE CASCADE,
-      deposited_by TEXT NOT NULL,
-      deposited_at BIGINT NOT NULL,
-      PRIMARY KEY(guild_id, equipment_id)
-    );
-
     CREATE TABLE IF NOT EXISTS rpg_special_access (
       thread_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
@@ -800,6 +792,14 @@ async function connect() {
       enhancement INTEGER NOT NULL DEFAULT 0,
       stats JSONB NOT NULL DEFAULT '{}'::jsonb,
       created_at BIGINT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS rpg_guild_armory (
+      guild_id BIGINT NOT NULL REFERENCES rpg_guilds(id) ON DELETE CASCADE,
+      equipment_id BIGINT NOT NULL REFERENCES rpg_crafted_equipment(id) ON DELETE CASCADE,
+      deposited_by TEXT NOT NULL,
+      deposited_at BIGINT NOT NULL,
+      PRIMARY KEY(guild_id, equipment_id)
     );
 
     CREATE TABLE IF NOT EXISTS rpg_world_bosses (
