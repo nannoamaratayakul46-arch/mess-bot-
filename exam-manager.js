@@ -8,7 +8,7 @@ const db = require("./db");
 const QUESTIONS = require("./exam-questions");
 
 const EXAM_TOTAL_QUESTIONS = 20;
-const EXAM_TIME_LIMIT_MS = 5 * 60 * 1000;
+const EXAM_TIME_LIMIT_MS = 15 * 60 * 1000;
 const EXAM_PASS_PERCENT = 70;
 const EXAM_RECENT_LIMIT = 80;
 
