@@ -86,11 +86,11 @@ linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
 .cabin-prompt{position:absolute;left:50%;bottom:19%;transform:translateX(-50%);z-index:5;font:9px Arial;letter-spacing:.25em;text-transform:uppercase;color:rgba(230,235,215,.52);white-space:nowrap}
 .cabin-prompt:before{content:"";display:block;width:1px;height:25px;background:linear-gradient(transparent,#b9c98d);margin:0 auto 9px}
 .realistic-canvas{z-index:0;pointer-events:auto;touch-action:manipulation}
-.realistic-copy{position:absolute;left:0;right:0;text-align:center;pointer-events:none;text-shadow:0 2px 18px #000;z-index:3;padding:0 22px}
+.realistic-copy{position:absolute;left:50%;right:auto;transform:translateX(-50%);width:min(680px,88vw);text-align:center;pointer-events:none;text-shadow:0 2px 18px #000;z-index:3;padding:0 22px}
 .realistic-copy h1,.realistic-copy h2{font-weight:300;font-size:clamp(22px,4.4vw,42px);margin:14px 0 6px}
 .realistic-copy p{font-style:normal;opacity:.65;margin:0;font-size:17px}
-.realistic-copy.ocean-copy{bottom:22%}
-.realistic-copy.forest-copy{top:7%}
+.realistic-copy.ocean-copy{top:auto;bottom:22%}
+.realistic-copy.forest-copy{top:7%;bottom:auto}
 .realistic-hint{position:absolute;left:0;right:0;bottom:9%;z-index:4;text-align:center;font:10px Arial,sans-serif;letter-spacing:.28em;text-transform:uppercase;color:rgba(247,241,231,.58);pointer-events:none;text-shadow:0 2px 18px #000;animation:realisticHint 3s infinite}
 .cabin-hint{bottom:9%}
 @keyframes realisticHint{50%{opacity:.25}}
