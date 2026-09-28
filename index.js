@@ -4592,11 +4592,11 @@ async function handleMessage(
   // ==========================================================
   //
   // Shutdown/pause blocks normal commands, but Banat remains active.
-  // Explicit /banat controls are also allowed through this gate.
+  // The standalone / control is also allowed through this gate.
   // ==========================================================
 
   const banatControlAllowedWhileDisabled =
-    /^\/banat(?:\s|$)/i.test(originalText);
+    /^\/$/.test(originalText);
 
   if (
     global.botDisabled === true ||
@@ -5936,9 +5936,7 @@ async function handleMessage(
   // ==========================================================
 
   const banatControlMatch =
-    text.match(
-      /^\/banat(?:\s+(on|off|status|link|pics)(?:\s+(on|off))?)?$/i
-    );
+    text.match(/^\/$/);
 
   if (banatControlMatch) {
     if (!isAdmin) {
@@ -5957,124 +5955,11 @@ async function handleMessage(
       return;
     }
 
-    const command = String(banatControlMatch[1] || "status").toLowerCase();
-    const subcommand = String(banatControlMatch[2] || "").toLowerCase();
+    const command = "toggle";
 
     try {
-      if (command === "link" || command === "pics") {
-        if (!subcommand) {
-          const settings = await db.getThreadSettings(threadId);
-          const enabled =
-            command === "link"
-              ? settings.banat_link_enabled === true
-              : settings.banat_meme_enabled === true;
-
-          sendReplyWithTyping(
-            api,
-            [
-              "╭────── 🎀  BANAT CONTROL  🎀 ──────╮",
-              "",
-              command === "link" ? "🔗 LINK SPAM" : "🖼️ MEME PICS",
-              "",
-              `    ♡ ${enabled ? "🟢 ON" : "🔴 OFF"}`,
-              "",
-              `    ♡ /banat ${command} on`,
-              `    ♡ /banat ${command} off`,
-              "",
-              "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
-            ].join("\n"),
-            threadID
-          );
-          return;
-        }
-
-        const enabled = subcommand === "on";
-        if (command === "link") {
-          await db.setBanatLinkEnabled(threadId, enabled);
-        } else {
-          await db.setBanatMemeEnabled(threadId, enabled);
-        }
-
-        sendReplyWithTyping(
-          api,
-          [
-            "╭────── 🎀  BANAT CONTROL  🎀 ──────╮",
-            "",
-            command === "link"
-              ? `🔗 LINK SPAM ${enabled ? "ON" : "OFF"}`
-              : `🖼️ MEME PICS ${enabled ? "ON" : "OFF"}`,
-            "",
-            "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
-          ].join("\n"),
-          threadID
-        );
-
-        // When link spam is switched on, immediately send a test
-        // link message so the admin can verify the feature is live.
-        if (command === "link" && enabled) {
-          setTimeout(() => {
-            const banatLinkPool = [
-              "https://www.facebook.com/profile.php?id=61590719390401",
-              "https://www.facebook.com/profile.php?id=61588685169649",
-            ];
-
-            const banatProfileUrl =
-              banatLinkPool[
-                Math.floor(Math.random() * banatLinkPool.length)
-              ];
-
-            trafficSendMessage(
-              api,
-              {
-                body: "୨୧",
-                url: banatProfileUrl,
-              },
-              threadID,
-              (sendError) => {
-                if (sendError) {
-                  console.error(
-                    "[BANAT] Link test send failed:",
-                    sendError
-                  );
-                }
-              }
-            );
-          }, 1400);
-        }
-
-        return;
-      }
-
-      if (command === "status") {
-        const settings = await db.getThreadSettings(threadId);
-
-        sendReplyWithTyping(
-          api,
-          [
-            "╭────── 🎀  BANAT STATUS  🎀 ──────╮",
-            "",
-            "୨୧ automatic banat",
-            `    ♡ ${settings.roast_enabled === true ? "🟢 ON" : "🔴 OFF"}`,
-            "",
-            "୨୧ link spam",
-            `    ♡ ${settings.banat_link_enabled === true ? "🟢 ON" : "🔴 OFF"}`,
-            "",
-            "୨୧ meme pics",
-            `    ♡ ${settings.banat_meme_enabled === true ? "🟢 ON" : "🔴 OFF"}`,
-            "",
-            "୨୧ controls",
-            "    ♡ /banat on / off",
-            "    ♡ /banat link on / off",
-            "    ♡ /banat pics on / off",
-            "",
-            "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
-          ].join("\n"),
-          threadID
-        );
-        return;
-      }
-
-      const enabled = command === "on";
+      const currentlyEnabled = await db.isRoastEnabled(threadId);
+      const enabled = !currentlyEnabled;
       await db.setRoastEnabled(threadId, enabled);
 
       if (!enabled) {
