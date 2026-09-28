@@ -3238,6 +3238,129 @@ async function setGameEnabled(threadId, enabled) {
   });
 }
 
+
+// ═══════════════════════════════════════════════════════════
+// DASHBOARD READ MODEL
+// ═══════════════════════════════════════════════════════════
+//
+// Read-only aggregation for the private ECLIPSE command center.
+// This deliberately returns summarized operational data rather
+// than exposing arbitrary SQL or duplicating RPG/economy logic.
+//
+// ═══════════════════════════════════════════════════════════
+
+async function getDashboardSnapshot() {
+  const conn = requireConn();
+
+  const [
+    userStats,
+    economyStats,
+    transactions,
+    rpgStats,
+    rpgClasses,
+    rpgRegions,
+    rpgRecentPlayers,
+    guildStats,
+    moderationStats,
+    gameStats,
+  ] = await Promise.all([
+    conn.query(`
+      SELECT
+        COUNT(*)::int AS total_users,
+        COUNT(*) FILTER (WHERE balance > 0 OR bank_balance > 0)::int AS funded_users,
+        COALESCE(SUM(balance), 0)::bigint AS wallet_circulation,
+        COALESCE(SUM(bank_balance), 0)::bigint AS bank_circulation,
+        COALESCE(SUM(xp), 0)::bigint AS total_xp,
+        COALESCE(SUM(games_played), 0)::bigint AS games_played,
+        COALESCE(SUM(wins), 0)::bigint AS wins
+      FROM users
+    `),
+    conn.query(`
+      SELECT
+        COUNT(*)::int AS transaction_count,
+        COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0)::bigint AS inflow,
+        COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0)::bigint AS outflow
+      FROM economy_transactions
+    `),
+    conn.query(`
+      SELECT id, thread_id, user_id, type, amount, description, created_at
+      FROM economy_transactions
+      ORDER BY created_at DESC, id DESC
+      LIMIT 12
+    `),
+    conn.query(`
+      SELECT
+        COUNT(*)::int AS players,
+        COUNT(*) FILTER (WHERE status = 'active')::int AS active_players,
+        COUNT(*) FILTER (WHERE status <> 'active')::int AS inactive_players,
+        COUNT(*) FILTER (WHERE property_tier > 0)::int AS property_holders,
+        COALESCE(SUM(reputation), 0)::bigint AS reputation,
+        COALESCE(SUM(renown), 0)::bigint AS renown
+      FROM rpg_players
+    `),
+    conn.query(`
+      SELECT character_class, COUNT(*)::int AS count
+      FROM rpg_players
+      GROUP BY character_class
+      ORDER BY count DESC, character_class ASC
+    `),
+    conn.query(`
+      SELECT region_id, COUNT(*)::int AS count
+      FROM rpg_players
+      GROUP BY region_id
+      ORDER BY count DESC, region_id ASC
+    `),
+    conn.query(`
+      SELECT thread_id, user_id, character_class, subclass, region_id,
+             level, reputation, renown, updated_at
+      FROM rpg_players
+      ORDER BY updated_at DESC
+      LIMIT 12
+    `),
+    conn.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM rpg_guilds) AS guilds,
+        (SELECT COUNT(*)::int FROM rpg_guild_members) AS members,
+        (SELECT COALESCE(SUM(treasury), 0)::bigint FROM rpg_guilds) AS treasury,
+        (SELECT COALESCE(SUM(experience), 0)::bigint FROM rpg_guilds) AS experience
+    `),
+    conn.query(`
+      SELECT
+        (SELECT COUNT(*)::int FROM moderation_warnings WHERE active = TRUE) AS active_warnings,
+        (SELECT COUNT(*)::int FROM moderation_bans WHERE active = TRUE) AS active_bans,
+        (SELECT COUNT(*)::int FROM moderation_mutes WHERE active = TRUE AND expires_at > $1) AS active_mutes,
+        (SELECT COUNT(*)::int FROM automod_incidents WHERE created_at >= $1) AS incidents_24h
+    `, [Date.now() - 24 * 60 * 60 * 1000]),
+    conn.query(`
+      SELECT
+        COALESCE(SUM(games_played), 0)::bigint AS games_played,
+        COALESCE(SUM(wins), 0)::bigint AS wins,
+        COUNT(*) FILTER (WHERE games_played > 0)::int AS players_with_games
+      FROM users
+    `),
+  ]);
+
+  const row = (result) => result.rows[0] || {};
+
+  return {
+    generated_at: new Date().toISOString(),
+    users: row(userStats),
+    economy: {
+      ...row(economyStats),
+      recent_transactions: transactions.rows,
+    },
+    rpg: {
+      ...row(rpgStats),
+      classes: rpgClasses.rows,
+      regions: rpgRegions.rows,
+      recent_players: rpgRecentPlayers.rows,
+    },
+    guilds: row(guildStats),
+    moderation: row(moderationStats),
+    games: row(gameStats),
+  };
+}
+
 // ╔══════════════════════════════════════════════════════════╗
 // ║                         EXPORTS                          ║
 // ╚══════════════════════════════════════════════════════════╝
