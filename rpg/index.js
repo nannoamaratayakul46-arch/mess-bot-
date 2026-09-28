@@ -196,6 +196,10 @@ const {
   donate: donateGuild,
   upgrade: upgradeGuild,
   format: formatGuild,
+  hall: guildHall,
+  armory: guildArmory,
+  depositArmory,
+  withdrawArmory,
 } = require("./guilds");
 
 const companions = require("./companions");
@@ -3763,6 +3767,10 @@ async function handleGuildCommand(api,event,args) {
   if(sub==="members"){const rows=await guildMembers(t,u);if(!rows.length){await send(api,t,"🏰 You are not in a guild.");return;}await send(api,t,box("🏰 GUILD MEMBERS",rows.map(x=>"• "+(x.display_name||x.user_id)+" — "+x.role)));return;}
   if(sub==="donate"){await donateGuild(t,u,args[1]);await send(api,t,"💰 Donation deposited into the guild treasury.");return;}
   if(sub==="upgrade"){await upgradeGuild(t,u,args[1]);await send(api,t,"🏛️ Guild upgrade completed: "+args[1]);return;}
+  if(sub==="hall"){const h=await guildHall(t,u);if(!h){await send(api,t,"🏰 You are not in a guild.");return;}await send(api,t,box("🏰 GUILD HALL",[h.guild.name,"Level "+h.guild.level,"Rooms:", "• Throne Hall",...(h.upgrades.length?h.upgrades.map(x=>"• "+x.upgrade_key+" Lv."+x.level):["• Armory locked","• Stable locked","• Blacksmith locked","• Vault locked","• Quest Board locked"])]));return;}
+  if(sub==="armory"){const rows=await guildArmory(t,u);await send(api,t,box("⚔️ GUILD ARMORY",rows.length?rows.map(x=>"#"+x.equipment_id+" · "+x.item_id+" · "+x.rarity):["Empty. Forge equipment, then !rpg guild armory deposit <id>."]));return;}
+  if(sub==="armory_deposit"||sub==="deposit"){await depositArmory(t,u,args[1]);await send(api,t,"⚔️ Item deposited into the guild armory.");return;}
+  if(sub==="armory_withdraw"||sub==="withdraw"){await withdrawArmory(t,u,args[1]);await send(api,t,"⚔️ Item withdrawn from the guild armory.");return;}
   await send(api,t,await formatGuild(t,u));
 }
 
