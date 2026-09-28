@@ -6427,42 +6427,34 @@ async function handleAutomaticBanatMessage({
     );
   }
 
-  if (canRandomRoastThread(threadId)) {
-    const randomRoastReply = getRandomRoastReply();
+  // No explicit trigger matched, so use the expanded/public pool.
+  // The same burst queue applies: at most two replies, two seconds
+  // apart. This is what makes Banat react to ordinary message bursts
+  // instead of depending on a trigger word.
+  const randomRoastReply = getRandomRoastReply();
 
-    if (randomRoastReply) {
-      const randomReplyDelay = allowBanatBurstReply(
-        threadID,
-        senderId
-      );
-
-      if (randomReplyDelay === null) {
-        console.log(
-          "[BANAT] Ignored rapid-fire random roast from " +
-            senderId +
-            " in " +
-            threadID
-        );
-        return true;
-      }
-
-      lastRandomRoastByThread.set(
-        threadId,
-        Date.now()
-      );
-
-      sendBanatReplyWithTyping(
+  if (randomRoastReply) {
+    const accepted = acceptBanatBurstMessage(
+      threadID,
+      {
         api,
-        randomRoastReply,
-        threadID,
-        event.messageID,
-        false,
-        null,
-        randomReplyDelay
-      );
+        message: randomRoastReply,
+        replyToMessageID: event.messageID,
+        attachMeme: false,
+        linkUrl: null,
+      }
+    );
 
-      return true;
+    if (!accepted) {
+      console.log(
+        "[BANAT] Ignored burst message from " +
+          senderId +
+          " in " +
+          threadID
+      );
     }
+
+    return true;
   }
 
   return false;
