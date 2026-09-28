@@ -3834,7 +3834,7 @@ async function handleMessage(
       // ws3-fca's current reaction path expects the message descriptor
       // when MQTT is active, so include the thread ID explicitly.
       api.setMessageReaction(
-        "😆",
+        "🥷",
         {
           messageID: String(event.messageID),
           threadID: threadId,
@@ -6082,69 +6082,14 @@ async function handleMessage(
       }
 
       if (enabled) {
-        try {
-          if (typeof api.sendTypingIndicator === "function") {
-            api.sendTypingIndicator(threadID, () => {});
-          }
-        } catch (typingError) {
-          console.error("[BANAT] Control typing indicator failed:", typingError);
-        }
+        sendReplyWithTyping(
+          api,
+          "sino uupakan kong mukhang aso dito?",
+          threadID
+        );
 
-        setTimeout(() => {
-          // The self-listener normally reacts to outgoing Banat messages,
-          // but this explicit control reply guarantees the 🥷 reaction.
-          const reactionCallback = (reactionError) => {
-            if (reactionError) {
-              console.error(
-                "[BANAT] Control self-reaction failed:",
-                reactionError
-              );
-            }
-          };
-
-          // The normal send helper does not expose the sent message ID,
-          // so use the raw Messenger callback for this one control message.
-          try {
-            api.sendMessage(
-              "sino uupakan kong mukhang aso dito?",
-              threadID,
-              (sendError, messageInfo) => {
-                if (sendError) {
-                  console.error(
-                    "[BANAT] Control message failed:",
-                    sendError
-                  );
-                  return;
-                }
-
-                const messageID =
-                  messageInfo &&
-                  (messageInfo.messageID || messageInfo.messageId);
-
-                if (
-                  !messageID ||
-                  typeof api.setMessageReaction !== "function"
-                ) {
-                  return;
-                }
-
-                api.setMessageReaction(
-                  "🥷",
-                  {
-                    messageID: String(messageID),
-                    threadID: threadId,
-                  },
-                  reactionCallback
-                );
-              }
-            );
-          } catch (sendError) {
-            console.error(
-              "[BANAT] Control message send failed:",
-              sendError
-            );
-          }
-        }, 1200);
+        // The existing self-listener reacts to this outgoing Banat message.
+      }
       } else {
         sendReplyWithTyping(
           api,
