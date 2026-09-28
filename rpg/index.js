@@ -3730,6 +3730,117 @@ const TOP_LEVEL_ALIASES = new Set([
    MAIN RPG COMMAND ROUTER
 ========================================================= */
 
+function isRpgRootAdmin(userID) {
+  const admins = String(process.env.ADMIN_IDS || "").split(",").map(x => x.trim()).filter(Boolean);
+  return admins.includes(String(userID || "").trim());
+}
+
+function mentionedUser(event) {
+  const mentions = event && event.mentions;
+  if (mentions && typeof mentions === "object") {
+    const ids = Object.keys(mentions);
+    if (ids.length) return ids[0];
+  }
+  return null;
+}
+
+async function handleGuildCommand(api,event,args) {
+  const t=event.threadID,u=event.senderID,sub=normalizeKey(args[0]||"info");
+  if(sub==="create"){const g=await createGuild(t,u,args.slice(1).join(" "));await send(api,t,"🏰 Guild founded: "+g.name+"\nGuild creation cost: 5,000 coins.");return;}
+  if(sub==="invite"){const target=mentionedUser(event);if(!target)throw new Error("Mention the player you want to invite.");await inviteGuild(t,u,target);await send(api,t,"✉️ Guild invite sent.");return;}
+  if(sub==="join"){const g=await joinGuild(t,u);await send(api,t,"🏰 You joined "+g.name+".");return;}
+  if(sub==="leave"){await leaveGuild(t,u);await send(api,t,"🏳️ You left your guild.");return;}
+  if(sub==="members"){const rows=await guildMembers(t,u);if(!rows.length){await send(api,t,"🏰 You are not in a guild.");return;}await send(api,t,box("🏰 GUILD MEMBERS",rows.map(x=>"• "+(x.display_name||x.user_id)+" — "+x.role)));return;}
+  if(sub==="donate"){await donateGuild(t,u,args[1]);await send(api,t,"💰 Donation deposited into the guild treasury.");return;}
+  if(sub==="upgrade"){await upgradeGuild(t,u,args[1]);await send(api,t,"🏛️ Guild upgrade completed: "+args[1]);return;}
+  await send(api,t,await formatGuild(t,u));
+}
+
+async function handleCompanionCommand(api,event,args) {
+  const t=event.threadID,u=event.senderID,sub=normalizeKey(args[0]||"list");
+  if(sub==="hatch"){const p=await companions.hatch(t,u,args[1]);await send(api,t,"🥚✨ The egg opened.\n\n"+p.emoji+" "+p.name+"\nRarity: "+p.rarity+"\nPassive: "+p.passive+"\nAbility: "+p.ability);return;}
+  if(sub==="activate"||sub==="equip"){await companions.activate(t,u,args[1]);await send(api,t,"⭐ Companion activated: "+args[1]);return;}
+  if(sub==="train"){const p=await companions.train(t,u,args[1]);await send(api,t,"🐾 Training complete. "+p.emoji+" "+p.name+" is now Lv."+p.level+".");return;}
+  if(sub==="find"||sub==="hunt"){await db.spendBalance(t,u,1000,"RPG companion hunt");const eggs=Object.keys(companions.EGGS),egg=eggs[Math.floor(Math.random()*eggs.length)];await db.addRpgItem(t,u,egg,1);await send(api,t,"🥚 You discovered a "+companions.EGGS[egg].name+"!\nUse !rpg companion hatch "+egg+".");return;}
+  await send(api,t,box("🐾 COMPANIONS",[
+    "Use !rpg companion hunt — Search for an egg (1,000 coins).",
+    "Use !rpg companion hatch <egg>.",
+    "Use !rpg companion activate <id>.",
+    "Use !rpg companion train <id>.",
+    "",
+    companions.format(await companions.list(t,u))
+  ]));
+}
+
+async function handleForgeCommand(api,event,args) {
+  if(!args[0]){const lines=Object.entries(RECIPES).map(([id,r])=>r.emoji+" "+r.name+" · "+r.rarity+"\n   Guild Lv."+r.guildLevel+" · Blacksmith Lv."+r.blacksmithLevel+" · "+r.cost.toLocaleString()+" coins\n   Recipe: "+Object.entries(r.materials).map(x=>x[1]+"× "+x[0].replace(/_/g," ")).join(", "));await send(api,event.threadID,box("🔨 ECLIPSE BLACKSMITH",lines));return;}
+  const r=await forge(event.threadID,event.senderID,args[0]);await send(api,event.threadID,"🔨✨ Forged: "+r.emoji+" "+r.name+" ["+r.rarity+"]");
+}
+
+async function handleWorldBossCommand(api,event,args) {
+  const sub=normalizeKey(args[0]||"status");
+  if(sub==="attack"){const r=await worldBoss.attack(event.threadID,event.senderID);await send(api,event.threadID,"⚔️ "+r.boss.emoji+" "+r.boss.name+"\nDamage: "+r.damage.toLocaleString()+"\nBoss HP: "+r.hp.toLocaleString()+"\nPhase: "+r.phase+(r.defeated?"\n\n🏆 WORLD BOSS DEFEATED. Rewards have been distributed.":""));return;}
+  const r=await worldBoss.status(event.threadID);if(!r){await send(api,event.threadID,"🌎 No world boss is active.");return;}
+  await send(api,event.threadID,box("🌎 WORLD BOSS",[
+    r.boss.emoji+" "+r.boss.name,
+    "HP: "+Number(r.state.hp).toLocaleString()+" / "+Number(r.state.max_hp).toLocaleString(),
+    "Phase: "+r.state.phase,
+    "",
+    "🏆 Damage leaders:",
+    ...(r.leaders.length?r.leaders.map((x,i)=>(i+1)+". "+x.user_id+" — "+Number(x.damage_dealt).toLocaleString()):["None yet"])
+  ]));
+}
+
+async function handleSpecialRpgCommand(api,event,args) {
+  const t=event.threadID,u=event.senderID,sub=normalizeKey(args[0]||"help");
+  const root=isRpgRootAdmin(u);
+  if(sub==="access"){
+    if(!root)throw new Error("🔒 RPG special access is admin-only.");
+    const target=mentionedUser(event);if(!target)throw new Error("Mention the player receiving access.");
+    await specialAccess.grant(t,target,u,args[2]||"all");
+    await send(api,t,"🔐 RPG Special Access granted to the mentioned player. Scope: "+(args[2]||"all"));
+    return;
+  }
+  if(sub==="revoke"){
+    if(!root)throw new Error("🔒 RPG special access is admin-only.");
+    const target=mentionedUser(event);if(!target)throw new Error("Mention the player.");
+    await specialAccess.revoke(t,target,args[2]);
+    await send(api,t,"🔒 RPG Special Access revoked.");
+    return;
+  }
+  if(sub==="status"){
+    await send(api,t,box("🔐 RPG SPECIAL ACCESS",await specialAccess.getAccess(t,u).then(rows=>rows.length?rows.map(x=>"• "+x.scope).join("\n"):"No special access.")));return;
+  }
+  if(sub==="summon"&&normalizeKey(args[1])==="boss"){
+    if(!root&&!await specialAccess.hasAccess(t,u,"gm"))throw new Error("🔒 GM access required.");
+    const r=await worldBoss.summon(t,args[2],u);await send(api,t,"⚠️ WORLD BOSS SUMMONED\n"+r.boss_id.replace(/_/g," ")+" · "+Number(r.max_hp).toLocaleString()+" HP");return;
+  }
+  if(sub==="event"){
+    if(!root&&!await specialAccess.hasAccess(t,u,"gm"))throw new Error("🔒 GM access required.");
+    const id=args[1];const e=getEvent(id);if(!e)throw new Error("Unknown world event.");
+    const r=await startWorldEvent(t,id);await send(api,t,"🌎 WORLD EVENT STARTED\n"+(e.symbol||"✦")+" "+e.name+"\n"+e.description);return;
+  }
+  if(sub==="end"){
+    if(!root&&!await specialAccess.hasAccess(t,u,"gm"))throw new Error("🔒 GM access required.");
+    const r=await endWorldEvent(t,args[1]);await send(api,t,r?"🌙 World event ended.":"No matching active event.");return;
+  }
+  if(sub==="events"){
+    const rows=await getWorldEventState(t);await send(api,t,box("🌎 ACTIVE WORLD EVENTS",rows.length?rows.map(x=>x.symbol+" "+x.name+" · "+x.type).join("\n"):"None"));return;
+  }
+  if(root){
+    await send(api,t,box("👑 RPG GM",[
+      "!rpg special access @user [scope]",
+      "!rpg special revoke @user [scope]",
+      "!rpg special summon boss <id>",
+      "!rpg special event <id>",
+      "!rpg special end <id>",
+      "!rpg special events",
+      "Scopes: all, guild, companions, forge, world, boss, gm"
+    ]));return;
+  }
+  await send(api,t,"🔐 Use !rpg special status to view your RPG access.");
+}
+
 async function handleRpgCommand(
   api,
   event,
