@@ -3814,6 +3814,7 @@ async function handleMessage(
 
     if (
       !roastEnabled ||
+      originalText !== "sino uupakan kong mukhang aso dito?" ||
       !event.messageID ||
       !api ||
       typeof api.setMessageReaction !== "function"
