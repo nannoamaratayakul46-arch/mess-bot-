@@ -3165,6 +3165,7 @@ let activeListenerGeneration = 0;
 let startupSchedulersInitialized = false;
 let loginRetryTimer = null;
 let activeMessengerApi = null;
+let eclipseUserID = "";
 
 let dashboardBotPaused = false;
 let dashboardLastConnectedAt = null;
@@ -3331,7 +3332,7 @@ function attemptLogin() {
       {
         online: true,
         updatePresence: true,
-        selfListen: false,
+        selfListen: true,
         randomUserAgent: false,
       },
 
@@ -3433,6 +3434,16 @@ function attemptLogin() {
       api = installTrafficGovernor(api) || api;
       activeMessengerApi = api;
 
+      try {
+        eclipseUserID = typeof api.getCurrentUserID === "function"
+          ? String(api.getCurrentUserID() || "").trim()
+          : "";
+        console.log("[AUTH] ECLIPSE user ID " + (eclipseUserID ? "detected." : "not available."));
+      } catch (error) {
+        eclipseUserID = "";
+        console.warn("[AUTH] Could not determine ECLIPSE user ID:", error?.message || error);
+      }
+
       watchdogSetMessengerConnected(
         true
       );
@@ -3520,7 +3531,7 @@ function attemptLogin() {
 
       api.setOptions({
         listenEvents: true,
-        selfListen: false,
+        selfListen: true,
       });
 
       const startupThreadID =
@@ -3756,6 +3767,61 @@ async function handleMessage(
       senderId
     );
 
+  // ==========================================================
+  // ECLIPSE SELF-MESSAGE GUARD
+  // ==========================================================
+  // Self-listening exists only so Banat can react to ECLIPSE's
+  // own outgoing messages. Never let a self-message enter the
+  // normal command/AI/Banat-reply pipeline.
+  // ==========================================================
+
+  if (
+    eclipseUserID &&
+    senderId === eclipseUserID
+  ) {
+    let roastEnabled = false;
+
+    try {
+      roastEnabled = await db.isRoastEnabled(threadId);
+    } catch (error) {
+      console.error(
+        "[BANAT] Failed to check self-message Banat status:",
+        error
+      );
+      return;
+    }
+
+    if (
+      !roastEnabled ||
+      !event.messageID ||
+      !api ||
+      typeof api.setMessageReaction !== "function"
+    ) {
+      return;
+    }
+
+    try {
+      api.setMessageReaction(
+        "😆",
+        event.messageID,
+        (reactionError) => {
+          if (reactionError) {
+            console.error(
+              "[BANAT] Self-reaction failed:",
+              reactionError
+            );
+          }
+        }
+      );
+    } catch (reactionError) {
+      console.error(
+        "[BANAT] Self-reaction error:",
+        reactionError
+      );
+    }
+
+    return;
+  }
 
   // ==========================================================
   // TRAFFIC GOVERNOR — INCOMING COMMAND GUARD
@@ -6545,33 +6611,7 @@ function sendBanatReplyWithTyping(
         const sentMessageID =
           messageInfo?.messageID;
 
-        // Banat laughs at its own insult.
-        if (
-          sentMessageID &&
-          api &&
-          typeof api.setMessageReaction ===
-            "function"
-        ) {
-          try {
-            api.setMessageReaction(
-              "😆",
-              sentMessageID,
-              (reactionError) => {
-                if (reactionError) {
-                  console.error(
-                    "[BANAT] Self-reaction failed:",
-                    reactionError
-                  );
-                }
-              }
-            );
-          } catch (reactionError) {
-            console.error(
-              "[BANAT] Self-reaction error:",
-              reactionError
-            );
-          }
-        }
+        // Self-reaction is handled by the Banat-only self-message path.
       };
 
       trafficSendMessage(
