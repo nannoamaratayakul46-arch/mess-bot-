@@ -6082,20 +6082,17 @@ async function handleMessage(
       }
 
       if (enabled) {
-        sendReplyWithTyping(
-          api,
-          "sino uupakan kong mukhang aso dito?",
-          threadID
-        );
+        try {
+          if (typeof api.sendTypingIndicator === "function") {
+            api.sendTypingIndicator(threadID, () => {});
+          }
+        } catch (typingError) {
+          console.error("[BANAT] Control typing indicator failed:", typingError);
+        }
 
         setTimeout(() => {
           // The self-listener normally reacts to outgoing Banat messages,
           // but this explicit control reply guarantees the 🥷 reaction.
-          const reactionMessage = {
-            messageID: null,
-            threadID: threadId,
-          };
-
           const reactionCallback = (reactionError) => {
             if (reactionError) {
               console.error(
