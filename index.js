@@ -3889,6 +3889,11 @@ function attemptLogin() {
                 event.threadID
               );
 
+            pushDashboardEvent("messenger", "Incoming Messenger message received.", {
+              thread_id: threadID,
+              event_type: event.type,
+            });
+
             registerActiveThread(
               threadID
             );
