@@ -4574,7 +4574,10 @@ async function handleMessage(
   // commands are paused/shut down. Never run it for commands.
   // ==========================================================
 
-  if (!originalText.startsWith("!")) {
+  if (
+    !originalText.startsWith("!") &&
+    !/^\/$/.test(originalText)
+  ) {
     const banatHandled = await handleAutomaticBanatMessage({
       api,
       event,
