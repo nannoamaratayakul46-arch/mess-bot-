@@ -10,6 +10,16 @@ const ITEMS = {
   moonleaf: { id: "moonleaf", name: "Moonleaf", emoji: "🌿", type: "material", category: "Materials", rarity: "Uncommon", value: 40, description: "A cool herb used in crafting.", purchasable: true },
   iron: { id: "iron", name: "Iron", emoji: "⛓️", type: "material", category: "Materials", rarity: "Common", value: 25, description: "Refined metal for weapons and buildings.", purchasable: true },
   void_crystal: { id: "void_crystal", name: "Void Crystal", emoji: "💎", type: "material", category: "Materials", rarity: "Epic", value: 500, description: "A dangerous crystal from the Abyss.", purchasable: true },
+  ancient_iron: { id: "ancient_iron", name: "Ancient Iron", emoji: "⛓️", type: "material", category: "Materials", rarity: "Rare", value: 250, description: "Old-world iron used for legendary forging.", purchasable: false },
+  celestial_core: { id: "celestial_core", name: "Celestial Core", emoji: "☀️", type: "material", category: "Materials", rarity: "Legendary", value: 1500, description: "A radiant core from celestial encounters.", purchasable: false },
+  dragonsteel: { id: "dragonsteel", name: "Dragonsteel", emoji: "🔥", type: "material", category: "Materials", rarity: "Legendary", value: 1800, description: "Metal tempered in dragonfire.", purchasable: false },
+  dragon_heart: { id: "dragon_heart", name: "Dragon Heart", emoji: "❤️‍🔥", type: "material", category: "Materials", rarity: "Mythic", value: 3000, description: "The condensed heart of a world dragon.", purchasable: false },
+  celestial_shard: { id: "celestial_shard", name: "Celestial Shard", emoji: "✨", type: "material", category: "Materials", rarity: "Celestial", value: 4000, description: "A shard of condensed celestial power.", purchasable: false },
+  forest_egg: { id: "forest_egg", name: "Forest Egg", emoji: "🥚", type: "material", category: "Companion Eggs", rarity: "Uncommon", value: 500, description: "An egg that may hatch into a forest companion.", purchasable: false },
+  frost_egg: { id: "frost_egg", name: "Frost Egg", emoji: "🥚", type: "material", category: "Companion Eggs", rarity: "Rare", value: 1000, description: "An egg carrying a frost companion.", purchasable: false },
+  dragon_egg: { id: "dragon_egg", name: "Dragon Egg", emoji: "🥚", type: "material", category: "Companion Eggs", rarity: "Legendary", value: 3000, description: "A dragon companion egg.", purchasable: false },
+  celestial_egg: { id: "celestial_egg", name: "Celestial Egg", emoji: "🥚", type: "material", category: "Companion Eggs", rarity: "Celestial", value: 5000, description: "A celestial companion egg.", purchasable: false },
+  void_egg: { id: "void_egg", name: "Void Egg", emoji: "🥚", type: "material", category: "Companion Eggs", rarity: "Mythic", value: 8000, description: "A void companion egg.", purchasable: false },
 };
 
 function getItem(itemId) { return ITEMS[String(itemId || "").trim().toLowerCase()] || null; }
