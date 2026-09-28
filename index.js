@@ -6469,6 +6469,27 @@ function allowBanatBurstReply(threadID, senderID) {
   return Math.max(0, nextAvailableAt - now);
 }
 
+const BANAT_BURST_CLEANUP = setInterval(() => {
+  const now = Date.now();
+
+  for (const [knownKey, entries] of banatBurstState.entries()) {
+    const recent = entries.filter(
+      (entry) =>
+        now - entry.acceptedAt < BANAT_BURST_WINDOW_MS
+    );
+
+    if (recent.length) {
+      banatBurstState.set(knownKey, recent);
+    } else {
+      banatBurstState.delete(knownKey);
+    }
+  }
+}, 60_000);
+
+if (typeof BANAT_BURST_CLEANUP.unref === "function") {
+  BANAT_BURST_CLEANUP.unref();
+})
+
 function sendBanatReplyWithTyping(
   api,
   message,
