@@ -802,6 +802,36 @@ async function connect() {
       PRIMARY KEY(guild_id, equipment_id)
     );
 
+    CREATE TABLE IF NOT EXISTS rpg_guild_relics (
+      guild_id BIGINT PRIMARY KEY REFERENCES rpg_guilds(id) ON DELETE CASCADE,
+      relic_id TEXT NOT NULL,
+      awakened BOOLEAN NOT NULL DEFAULT FALSE,
+      level INTEGER NOT NULL DEFAULT 1,
+      updated_at BIGINT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS rpg_guild_raids (
+      id BIGSERIAL PRIMARY KEY,
+      guild_id BIGINT NOT NULL REFERENCES rpg_guilds(id) ON DELETE CASCADE,
+      thread_id TEXT NOT NULL,
+      raid_id TEXT NOT NULL,
+      hp BIGINT NOT NULL,
+      max_hp BIGINT NOT NULL,
+      phase INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL,
+      UNIQUE(guild_id, status)
+    );
+
+    CREATE TABLE IF NOT EXISTS rpg_guild_raid_participants (
+      raid_id BIGINT NOT NULL REFERENCES rpg_guild_raids(id) ON DELETE CASCADE,
+      user_id TEXT NOT NULL,
+      damage_dealt BIGINT NOT NULL DEFAULT 0,
+      attacks INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY(raid_id, user_id)
+    );
+
     CREATE TABLE IF NOT EXISTS rpg_world_bosses (
       id BIGSERIAL PRIMARY KEY,
       thread_id TEXT NOT NULL,
