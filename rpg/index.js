@@ -185,6 +185,30 @@ const {
   totalUnits,
 } = require("./utils");
 
+const {
+  getGuild,
+  createGuild,
+  invite: inviteGuild,
+  join: joinGuild,
+  leave: leaveGuild,
+  members: guildMembers,
+  donate: donateGuild,
+  upgrade: upgradeGuild,
+  format: formatGuild,
+} = require("./guilds");
+
+const companions = require("./companions");
+const { RECIPES, forge } = require("./crafting");
+const specialAccess = require("./special-access");
+const worldBoss = require("./world-boss");
+const {
+  getActiveWorldEvents,
+  getWorldEventState,
+  getEvent,
+  startWorldEvent,
+  endWorldEvent,
+} = require("./events");
+
 
 /* =========================================================
    PLAYER HELPERS
