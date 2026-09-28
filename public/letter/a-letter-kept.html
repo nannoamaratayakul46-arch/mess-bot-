@@ -90,7 +90,38 @@ linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
 @keyframes pulse{50%{transform:scale(1.45);opacity:1}}
 
 .title{text-align:center}.title h2{font-size:14px;letter-spacing:.45em;font-weight:400;margin:20px 0 12px}.big{font-size:clamp(58px,13vw,145px);line-height:.78;font-weight:300;letter-spacing:-.045em}.sub{font:11px Arial;letter-spacing:.48em;text-transform:uppercase;color:rgba(247,241,231,.5);margin-top:24px}.seal{width:58px;height:58px;border:1px solid rgba(214,183,122,.5);border-radius:50%;display:grid;place-items:center;margin:30px auto;color:var(--g);position:relative}.seal:before{content:"";position:absolute;inset:6px;border:1px solid rgba(214,183,122,.17);border-radius:50%}
-#constellation{cursor:crosshair}.const-copy{position:absolute;left:50%;bottom:8%;transform:translateX(-50%);text-align:center;pointer-events:none}.const-copy h3{font-size:clamp(22px,4vw,38px);font-weight:300;margin:8px 0}.const-copy p{font:9px Arial;letter-spacing:.24em;color:rgba(247,241,231,.42);text-transform:uppercase}.help{position:absolute;right:5%;bottom:7%;font:9px Arial;letter-spacing:.18em;color:rgba(247,241,231,.3);text-transform:uppercase}
+#constellation{cursor:default;overflow:hidden}
+.const-copy{position:absolute;left:50%;bottom:7%;transform:translateX(-50%);text-align:center;pointer-events:none;z-index:8;width:min(700px,90vw)}
+.const-copy h3{font-size:clamp(22px,4vw,38px);font-weight:300;margin:8px 0}
+.const-copy p{font:9px Arial;letter-spacing:.24em;color:rgba(247,241,231,.42);text-transform:uppercase}
+.help{position:absolute;left:50%;top:18%;transform:translateX(-50%);font:9px Arial;letter-spacing:.24em;color:rgba(240,220,169,.7);text-transform:uppercase;white-space:nowrap;z-index:8}
+.const-help{display:inline-flex;align-items:center;gap:9px;margin-top:12px;padding:8px 13px;border:1px solid rgba(214,183,122,.18);background:rgba(3,2,8,.34);color:rgba(247,241,231,.48);font:8px Arial;letter-spacing:.18em;text-transform:uppercase}
+.const-help-dot{width:5px;height:5px;border-radius:50%;background:var(--g2);box-shadow:0 0 12px var(--g)}
+#constellation-stars{position:absolute;inset:0;z-index:7;pointer-events:none}
+.const-star{position:absolute;width:58px;height:58px;margin:-29px 0 0 -29px;border:0;padding:0;border-radius:50%;background:transparent;cursor:pointer;pointer-events:auto;touch-action:manipulation}
+.const-star:before{content:"";position:absolute;inset:17px;border-radius:50%;background:#d6b77a;box-shadow:0 0 8px #fff,0 0 20px rgba(214,183,122,.7);transition:.45s var(--ease)}
+.const-star:after{content:"";position:absolute;inset:2px;border:1px solid transparent;border-radius:50%;transform:scale(.45);opacity:0;transition:.45s var(--ease)}
+.const-star .const-star-label{position:absolute;left:50%;top:calc(100% + 5px);transform:translateX(-50%);font:7px Arial;letter-spacing:.16em;color:rgba(247,241,231,.42);white-space:nowrap;text-transform:uppercase;transition:.35s var(--ease)}
+.const-star.allowed:before{background:#fff2c9;box-shadow:0 0 10px #fff,0 0 25px #d6b77a,0 0 55px rgba(214,183,122,.35);animation:constStarPulse 1.8s ease-in-out infinite}
+.const-star.allowed:after{inset:2px;border-color:rgba(240,220,169,.65);transform:scale(1);opacity:.7;animation:constRing 1.8s ease-out infinite}
+.const-star.allowed .const-star-label{color:var(--g2)}
+.const-star.visited:before{background:#d6b77a;box-shadow:0 0 8px #d6b77a,0 0 18px rgba(214,183,122,.45)}
+.const-star.locked{cursor:default}
+.const-star.locked:before{background:#8e7d69;box-shadow:0 0 7px rgba(214,183,122,.25)}
+.const-star.locked .const-star-label{opacity:.3}
+.const-star:focus-visible{outline:1px solid var(--g2);outline-offset:3px}
+@keyframes constStarPulse{50%{transform:scale(1.28)}}
+@keyframes constRing{50%{opacity:.18;transform:scale(1.18)}100%{opacity:0;transform:scale(1.55)}}
+.const-progress{position:absolute;right:5%;top:18%;z-index:8;font:8px Arial;letter-spacing:.18em;color:rgba(247,241,231,.38);text-transform:uppercase}
+.const-progress strong{color:var(--g2);font-weight:400}
+@media(max-width:600px){
+  .help{top:14%;font-size:8px}
+  .const-progress{right:50%;top:auto;bottom:18%;transform:translateX(50%)}
+  .const-copy{bottom:7%}
+  .const-copy p{margin-bottom:2px}
+  .const-star{width:66px;height:66px;margin:-33px 0 0 -33px}
+  .const-star:before{inset:20px}
+}
 .mem-card{width:min(690px,92vw);min-height:min(520px,76vh);border:1px solid rgba(214,183,122,.24);background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.01));box-shadow:0 35px 90px #0008,inset 0 0 50px rgba(255,255,255,.02);backdrop-filter:blur(16px);display:grid;place-items:center;padding:42px;position:relative;text-align:center}.mem-card:before{content:"";position:absolute;inset:9px;border:1px solid rgba(255,255,255,.06)}
 .mem-no{font:10px Arial;letter-spacing:.3em;color:var(--g);text-transform:uppercase}.mem-title{font-size:clamp(39px,8vw,75px);font-weight:300;line-height:.95;margin:14px 0 8px}.mem-cap{font:10px Arial;letter-spacing:.18em;text-transform:uppercase;color:#fff7}.mem-img{width:min(460px,75vw);height:min(200px,28vh);margin:24px auto;border:1px solid rgba(214,183,122,.18);background:linear-gradient(135deg,#4a161c55,#0c0812);background-size:cover;background-position:center;display:none}.mem-img.show{display:block}.mem-text{font-size:clamp(17px,2.4vw,23px);line-height:1.55;color:#f7f1e7dc}.mem-actions{margin-top:25px}.mem-count{position:absolute;bottom:15px;left:50%;transform:translateX(-50%);font:8px Arial;letter-spacing:.18em;color:#fff5;text-transform:uppercase}
 #arch{text-align:center}.symbol{width:min(330px,65vw);height:min(330px,65vw);position:relative;margin:0 auto 30px}.symbol i{position:absolute;left:50%;top:50%;border:1px solid #d6b77a99;border-radius:50%;transform:translate(-50%,-50%);animation:orbit 16s linear infinite}.symbol i:nth-child(1){width:100%;height:31%}.symbol i:nth-child(2){width:31%;height:100%}.symbol i:nth-child(3){width:74%;height:74%;transform:translate(-50%,-50%) rotate(45deg)}.symbol i:nth-child(4){width:74%;height:74%;transform:translate(-50%,-50%) rotate(-45deg)}.symbol:after{content:"✦";position:absolute;inset:0;display:grid;place-items:center;color:var(--g);font-size:25px;text-shadow:0 0 30px #d6b77a88}@keyframes orbit{to{rotate:360deg}}
@@ -325,7 +356,17 @@ linear-gradient(180deg,#020207,#09050d 58%,#020207)}
 
 <section class="scene" id="title"><div class="title"><div class="k">ARCHIVE 01</div><h2>THE</h2><div class="big">LAST<br>STAR</div><div class="sub">AN ARCHIVE OF US</div><div class="seal">✦</div><button class="cta" id="access">Access archive</button></div></section>
 
-<section class="scene" id="constellation"><div class="const-copy"><div class="k">THE CONSTELLATION</div><h3>Nine months. One story.</h3><p>Follow the stars in the order they appeared.</p></div><div class="help">Tap a star to remember</div></section>
+<section class="scene" id="constellation">
+  <div class="const-copy">
+    <div class="k">THE CONSTELLATION</div>
+    <h3>Nine months. One story.</h3>
+    <p>Follow the stars in the order they appeared.</p>
+    <div class="const-help"><span class="const-help-dot"></span><span id="const-help-text">Tap the glowing star to begin</span></div>
+  </div>
+  <div class="help">FOLLOW THE LIGHT</div>
+  <div class="const-progress"><strong id="const-progress-current">0</strong> / 7 STARS PRESERVED</div>
+  <div id="constellation-stars" aria-label="Memory constellation"></div>
+</section>
 
 <section class="scene" id="memory"><div class="mem-card"><div><div class="mem-no" id="mn"></div><div class="mem-title" id="mt"></div><div class="mem-cap" id="mc"></div><div class="mem-img" id="mi"></div><div class="mem-text" id="mx"></div><div class="mem-actions"><button class="cta" id="back">Return to constellation</button></div></div><div class="mem-count" id="mcount"></div></div></section>
 
@@ -399,8 +440,56 @@ $("moon").onclick=async()=>{if(busy||scene!=="intro")return;busy=true;tone(330,.
 $("cabin").onclick=async()=>{if(busy||scene!=="forest")return;busy=true;tone(392,.22,.025);await fade(1);show("title");await fade(0);chord("star");busy=false};
 $("access").onclick=async()=>{if(busy)return;busy=true;tone(440);startMusic(.24);await fade(1);show("constellation");await fade(0);chord("star");busy=false};
 function pos(i){return{x:W/2+(nodes[i].x-.5)*W*.74,y:H*.46+(nodes[i].y-.5)*H*.74}}
-function openMemory(i){if(i!==visited.size)return;visited.add(i);const m=CFG.memories[i];$("mn").textContent="MEMORY 0"+(i+1);$("mt").textContent=m.title;$("mc").textContent=m.caption;$("mx").textContent=m.text;const img=$("mi");img.style.backgroundImage=m.image?"url('"+m.image.replace(/'/g,"\\'")+"')":"linear-gradient(135deg,#4a161c55,#0c0812)";img.classList.add("show");$("mcount").textContent=visited.size+" / "+CFG.memories.length+" memories preserved";show("memory");tone(visited.size===7?587:330,.3,.03)}
-$("constellation").addEventListener("pointerup",e=>{if(busy||scene!=="constellation")return;const p=pos(visited.size),d=Math.hypot(e.clientX-p.x,e.clientY-p.y);if(d<40)openMemory(visited.size);else tone(150,.08,.01)});
+const constStars=$("constellation-stars");
+function renderConstellationStars(){
+  if(!constStars)return;
+  constStars.innerHTML="";
+  nodes.forEach((n,i)=>{
+    const b=document.createElement("button");
+    b.type="button";
+    b.className="const-star "+(i<visited.size?"visited ":i===visited.size?"allowed":"locked");
+    b.setAttribute("aria-label",i<visited.size?"Memory "+(i+1)+" already preserved":i===visited.size?"Open memory "+(i+1):"Memory "+(i+1)+" locked");
+    const label=document.createElement("span");
+    label.className="const-star-label";
+    label.textContent=i<visited.size?String(i+1).padStart(2,"0"):i===visited.size?"NEXT · "+String(i+1).padStart(2,"0"):String(i+1).padStart(2,"0");
+    b.appendChild(label);
+    b.addEventListener("click",()=>{
+      if(busy||scene!=="constellation")return;
+      if(i!==visited.size){tone(150,.08,.01);return}
+      openMemory(i);
+    });
+    constStars.appendChild(b);
+  });
+  updateConstellationStarPositions();
+  $("const-progress-current").textContent=visited.size;
+  $("const-help-text").textContent=visited.size>=CFG.memories.length?"All memories preserved":"Tap the glowing star · Memory "+(visited.size+1);
+}
+function updateConstellationStarPositions(){
+  if(!constStars)return;
+  [...constStars.children].forEach((b,i)=>{
+    const p=pos(i);
+    b.style.left=p.x+"px";
+    b.style.top=p.y+"px";
+  });
+}
+function openMemory(i){
+  if(i!==visited.size)return;
+  visited.add(i);
+  renderConstellationStars();
+  const m=CFG.memories[i];
+  $("mn").textContent="MEMORY 0"+(i+1);
+  $("mt").textContent=m.title;
+  $("mc").textContent=m.caption;
+  $("mx").textContent=m.text;
+  const img=$("mi");
+  img.style.backgroundImage=m.image?"url('"+m.image.replace(/'/g,"\\'")+"')":"linear-gradient(135deg,#4a161c55,#0c0812)";
+  img.classList.add("show");
+  $("mcount").textContent=visited.size+" / "+CFG.memories.length+" memories preserved";
+  show("memory");
+  tone(visited.size===7?587:330,.3,.03);
+}
+renderConstellationStars();
+addEventListener("resize",updateConstellationStarPositions);
 $("back").onclick=async()=>{if(busy)return;busy=true;if(visited.size===CFG.memories.length){await fade(1);show("arch");await fade(0);chord("star");await sleep(4000);await fade(1);show("room");await fade(0);chord("warm")}else show("constellation");busy=false};
 $("envelope").onclick=async()=>{if(busy)return;busy=true;tone(392,.2,.025);await fade(1);show("letter");await fade(0);await writeLetter()};
 function movePen(x,y,on=true){const p=$("pen");p.style.opacity=on?1:0;p.style.transform="translate("+x+"px,"+y+"px) rotate(-8deg)"}
