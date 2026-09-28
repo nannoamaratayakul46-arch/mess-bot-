@@ -3251,17 +3251,30 @@ async function setGameEnabled(threadId, enabled) {
 
 async function getDashboardSnapshot() {
   const conn = requireConn();
+  const since24h = Date.now() - 24 * 60 * 60 * 1000;
 
   const [
     userStats,
+    recentUsers,
     economyStats,
     transactions,
     rpgStats,
     rpgClasses,
     rpgRegions,
     rpgRecentPlayers,
+    rpgInventory,
+    rpgEquipment,
+    rpgPets,
+    rpgCombat,
+    rpgDungeons,
+    rpgBattles,
+    rpgWorldBosses,
+    rpgGuildRaids,
+    rpgWorldEvents,
     guildStats,
+    recentGuilds,
     moderationStats,
+    recentIncidents,
     gameStats,
   ] = await Promise.all([
     conn.query(`
@@ -3274,6 +3287,15 @@ async function getDashboardSnapshot() {
         COALESCE(SUM(games_played), 0)::bigint AS games_played,
         COALESCE(SUM(wins), 0)::bigint AS wins
       FROM users
+    `),
+    conn.query(`
+      SELECT
+        thread_id, user_id, display_name, balance, bank_balance,
+        xp, level, games_played, wins
+      FROM users
+      ORDER BY COALESCE(GREATEST(COALESCE(last_daily, 0), COALESCE(last_work, 0)), 0) DESC,
+               user_id ASC
+      LIMIT 12
     `),
     conn.query(`
       SELECT
@@ -3293,7 +3315,7 @@ async function getDashboardSnapshot() {
         COUNT(*)::int AS players,
         COUNT(*) FILTER (WHERE status = 'active')::int AS active_players,
         COUNT(*) FILTER (WHERE status <> 'active')::int AS inactive_players,
-        COUNT(*) FILTER (WHERE property_tier > 0)::int AS property_holders,
+        COUNT(*) FILTER (WHERE property_tier > 0 OR property_level > 0)::int AS property_holders,
         COALESCE(SUM(reputation), 0)::bigint AS reputation,
         COALESCE(SUM(renown), 0)::bigint AS renown
       FROM rpg_players
@@ -3314,9 +3336,52 @@ async function getDashboardSnapshot() {
       SELECT thread_id, user_id, character_class, subclass, region_id,
              level, reputation, renown, updated_at
       FROM rpg_players
-      ORDER BY updated_at DESC
+      ORDER BY updated_at DESC, user_id ASC
       LIMIT 12
     `),
+    conn.query(`
+      SELECT COALESCE(SUM(quantity), 0)::bigint AS inventory_items
+      FROM rpg_inventory_items
+      WHERE quantity > 0
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS equipment
+      FROM rpg_equipment
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS pets
+      FROM rpg_player_pets
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS active_combat
+      FROM rpg_combat_sessions
+      WHERE status = 'active'
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS active_dungeons
+      FROM rpg_dungeons
+      WHERE status = 'active'
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS battles_24h
+      FROM rpg_battles
+      WHERE created_at >= $1
+    `, [since24h]),
+    conn.query(`
+      SELECT COUNT(*)::int AS active_world_bosses
+      FROM rpg_world_bosses
+      WHERE status = 'active' AND (expires_at IS NULL OR expires_at > $1)
+    `, [Date.now()]),
+    conn.query(`
+      SELECT COUNT(*)::int AS active_guild_raids
+      FROM rpg_guild_raids
+      WHERE status = 'active'
+    `),
+    conn.query(`
+      SELECT COUNT(*)::int AS active_world_events
+      FROM rpg_world_events
+      WHERE active = TRUE AND (expires_at IS NULL OR expires_at > $1)
+    `, [Date.now()]),
     conn.query(`
       SELECT
         (SELECT COUNT(*)::int FROM rpg_guilds) AS guilds,
@@ -3326,11 +3391,28 @@ async function getDashboardSnapshot() {
     `),
     conn.query(`
       SELECT
+        g.id, g.thread_id, g.guild_id, g.name, g.level, g.treasury, g.experience,
+        COUNT(m.user_id)::int AS members
+      FROM rpg_guilds g
+      LEFT JOIN rpg_guild_members m ON m.guild_id = g.id
+      GROUP BY g.id
+      ORDER BY g.level DESC, g.experience DESC, g.id DESC
+      LIMIT 12
+    `),
+    conn.query(`
+      SELECT
         (SELECT COUNT(*)::int FROM moderation_warnings WHERE active = TRUE) AS active_warnings,
         (SELECT COUNT(*)::int FROM moderation_bans WHERE active = TRUE) AS active_bans,
         (SELECT COUNT(*)::int FROM moderation_mutes WHERE active = TRUE AND expires_at > $1) AS active_mutes,
         (SELECT COUNT(*)::int FROM automod_incidents WHERE created_at >= $1) AS incidents_24h
-    `, [Date.now() - 24 * 60 * 60 * 1000]),
+    `, [since24h]),
+    conn.query(`
+      SELECT id, thread_id, user_id, category, severity, confidence,
+             suggested_action, action, reason, created_at
+      FROM automod_incidents
+      ORDER BY created_at DESC, id DESC
+      LIMIT 12
+    `),
     conn.query(`
       SELECT
         COALESCE(SUM(games_played), 0)::bigint AS games_played,
@@ -3344,21 +3426,44 @@ async function getDashboardSnapshot() {
 
   return {
     generated_at: new Date().toISOString(),
-    users: row(userStats),
+    users: {
+      ...row(userStats),
+      recent_users: recentUsers.rows,
+    },
     economy: {
       ...row(economyStats),
       recent_transactions: transactions.rows,
     },
     rpg: {
       ...row(rpgStats),
+      ...row(rpgInventory),
+      ...row(rpgEquipment),
+      ...row(rpgPets),
+      ...row(rpgCombat),
+      ...row(rpgDungeons),
+      ...row(rpgBattles),
+      ...row(rpgWorldBosses),
+      ...row(rpgGuildRaids),
+      ...row(rpgWorldEvents),
       classes: rpgClasses.rows,
       regions: rpgRegions.rows,
       recent_players: rpgRecentPlayers.rows,
     },
-    guilds: row(guildStats),
-    moderation: row(moderationStats),
+    guilds: {
+      ...row(guildStats),
+      recent_guilds: recentGuilds.rows,
+    },
+    moderation: {
+      ...row(moderationStats),
+      recent_incidents: recentIncidents.rows,
+    },
     games: row(gameStats),
   };
+}
+
+async function healthCheck() {
+  await requireConn().query("SELECT 1");
+  return true;
 }
 
 // ╔══════════════════════════════════════════════════════════╗
