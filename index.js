@@ -2876,6 +2876,7 @@ app.post(
     appState = incoming;
 
     dashboardBotPaused = false;
+    pushDashboardEvent("messenger", "Facebook session connect requested from Command Center.");
     listenerGeneration++;
     activeListenerGeneration = 0;
     activeMessengerApi = null;
@@ -2902,6 +2903,7 @@ app.post(
   requireDashboardAccess,
   (_req, res) => {
     dashboardBotPaused = false;
+    pushDashboardEvent("messenger", "Messenger reconnect requested from Command Center.");
 
     if (
       !activeMessengerApi ||
@@ -2923,6 +2925,7 @@ app.post(
   requireDashboardAccess,
   (_req, res) => {
     dashboardBotPaused = true;
+    pushDashboardEvent("messenger", "Messenger listener disconnected from Command Center.");
     listenerGeneration++;
     activeListenerGeneration = 0;
     activeMessengerApi = null;
@@ -2947,6 +2950,7 @@ app.post(
   requireDashboardAccess,
   (_req, res) => {
     dashboardBotPaused = false;
+    pushDashboardEvent("bot", "ECLIPSE message handling enabled from Command Center.");
 
     if (
       !activeMessengerApi ||
@@ -2968,6 +2972,7 @@ app.post(
   requireDashboardAccess,
   (_req, res) => {
     dashboardBotPaused = true;
+    pushDashboardEvent("bot", "ECLIPSE message handling paused from Command Center.");
 
     res.json({
       ok: true,
