@@ -6488,7 +6488,7 @@ const BANAT_BURST_CLEANUP = setInterval(() => {
 
 if (typeof BANAT_BURST_CLEANUP.unref === "function") {
   BANAT_BURST_CLEANUP.unref();
-})
+}
 
 function sendBanatReplyWithTyping(
   api,
