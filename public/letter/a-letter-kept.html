@@ -103,6 +103,80 @@ linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
 #void .void-copy{position:absolute;left:50%;bottom:12%;transform:translateX(-50%);text-align:center;opacity:0;transition:1s}#void.ready .void-copy{opacity:1}.void-copy p{font:9px Arial;letter-spacing:.28em;text-transform:uppercase;color:#fff6}
 #final{text-align:center}.reveal p{font-size:clamp(27px,5.5vw,64px);font-weight:300;line-height:1.05;margin:0;opacity:0;transform:translateY(18px)}#final.show .reveal p{animation:reveal 1.2s var(--ease) forwards}#final.show .reveal p:nth-child(2){animation-delay:1.1s}#final.show .reveal p:nth-child(3){animation-delay:2.2s;color:var(--g2)}@keyframes reveal{to{opacity:1;transform:none}}
 #end{text-align:center}.end-star{width:6px;height:6px;border-radius:50%;background:#fff;margin:0 auto 35px;box-shadow:0 0 15px #fff,0 0 55px var(--g),0 0 120px #d6b77a55}.end h2{font-size:clamp(24px,5vw,48px);font-weight:300;margin:0}.end p{font:9px Arial;letter-spacing:.3em;text-transform:uppercase;color:#fff6;margin:16px 0 32px}
+/* cinematic moonlit ocean + cabin refinement */
+.ocean{background:
+radial-gradient(ellipse at 50% 43%,rgba(139,190,214,.16),transparent 16%),
+radial-gradient(ellipse at 50% 62%,rgba(53,108,133,.12),transparent 42%),
+linear-gradient(180deg,#01050c 0%,#04111c 42%,#06141b 63%,#01070b 100%);
+isolation:isolate}
+.ocean:before{inset:43% -12% -14%;background:
+repeating-linear-gradient(173deg,rgba(183,216,226,.09) 0 1px,transparent 1px 9px),
+repeating-linear-gradient(177deg,transparent 0 13px,rgba(72,127,151,.07) 14px 15px);
+transform:perspective(650px) rotateX(20deg) scale(1.08);opacity:.9;animation:water 13s linear infinite}
+.ocean:after{bottom:-12%;height:58%;background:
+radial-gradient(ellipse at 50% 0,rgba(192,224,232,.16),transparent 35%),
+linear-gradient(180deg,transparent 0 20%,rgba(1,6,10,.55) 74%,#010306 100%);
+filter:blur(3px);z-index:1}
+.ocean-horizon{top:43%;height:2px;background:linear-gradient(90deg,transparent,rgba(190,220,228,.18),transparent);box-shadow:0 0 55px rgba(130,190,211,.14);z-index:2}
+.ocean-moon{top:25%;width:clamp(82px,11vw,142px);height:clamp(82px,11vw,142px);
+background:
+radial-gradient(circle at 30% 27%,rgba(255,255,255,.95),transparent 10%),
+radial-gradient(circle at 65% 68%,rgba(170,182,185,.55) 0 7%,transparent 8%),
+radial-gradient(circle at 31% 61%,rgba(151,164,168,.48) 0 6%,transparent 7%),
+radial-gradient(circle at 58% 35%,rgba(155,168,171,.4) 0 10%,transparent 11%),
+radial-gradient(circle at 40% 42%,#e8edef 0,#d8e0e3 55%,#b8c4c8 100%);
+box-shadow:0 0 16px rgba(255,255,255,.95),0 0 42px rgba(210,231,239,.42),0 0 110px rgba(92,158,190,.24);
+z-index:5}
+.ocean-moon:after{content:"";position:absolute;inset:-18%;border-radius:50%;background:radial-gradient(circle,rgba(219,239,246,.12),transparent 66%);animation:moonBreath 5s ease-in-out infinite;pointer-events:none}
+@keyframes moonBreath{50%{transform:scale(1.12);opacity:.65}}
+.moon-reflection{top:43%;width:min(210px,28vw);height:52%;background:
+repeating-linear-gradient(178deg,rgba(230,245,249,.55) 0 2px,rgba(167,207,220,.18) 2px 7px,transparent 7px 15px);
+clip-path:polygon(45% 0,55% 0,93% 100%,7% 100%);
+filter:blur(2px);opacity:.72;mix-blend-mode:screen;animation:reflection 4.8s ease-in-out infinite}
+.moon-reflection:before,.moon-reflection:after{content:"";position:absolute;left:8%;right:8%;height:2px;background:rgba(242,249,250,.34);filter:blur(2px);animation:ripple 3s ease-in-out infinite}
+.moon-reflection:before{top:24%}.moon-reflection:after{top:48%;animation-delay:-1.4s}
+@keyframes ripple{50%{transform:scaleX(.55);opacity:.35}}
+.ocean-copy{top:39%;z-index:6;text-shadow:0 2px 18px #000}
+.moon-prompt{top:67%;z-index:7}
+.water-glint{position:absolute;left:50%;top:45%;width:70%;height:38%;transform:translateX(-50%);background:repeating-linear-gradient(176deg,transparent 0 12px,rgba(175,213,225,.075) 13px 14px,transparent 15px 25px);filter:blur(1px);opacity:.7;animation:glint 7s linear infinite;z-index:2;pointer-events:none}
+@keyframes glint{to{transform:translateX(-47%) translateY(8px)}}
+
+.forest{background:
+radial-gradient(ellipse at 50% 49%,rgba(176,205,135,.20),transparent 15%),
+radial-gradient(ellipse at 50% 67%,rgba(78,122,70,.20),transparent 34%),
+linear-gradient(180deg,#030b08 0%,#081810 44%,#10261a 65%,#030806 100%);
+isolation:isolate}
+.forest:before{background:
+radial-gradient(ellipse at 50% 53%,rgba(193,216,159,.08),transparent 30%),
+linear-gradient(90deg,rgba(1,6,3,.85),transparent 17%,transparent 82%,rgba(1,6,3,.88)),
+radial-gradient(ellipse at 50% 100%,#010402 0 24%,transparent 55%);
+z-index:1}
+.forest:after{height:42%;background:
+radial-gradient(circle at 13% 62%,#c3cf8a 0 1.5px,transparent 3px),
+radial-gradient(circle at 24% 74%,#8da96b 0 2px,transparent 3px),
+radial-gradient(circle at 38% 68%,#b5c47c 0 1.5px,transparent 3px),
+radial-gradient(circle at 67% 71%,#c2ca83 0 1.5px,transparent 3px),
+radial-gradient(circle at 84% 64%,#8ea86b 0 2px,transparent 3px),
+linear-gradient(180deg,transparent 0 35%,rgba(1,5,3,.55) 72%,#010302 100%);
+z-index:4}
+.tree{z-index:3;filter:drop-shadow(0 18px 25px rgba(0,0,0,.45))}
+.fog{z-index:5;bottom:17%;height:30%;background:radial-gradient(ellipse at 50% 50%,rgba(183,207,164,.14),transparent 66%);filter:blur(22px);animation:fog 9s ease-in-out infinite alternate}
+.forest-copy{top:9%;z-index:8;text-shadow:0 2px 20px #000}
+.cabin-button{bottom:24%;width:min(310px,58vw);height:min(205px,25vh);z-index:8;clip-path:none;background:transparent;box-shadow:none;filter:drop-shadow(0 28px 32px rgba(0,0,0,.7));overflow:visible}
+.cabin-button:before{left:8%;right:8%;top:30%;bottom:2%;background:
+linear-gradient(90deg,rgba(18,11,7,.98),rgba(67,43,27,.98) 50%,rgba(22,13,8,.98)),
+repeating-linear-gradient(0deg,transparent 0 17px,rgba(15,8,5,.45) 18px 20px);
+border:1px solid rgba(214,183,122,.22);clip-path:polygon(0 0,100% 0,100% 100%,0 100%);box-shadow:inset 0 0 25px #0008}
+.cabin-button:after{left:40%;top:48%;width:20%;height:30%;background:
+linear-gradient(90deg,#2a190f,#111 12% 88%,#2a190f),
+radial-gradient(circle at 50% 30%,#fff0ba,#e1a24d 42%,#4d2914 74%);
+border:2px solid #1b1009;box-shadow:0 0 28px rgba(239,174,77,.48),0 0 70px rgba(225,156,65,.18)}
+.cabin-button .cabin-roof{position:absolute;left:1%;right:1%;top:4%;height:36%;background:linear-gradient(165deg,#17100c,#493322 47%,#21150e);clip-path:polygon(50% 0,100% 100%,0 100%);border-bottom:2px solid rgba(218,188,127,.2);z-index:2}
+.cabin-button .cabin-roof:after{content:"";position:absolute;left:8%;right:8%;bottom:5%;height:3px;background:rgba(230,205,155,.16);transform:skewX(-25deg)}
+.cabin-button .cabin-chimney{position:absolute;right:17%;top:5%;width:11%;height:25%;background:linear-gradient(90deg,#17110d,#493428,#17100c);z-index:1}
+.cabin-button .cabin-glow{position:absolute;left:25%;right:25%;bottom:2%;height:34%;background:radial-gradient(ellipse,rgba(232,172,79,.16),transparent 68%);filter:blur(10px);z-index:-1}
+.cabin-button .cabin-path{position:absolute;left:37%;right:37%;bottom:-40%;height:48%;background:linear-gradient(90deg,transparent,#54412a44 48%,transparent);clip-path:polygon(36% 0,64% 0,100% 100%,0 100%);filter:blur(1px)}
+.cabin-prompt{bottom:15%;z-index:9;text-shadow:0 2px 12px #000}
 @media(max-width:600px){.help{display:none}.mem-card{padding:30px 23px;min-height:470px}.mem-img{height:145px}.window{height:45%;top:17%}.desk{bottom:13%;height:21%}.envelope{right:28%;width:135px;height:88px}.book{left:9%}.candle{right:10%}.paper{padding:32px 27px}.paper:before{inset:10px}}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
 </style>
@@ -120,7 +194,7 @@ linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
       <h1>There is a memory I never want to lose.</h1>
       <p>The night kept it safe. The moon remembers the way.</p>
     </div>
-    <div class="moon-reflection"></div>
+    <div class="moon-reflection"></div><div class="water-glint"></div>
     <button class="ocean-moon" id="moon" aria-label="Follow the moon"></button>
     <div class="moon-prompt">tap the moon</div>
   </div>
@@ -135,7 +209,7 @@ linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
       <h2>A place that feels like home.</h2>
       <p>Surrounded by trees, flowers, and everything the night refuses to forget.</p>
     </div>
-    <button class="cabin-button" id="cabin" aria-label="Enter the cabin"></button>
+    <button class="cabin-button" id="cabin" aria-label="Enter the cabin"><span class="cabin-roof"></span><span class="cabin-chimney"></span><span class="cabin-glow"></span><span class="cabin-path"></span></button>
     <div class="cabin-prompt">tap the cabin</div>
   </div>
 </section>
