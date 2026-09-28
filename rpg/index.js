@@ -3480,22 +3480,76 @@ const HELP_CATEGORIES = {
   guild: {
     emoji: "🏰",
     title: "🏰 GUILDS",
-    summary: "Guilds, treasury, companions, crafting, and raids.",
+    summary: "Guild creation, ranks, treasury, upgrades, armory, relics, and cooperative raids.",
     lines: [
       "▶ !rpg guild — View your guild.",
       "▶ !rpg guild create <name> — Found a guild.",
       "▶ !rpg guild invite @user — Invite a player.",
       "▶ !rpg guild join — Accept an invite.",
-      "▶ !rpg guild members — List members.",
+      "▶ !rpg guild leave — Leave your guild.",
+      "▶ !rpg guild members — List guild members.",
       "▶ !rpg guild donate <amount> — Fund the treasury.",
       "▶ !rpg guild upgrade <armory|stable|blacksmith|vault|quest_board>",
-      "▶ !rpg companion — View companions.",
+      "▶ !rpg guild hall — View the guild hall.",
+      "▶ !rpg guild armory — View the shared armory.",
+      "▶ !rpg guild armory deposit <crafted_id> — Deposit crafted gear.",
+      "▶ !rpg guild armory withdraw <crafted_id> — Withdraw shared gear.",
+      "▶ !rpg guild relic — View the active guild relic.",
+      "▶ !rpg guild relic_set <war|wild|inferno|frost|stars> — Set a relic.",
+      "▶ !rpg guild raid start <ruins|dragon_nest|infernal_gate|abyssal_citadel>",
+      "▶ !rpg guild raid attack — Attack the guild raid.",
+      "▶ !rpg guild raid status — View raid progress."
+    ],
+  },
+
+  companions: {
+    emoji: "🐾",
+    title: "🐾 COMPANIONS",
+    summary: "Hunt eggs, hatch companions, train them, and use their abilities.",
+    lines: [
+      "▶ !rpg companion — View your companions.",
+      "▶ !rpg companion hunt — Search for an egg (1,000 coins).",
       "▶ !rpg companion hatch <egg> — Hatch an egg.",
       "▶ !rpg companion activate <id> — Activate a companion.",
-      "▶ !rpg companion train <id> — Train a companion.",
-      "▶ !rpg forge — View recipes or forge equipment.",
+      "▶ !rpg companion train <id> — Train a companion."
+    ],
+  },
+
+  blacksmith: {
+    emoji: "🔨",
+    title: "🔨 BLACKSMITH",
+    summary: "Forge legendary, mythic, and celestial equipment.",
+    lines: [
+      "▶ !rpg forge — View available forging recipes.",
+      "▶ !rpg forge <recipe> — Forge equipment.",
+      "▶ Recipes: starforged_blade, dragonheart_spear, astral_crown"
+    ],
+  },
+
+  worldboss: {
+    emoji: "🌎",
+    title: "🌎 WORLD BOSSES",
+    summary: "Fight global bosses summoned by RPG GMs.",
+    lines: [
       "▶ !rpg worldboss — View the active world boss.",
-      "▶ !rpg worldboss attack — Attack the boss."
+      "▶ !rpg worldboss attack — Attack the active boss.",
+      "▶ !rpg special summon boss <id> — GM/admin: summon a boss."
+    ],
+  },
+
+  specialaccess: {
+    emoji: "🔐",
+    title: "🔐 SPECIAL ACCESS",
+    summary: "Admin-granted RPG permissions and GM controls.",
+    lines: [
+      "▶ !rpg special status — View your special access.",
+      "▶ !rpg special access @user [scope] — Admin: grant access.",
+      "▶ !rpg special revoke @user [scope] — Admin: revoke access.",
+      "▶ !rpg special summon boss <id> — GM/admin: summon a world boss.",
+      "▶ !rpg special event <id> — GM/admin: start a world event.",
+      "▶ !rpg special end <id> — GM/admin: end a world event.",
+      "▶ !rpg special events — View active world events.",
+      "▶ Scopes: all, guild, companions, forge, world, boss, gm"
     ],
   },
 
@@ -3542,6 +3596,11 @@ const CATEGORY_ALIASES = {
   scouting: "!scout",
   quests: "!quest",
   dungeons: "!dungeon",
+  guild: "!rpg guild",
+  companions: "!rpg companion",
+  blacksmith: "!rpg forge",
+  worldboss: "!rpg worldboss",
+  specialaccess: "!rpg special status",
 };
 
 async function handleHelp(
