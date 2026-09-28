@@ -85,6 +85,15 @@ linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
 .forest-copy h2{font-size:clamp(24px,4vw,42px);font-weight:300;margin:13px 0 7px}.forest-copy p{font:italic 16px "Cormorant Garamond",serif;color:rgba(222,232,210,.65);margin:0}
 .cabin-prompt{position:absolute;left:50%;bottom:19%;transform:translateX(-50%);z-index:5;font:9px Arial;letter-spacing:.25em;text-transform:uppercase;color:rgba(230,235,215,.52);white-space:nowrap}
 .cabin-prompt:before{content:"";display:block;width:1px;height:25px;background:linear-gradient(transparent,#b9c98d);margin:0 auto 9px}
+.realistic-canvas{z-index:0;pointer-events:auto;touch-action:manipulation}
+.realistic-copy{position:absolute;left:0;right:0;text-align:center;pointer-events:none;text-shadow:0 2px 18px #000;z-index:3;padding:0 22px}
+.realistic-copy h1,.realistic-copy h2{font-weight:300;font-size:clamp(22px,4.4vw,42px);margin:14px 0 6px}
+.realistic-copy p{font-style:italic;opacity:.65;margin:0;font-size:17px}
+.realistic-copy.ocean-copy{bottom:22%}
+.realistic-copy.forest-copy{top:7%}
+.realistic-hint{position:absolute;left:0;right:0;bottom:9%;z-index:4;text-align:center;font:10px Arial,sans-serif;letter-spacing:.28em;text-transform:uppercase;color:rgba(247,241,231,.58);pointer-events:none;text-shadow:0 2px 18px #000;animation:realisticHint 3s infinite}
+.cabin-hint{bottom:9%}
+@keyframes realisticHint{50%{opacity:.25}}
 #title{background:radial-gradient(circle at 50% 45%,#171020 0,#08050d 45%,#030208 100%)}
 .title{text-align:center}.star{width:5px;height:5px;border-radius:50%;background:#fff;margin:0 auto 38px;box-shadow:0 0 10px #fff,0 0 35px var(--g),0 0 100px rgba(214,183,122,.35);animation:pulse 3s ease-in-out infinite}
 @keyframes pulse{50%{transform:scale(1.45);opacity:1}}
@@ -327,31 +336,23 @@ linear-gradient(180deg,#020207,#09050d 58%,#020207)}
 <audio id="bgMusic" preload="auto" loop playsinline><source src="/letter/audio/wave%20to%20earth%20-%20seasons.mp3" type="audio/mpeg"></audio>
 
 <section class="scene on" id="intro">
-  <div class="ocean">
-    <div class="ocean-horizon"></div>
-    <div class="ocean-copy">
-      <div class="ey">SOMEWHERE BETWEEN THE WAVES AND THE STARS</div>
-      <h1>There is a memory I never want to lose.</h1>
-      <p>The night kept it safe. The moon remembers the way.</p>
-    </div>
-    <div class="moon-reflection"></div><div class="water-glint"></div>
-    <button class="ocean-moon" id="moon" aria-label="Follow the moon"></button>
-    <div class="moon-prompt">tap the moon</div>
+  <canvas id="realistic-ocean" class="realistic-canvas" aria-label="Moonlit ocean"></canvas>
+  <div class="realistic-copy ocean-copy">
+    <div class="ey">SOMEWHERE BETWEEN THE WAVES AND THE STARS</div>
+    <h1>There is a memory I never want to lose.</h1>
+    <p>The night kept it safe. The moon remembers the way.</p>
   </div>
+  <div class="realistic-hint">TAP THE MOON</div>
 </section>
 
 <section class="scene" id="forest">
-  <div class="forest">
-    <div class="tree t1"></div><div class="tree t2"></div><div class="tree t3"></div><div class="tree t4"></div>
-    <div class="fog"></div>
-    <div class="forest-copy">
-      <div class="ey">THE PATH LEADS SOMEWHERE QUIET</div>
-      <h2>A place that feels like home.</h2>
-      <p>Surrounded by trees, flowers, and everything the night refuses to forget.</p>
-    </div>
-    <button class="cabin-button" id="cabin" aria-label="Enter the cabin"><span class="cabin-roof"></span><span class="cabin-chimney"></span><span class="cabin-glow"></span><span class="cabin-path"></span></button>
-    <div class="cabin-prompt">tap the cabin</div>
+  <canvas id="realistic-forest" class="realistic-canvas" aria-label="Moonlit forest cabin"></canvas>
+  <div class="realistic-copy forest-copy">
+    <div class="ey">THE PATH LEADS SOMEWHERE QUIET</div>
+    <h2>A place that feels like home.</h2>
+    <p>Somewhere the night feels a little warmer.</p>
   </div>
+  <div class="realistic-hint cabin-hint">TAP THE CABIN</div>
 </section>
 
 <section class="scene" id="title"><div class="title"><div class="k">ARCHIVE 01</div><h2>THE</h2><div class="big">LAST<br>STAR</div><div class="sub">AN ARCHIVE OF US</div><div class="seal">✦</div><button class="cta" id="access">Access archive</button></div></section>
@@ -434,11 +435,109 @@ if(scene==="intro"){sx.fillStyle="rgba(130,170,190,.035)";for(let i=0;i<7;i++){s
 if(scene==="forest"){for(let i=0;i<18;i++){const x=(i*83+Math.sin(t*.0005+i)*18)%W,y=H*(.32+(i%6)*.095);sx.globalAlpha=.06;sx.fillStyle="#b6d18f";sx.beginPath();sx.arc(x,y,2+(i%3),0,7);sx.fill()}sx.globalAlpha=1}
 if(scene==="void"){finalStar.x=W*.5+Math.sin(t*.0004)*W*.12;finalStar.y=H*.43+Math.cos(t*.0003)*H*.1;const q=sx.createRadialGradient(finalStar.x,finalStar.y,0,finalStar.x,finalStar.y,100);q.addColorStop(0,"#fff");q.addColorStop(.06,"#f0dca977");q.addColorStop(1,"transparent");sx.fillStyle=q;sx.beginPath();sx.arc(finalStar.x,finalStar.y,100,0,7);sx.fill();sx.fillStyle="#fff";sx.shadowBlur=18;sx.shadowColor="#fff";sx.beginPath();sx.arc(finalStar.x,finalStar.y,4,0,7);sx.fill();sx.shadowBlur=0;finalStar.ready=true}requestAnimationFrame(draw)}
 requestAnimationFrame(draw);
+/* ============ REALISTIC MOON + CABIN SCENES ============ */
+/* ============ OCEAN: real-time water shader with moon glitter path ============ */
+function Ocean(cv,go){
+const gl=cv.getContext('webgl');if(!gl)return{start(){},stop(){}};
+const FS=`precision highp float;uniform vec2 R;uniform float T;
+float h(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
+float n(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.-2.*f);return mix(mix(h(i),h(i+vec2(1,0)),f.x),mix(h(i+vec2(0,1)),h(i+vec2(1,1)),f.x),f.y);}
+float fbm(vec2 p){float a=.5,s=0.;for(int i=0;i<5;i++){s+=a*n(p);p=p*2.03+7.1;a*=.5;}return s;}
+float wv(vec2 p){return fbm(p*vec2(1.,2.4)+vec2(T*.06,T*.2))+.35*n(p*vec2(4.,9.)+vec2(-T*.15,T*.5));}
+void main(){
+vec2 p=(gl_FragCoord.xy-.5*R)/R.y;float hz=-.03;vec2 M=vec2(0.,.27);float mr=.06;vec3 c;
+if(p.y>hz){float t=p.y-hz;c=mix(vec3(.07,.12,.18),vec3(.004,.01,.03),smoothstep(0.,.8,t));
+ vec2 g=p*110.,id=floor(g);float r=h(id);
+ c+=step(.987,r)*smoothstep(.4,0.,length(fract(g)-.5-(h(id+3.)-.5)*.5))*(.55+.45*sin(T*2.+r*60.))*vec3(.85,.92,1.)*smoothstep(.02,.25,t);
+ vec2 q=p-M;float d=length(q);float cl=fbm(p*vec2(2.5,7.)+vec2(T*.01,0.));
+ c+=vec3(.45,.62,.85)*(exp(-d*7.)*.35+exp(-d*2.2)*.12)*(.75+.5*cl);
+ float disk=smoothstep(mr,mr-.004,d);
+ vec3 mc=mix(vec3(.6,.64,.7),vec3(1.,.98,.93),smoothstep(.3,.7,fbm(q*38.)))*(1.-.2*smoothstep(.4,.8,fbm(q*14.+3.)));
+ mc*=1.-.25*(d/mr)*(d/mr);c=mix(c,mc*1.25,disk);c+=vec3(.05,.09,.13)*exp(-t*25.);
+}else{
+ float y=hz-p.y;float z=.45/(y+.02);vec2 wp=vec2(p.x*z*1.6,z*2.);float e=.03;float h0=wv(wp);
+ vec2 sl=vec2(wv(wp+vec2(e,0.))-h0,wv(wp+vec2(0.,e))-h0)/e*.05;sl*=mix(.15,1.,smoothstep(0.,.3,y));
+ float fr=.15+.85*pow(1.-smoothstep(0.,.5,y),2.);
+ vec3 base=mix(vec3(.003,.015,.028),vec3(.05,.09,.13),fr);
+ float rx=p.x-M.x+sl.x*(.3+y*1.5);float w=.012+y*.16;float path=exp(-rx*rx/(w*w));
+ float gt=smoothstep(.5,.95,n(wp*vec2(5.,12.)+vec2(0.,T*1.2))+sl.y*8.);float fade=exp(-y*1.7);
+ c=base+vec3(.75,.88,1.)*path*fade*(.18+1.5*gt)+vec3(.1,.18,.28)*exp(-abs(p.x)*3.)*fade*.5*(.5+h0);
+ c+=vec3(.06,.1,.14)*exp(-y*30.);}
+c=1.-exp(-c*1.5);c*=1.-.55*dot(p,p);c+=(h(gl_FragCoord.xy+T)-.5)*.012;gl_FragColor=vec4(c,1.);}`;
+const sh=(t,s)=>{const o=gl.createShader(t);gl.shaderSource(o,s);gl.compileShader(o);return o},pr=gl.createProgram();
+gl.attachShader(pr,sh(gl.VERTEX_SHADER,'attribute vec2 a;void main(){gl_Position=vec4(a,0.,1.);}'));gl.attachShader(pr,sh(gl.FRAGMENT_SHADER,FS));gl.linkProgram(pr);gl.useProgram(pr);
+gl.bindBuffer(gl.ARRAY_BUFFER,gl.createBuffer());gl.bufferData(gl.ARRAY_BUFFER,new Float32Array([-1,-1,3,-1,-1,3]),gl.STATIC_DRAW);
+const a=gl.getAttribLocation(pr,'a');gl.enableVertexAttribArray(a);gl.vertexAttribPointer(a,2,gl.FLOAT,false,0,0);
+const uR=gl.getUniformLocation(pr,'R'),uT=gl.getUniformLocation(pr,'T');let on=false;
+function fit(){const d=Math.min(devicePixelRatio||1,1.5);cv.width=cv.clientWidth*d;cv.height=cv.clientHeight*d;gl.viewport(0,0,cv.width,cv.height)}
+function loop(t){if(!on)return;gl.uniform2f(uR,cv.width,cv.height);gl.uniform1f(uT,t/1000);gl.drawArrays(gl.TRIANGLES,0,3);requestAnimationFrame(loop)}
+const near=e=>{const r=cv.getBoundingClientRect();return Math.hypot(e.clientX-r.left-r.width/2,e.clientY-r.top-r.height*.2)<r.height*.11};
+cv.onpointermove=e=>cv.style.cursor=near(e)?'pointer':'default';cv.onclick=e=>near(e)&&go();addEventListener('resize',fit);fit();
+return{start(){on=true;requestAnimationFrame(loop)},stop(){on=false}}}
+
+/* ============ FOREST: layered pines, fog, lit cabin, smoke, fireflies ============ */
+function Forest(cv,go){
+const c=cv.getContext('2d');let W,H,bg,cab,on=false,sm=[],s=7;const rng=()=>((s=(Math.imul(s,1664525)+1013904223)>>>0)/4294967296);
+const FF=Array.from({length:38},()=>({x:Math.random(),y:.45+Math.random()*.5,p:Math.random()*9,v:.3+Math.random()*.6}));
+function pine(g,x,by,h,w,col){const n=Math.max(6,h/22|0),top=by-h,R=[],L=[];for(let i=1;i<=n;i++){const t=i/n,y=top+h*t,ww=w/2*t;R.push([x+ww*(.8+rng()*.4),y],[x+ww*.45,y-h/n*.3]);L.push([x-ww*(.8+rng()*.4),y],[x-ww*.45,y-h/n*.3])}
+ g.fillStyle=col;g.beginPath();g.moveTo(x,top);R.forEach(p=>g.lineTo(p[0],p[1]));g.lineTo(x+w*.03,by);g.lineTo(x-w*.03,by);L.reverse().forEach(p=>g.lineTo(p[0],p[1]));g.closePath();g.fill()}
+function lg(g,x0,y0,x1,y1,st){const q=g.createLinearGradient(x0,y0,x1,y1);st.forEach(a=>q.addColorStop(a[0],a[1]));return q}
+function build(){s=7;W=cv.width=cv.clientWidth;H=cv.height=cv.clientHeight;bg=document.createElement('canvas');bg.width=W;bg.height=H;const g=bg.getContext('2d'),gy=H*.72,mx=W*.74,my=H*.15;
+ g.fillStyle=lg(g,0,0,0,H*.7,[[0,'#01030a'],[.6,'#0a1822'],[1,'#12262e']]);g.fillRect(0,0,W,H);
+ for(let i=0;i<90;i++){g.fillStyle=`rgba(255,255,255,${rng()*.7})`;g.fillRect(rng()*W,rng()*H*.4,1.2,1.2)}
+ let q=g.createRadialGradient(mx,my,0,mx,my,H*.5);q.addColorStop(0,'rgba(190,215,240,.4)');q.addColorStop(1,'rgba(190,215,240,0)');g.fillStyle=q;g.fillRect(0,0,W,H);
+ const mr=Math.max(16,Math.min(W,H)*.04);q=g.createRadialGradient(mx-mr*.3,my-mr*.3,0,mx,my,mr);q.addColorStop(0,'#fff');q.addColorStop(1,'#bccad6');g.fillStyle=q;g.beginPath();g.arc(mx,my,mr,0,7);g.fill();
+ ['#12242e','#0b1820','#06100f'].forEach((col,L)=>{const by=H*(.66+L*.035),h=H*(.36-L*.06),n=Math.ceil(W/(38+L*14));for(let i=0;i<n;i++)pine(g,i*(W/n)+rng()*30,by,h*(.6+rng()*.6),h*.3,col);
+  g.fillStyle=lg(g,0,by-h*.7,0,by+6,[[0,'rgba(120,160,175,0)'],[1,`rgba(120,160,175,${.16-L*.03})`]]);g.fillRect(0,by-h*.7,W,h*.7+6)});
+ g.fillStyle=lg(g,0,H*.68,0,H,[[0,'#0b1a12'],[1,'#020604']]);g.fillRect(0,H*.68,W,H*.32);
+ const cw=Math.min(W*.42,380),ch=cw*.46,cx=W/2,x0=cx-cw/2,top=gy-ch;cab={x:x0,y:top-ch*.5,w:cw,h:ch*1.55,gy,cx,cw,ch,top};
+ const ph=y=>cw*.05+(y-gy)/(H-gy)*(W*.13);g.fillStyle=lg(g,0,gy,0,H,[[0,'rgba(75,68,55,.6)'],[1,'rgba(30,28,22,.95)']]);g.beginPath();g.moveTo(cx-cw*.05,gy);g.lineTo(cx+cw*.05,gy);g.lineTo(cx+ph(H),H);g.lineTo(cx-ph(H),H);g.fill();
+ for(let i=0;i<1500;i++){const y=gy+2+rng()*(H-gy),x=rng()*W;if(Math.abs(x-cx)<ph(y))continue;const l=5+(y-gy)/H*34;g.strokeStyle=`hsl(${95+rng()*40},${25+rng()*20}%,${5+rng()*12}%)`;g.lineWidth=1+(y-gy)/H*1.5;g.beginPath();g.moveTo(x,y);g.quadraticCurveTo(x+(rng()-.5)*6,y-l*.6,x+(rng()-.5)*l*.7,y-l);g.stroke()}
+ for(let i=0;i<70;i++){const y=gy+8+rng()*(H-gy-10),x=cx+(rng()-.5)*W*.7;if(Math.abs(x-cx)<ph(y))continue;g.fillStyle=['#c9b6d9','#e8d7a0','#eee6e6','#9db7e6'][i%4]+'aa';g.beginPath();g.arc(x,y,1+(y-gy)/H*2.2,0,7);g.fill()}
+ g.fillStyle='rgba(0,0,0,.5)';g.beginPath();g.ellipse(cx,gy+4,cw*.62,9,0,0,7);g.fill();
+ g.fillStyle=lg(g,0,top,0,gy,[[0,'#33200f'],[1,'#150c06']]);g.fillRect(x0,top,cw,ch);
+ for(let y=top+9;y<gy;y+=10){g.fillStyle='rgba(0,0,0,.45)';g.fillRect(x0,y,cw,1.6);g.fillStyle='rgba(255,215,160,.06)';g.fillRect(x0,y+1.6,cw,1);g.fillStyle='#22140b';g.beginPath();g.arc(x0,y-4,5,0,7);g.arc(x0+cw,y-4,5,0,7);g.fill()}
+ const chx=cx+cw*.24;g.fillStyle='#1b130e';g.fillRect(chx,top-ch*.62,cw*.09,ch*.7);g.fillStyle='#2a1f18';g.fillRect(chx-3,top-ch*.64,cw*.09+6,7);cab.ch2={x:chx+cw*.045,y:top-ch*.66};
+ g.fillStyle=lg(g,x0,top-ch*.5,x0+cw,top,[[0,'#0d0806'],[1,'#241812']]);g.beginPath();g.moveTo(x0-cw*.07,top+3);g.lineTo(cx,top-ch*.55);g.lineTo(x0+cw*1.07,top+3);g.fill();
+ g.strokeStyle='rgba(160,195,225,.6)';g.lineWidth=2;g.beginPath();g.moveTo(cx,top-ch*.55);g.lineTo(x0+cw*1.07,top+3);g.stroke();
+ for(let k=1;k<6;k++){g.strokeStyle='rgba(0,0,0,.35)';g.lineWidth=1;g.beginPath();g.moveTo(cx-cw*.57*k/6,top+3-ch*.55*(1-k/6)*1);g.lineTo(cx+cw*.57*k/6,top+3-ch*.55*(1-k/6)*1);g.stroke()}
+ const wins=[[x0+cw*.12,top+ch*.2,cw*.17,ch*.32],[x0+cw*.71,top+ch*.2,cw*.17,ch*.32],[cx-cw*.06,top+ch*.32,cw*.12,ch*.68]];cab.wins=wins;
+ wins.forEach((w,i)=>{g.fillStyle=lg(g,0,w[1],0,w[1]+w[3],[[0,'#ffe09a'],[1,'#d27f34']]);g.fillRect(w[0],w[1],w[2],w[3]);g.strokeStyle='#1b0f08';g.lineWidth=3;g.strokeRect(w[0],w[1],w[2],w[3]);if(i<2){g.beginPath();g.moveTo(w[0]+w[2]/2,w[1]);g.lineTo(w[0]+w[2]/2,w[1]+w[3]);g.moveTo(w[0],w[1]+w[3]/2);g.lineTo(w[0]+w[2],w[1]+w[3]/2);g.stroke()}});
+ g.fillStyle='#1a1009';g.fillRect(cx-cw*.12,gy-4,cw*.24,6);
+ [[.05,1.02,.95,.3,'#020604'],[.95,1.02,1,.3,'#020604'],[.2,.88,.55,.2,'#030907'],[.82,.9,.6,.2,'#030907']].forEach(t=>pine(g,W*t[0],H*t[1],H*t[2],W*t[3],t[4]));
+ q=g.createRadialGradient(W/2,H*.55,H*.3,W/2,H*.55,H*.9);q.addColorStop(0,'rgba(0,0,0,0)');q.addColorStop(1,'rgba(0,0,0,.7)');g.fillStyle=q;g.fillRect(0,0,W,H)}
+function glow(x,y,r,a){const q=c.createRadialGradient(x,y,0,x,y,r);q.addColorStop(0,`rgba(255,190,100,${a})`);q.addColorStop(1,'rgba(255,190,100,0)');c.fillStyle=q;c.fillRect(x-r,y-r,r*2,r*2)}
+let fr=0;function frame(t){if(!on)return;const T=t/1000;fr++;c.globalCompositeOperation='source-over';c.drawImage(bg,0,0);c.globalCompositeOperation='screen';
+ const mx=W*.74,my=H*.15;for(let k=0;k<4;k++){c.fillStyle=lg(c,mx,my,mx-W*.3,H,[[0,`rgba(170,205,235,${.05+.02*Math.sin(T*.3+k)})`],[1,'rgba(170,205,235,0)']]);c.beginPath();c.moveTo(mx-6,my);c.lineTo(mx+6,my);c.lineTo(mx-W*.2-k*W*.11,H);c.lineTo(mx-W*.32-k*W*.11,H);c.fill()}
+ for(let k=0;k<3;k++){const fx=((T*9*(k+1)+k*W*.45)%(W*1.7))-W*.35;c.save();c.translate(fx,H*(.68+k*.07));c.scale(3.2,.3+k*.06);const q=c.createRadialGradient(0,0,0,0,0,W*.3);q.addColorStop(0,'rgba(150,185,190,.12)');q.addColorStop(1,'rgba(150,185,190,0)');c.fillStyle=q;c.beginPath();c.arc(0,0,W*.3,0,7);c.fill();c.restore()}
+ const fl=.85+.09*Math.sin(T*9)+.06*Math.sin(T*23.7);cab.wins.forEach((w,i)=>glow(w[0]+w[2]/2,w[1]+w[3]/2,cab.cw*(i<2?.5:.42),.3*fl));
+ c.fillStyle=lg(c,0,cab.gy,0,cab.gy+H*.14,[[0,`rgba(255,175,85,${.2*fl})`],[1,'rgba(255,175,85,0)']]);c.beginPath();c.moveTo(cab.cx-cab.cw*.1,cab.gy);c.lineTo(cab.cx+cab.cw*.1,cab.gy);c.lineTo(cab.cx+cab.cw*.32,cab.gy+H*.14);c.lineTo(cab.cx-cab.cw*.32,cab.gy+H*.14);c.fill();
+ c.globalCompositeOperation='source-over';if(fr%5==0)sm.push({x:cab.ch2.x,y:cab.ch2.y,r:3,a:.2,vx:(Math.random()-.5)*.15});
+ sm=sm.filter(p=>p.a>0);sm.forEach(p=>{p.x+=p.vx+.18+Math.sin(T+p.y*.02)*.1;p.y-=.4;p.r+=.09;p.a-=.0008;const q=c.createRadialGradient(p.x,p.y,0,p.x,p.y,p.r);q.addColorStop(0,`rgba(175,185,195,${p.a})`);q.addColorStop(1,'rgba(175,185,195,0)');c.fillStyle=q;c.fillRect(p.x-p.r,p.y-p.r,p.r*2,p.r*2)});
+ c.globalCompositeOperation='lighter';FF.forEach(f=>{const x=f.x*W+Math.sin(T*f.v+f.p)*30,y=f.y*H+Math.cos(T*f.v*.7+f.p)*20,a=Math.pow(Math.max(0,Math.sin(T*1.3+f.p*3)),3),q=c.createRadialGradient(x,y,0,x,y,11);q.addColorStop(0,`rgba(215,255,140,${a})`);q.addColorStop(1,'rgba(215,255,140,0)');c.fillStyle=q;c.fillRect(x-11,y-11,22,22)});
+ requestAnimationFrame(frame)}
+const near=e=>{const r=cv.getBoundingClientRect(),x=e.clientX-r.left,y=e.clientY-r.top;return x>cab.x&&x<cab.x+cab.w&&y>cab.y&&y<cab.y+cab.h};
+cv.onpointermove=e=>cv.style.cursor=near(e)?'pointer':'default';cv.onclick=e=>near(e)&&go();addEventListener('resize',()=>on&&build());
+return{start(){build();on=true;requestAnimationFrame(frame)},stop(){on=false}}}
+
 function burst(x,y){const p=Array.from({length:700},()=>{const a=Math.random()*7,v=1+Math.random()*7;return{x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:.5+Math.random()*2,l:1}});let last=performance.now();function run(now){const dt=Math.min(2,(now-last)/16);last=now;xx.clearRect(0,0,W,H);p.forEach(q=>{q.x+=q.vx*dt;q.y+=q.vy*dt;q.vy+=.018*dt;q.l-=.012*dt;xx.globalAlpha=Math.max(0,q.l);xx.fillStyle=Math.random()>.5?"#fff":"#d6b77a";xx.beginPath();xx.arc(q.x,q.y,q.r,0,7);xx.fill()});if(p.some(q=>q.l>0))requestAnimationFrame(run);else xx.clearRect(0,0,W,H)}requestAnimationFrame(run)}
-async function intro(){if(scene!=="intro")return;await fade(1);show("title");await fade(0);chord("star")}
-$("moon").onclick=async()=>{if(busy||scene!=="intro")return;busy=true;tone(330,.22,.025);await fade(1);show("forest");await fade(0);chord("warm");busy=false};
-$("cabin").onclick=async()=>{if(busy||scene!=="forest")return;busy=true;tone(392,.22,.025);await fade(1);show("title");await fade(0);chord("star");busy=false};
+let realisticOcean=null,realisticForest=null;
+async function enterForest(){
+  if(busy||scene!=="intro")return;
+  busy=true;tone(330,.22,.025);
+  realisticOcean?.stop();
+  await fade(1);show("forest");realisticForest?.start();await fade(0);chord("warm");busy=false;
+}
+async function enterArchive(){
+  if(busy||scene!=="forest")return;
+  busy=true;tone(392,.22,.025);
+  realisticForest?.stop();
+  await fade(1);show("title");await fade(0);chord("star");busy=false;
+}
 $("access").onclick=async()=>{if(busy)return;busy=true;tone(440);startMusic(.24);await fade(1);show("constellation");await fade(0);chord("star");busy=false};
+realisticOcean=Ocean($("realistic-ocean"),enterForest);
+realisticForest=Forest($("realistic-forest"),enterArchive);
+realisticOcean.start();
 function pos(i){return{x:W/2+(nodes[i].x-.5)*W*.74,y:H*.46+(nodes[i].y-.5)*H*.74}}
 const constStars=$("constellation-stars");
 function renderConstellationStars(){
