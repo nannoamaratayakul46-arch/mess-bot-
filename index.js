@@ -5974,7 +5974,6 @@ async function handleMessage(
         );
 
         // The existing self-listener reacts to this outgoing Banat message.
-      }
       } else {
         sendReplyWithTyping(
           api,
