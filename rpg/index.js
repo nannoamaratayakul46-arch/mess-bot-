@@ -3877,21 +3877,28 @@ async function handleWorldBossCommand(api,event,args) {
   ]));
 }
 
+function repliedUser(event) {
+  const reply = event && event.messageReply;
+  return reply && reply.senderID
+    ? String(reply.senderID)
+    : null;
+}
+
 async function handleSpecialRpgCommand(api,event,args) {
   const t=event.threadID,u=event.senderID,sub=normalizeKey(args[0]||"help");
   const root=isRpgRootAdmin(u);
   if(sub==="access"){
     if(!root)throw new Error("🔒 RPG special access is admin-only.");
-    const target=mentionedUser(event);if(!target)throw new Error("Mention the player receiving access.");
-    const requestedScope = args.slice(2).map(normalizeKey).find(x => specialAccess.SCOPES.has(x)) || "all";
+    const target=repliedUser(event);if(!target)throw new Error("Reply to the player receiving access.");
+    const requestedScope = args.slice(1).map(normalizeKey).find(x => specialAccess.SCOPES.has(x)) || "all";
     await specialAccess.grant(t,target,u,requestedScope);
-    await send(api,t,"🔐 RPG Special Access granted to the mentioned player. Scope: "+requestedScope);
+    await send(api,t,"🔐 RPG Special Access granted to the replied player. Scope: "+requestedScope);
     return;
   }
   if(sub==="revoke"){
     if(!root)throw new Error("🔒 RPG special access is admin-only.");
-    const target=mentionedUser(event);if(!target)throw new Error("Mention the player.");
-    await specialAccess.revoke(t,target,args[2]);
+    const target=repliedUser(event);if(!target)throw new Error("Reply to the player.");
+    await specialAccess.revoke(t,target,args[1]);
     await send(api,t,"🔒 RPG Special Access revoked.");
     return;
   }
@@ -3916,8 +3923,8 @@ async function handleSpecialRpgCommand(api,event,args) {
   }
   if(root){
     await send(api,t,box("👑 RPG GM",[
-      "!rpg special access @user [scope]",
-      "!rpg special revoke @user [scope]",
+      "Reply to a player: !rpg special access [scope]",
+      "Reply to a player: !rpg special revoke [scope]",
       "!rpg special summon boss <id>",
       "!rpg special event <id>",
       "!rpg special end <id>",
