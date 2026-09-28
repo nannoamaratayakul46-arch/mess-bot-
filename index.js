@@ -6061,6 +6061,20 @@ async function handleMessage(
             Math.floor(Math.random() * banatLinkPool.length)
           ];
 
+        // Ignore rapid-fire messages after the first 2 Banat replies
+        // in the same 4-second burst from this sender.
+        if (
+          !allowBanatBurstReply(
+            threadID,
+            senderId
+          )
+        ) {
+          console.log(
+            `[BANAT] Ignored rapid-fire message from ${senderId} in ${threadID}`
+          );
+          return;
+        }
+
         sendBanatReplyWithTyping(
           api,
           triggerReply,
@@ -6400,6 +6414,46 @@ function registerActiveThreadCleanup() {
 const BANAT_MIN_DELAY_MS = 3_000;
 const BANAT_MAX_DELAY_MS = 4_000;
 
+// Rapid-fire Banat protection:
+// One person can receive at most 2 Banat replies inside a 4-second burst.
+// Additional messages in that burst are intentionally ignored instead of
+// creating a backlog of old replies.
+const BANAT_BURST_WINDOW_MS = 4_000;
+const BANAT_BURST_MAX_REPLIES = 2;
+const banatBurstState = new Map();
+
+function allowBanatBurstReply(threadID, senderID) {
+  const key = `${String(threadID || "")}:${String(senderID || "")}`;
+  const now = Date.now();
+
+  const previous = banatBurstState.get(key) || [];
+  const recent = previous.filter(
+    (timestamp) =>
+      now - timestamp < BANAT_BURST_WINDOW_MS
+  );
+
+  if (recent.length >= BANAT_BURST_MAX_REPLIES) {
+    banatBurstState.set(key, recent);
+    return false;
+  }
+
+  recent.push(now);
+  banatBurstState.set(key, recent);
+
+  if (banatBurstState.size > 1000) {
+    for (const [knownKey, timestamps] of banatBurstState.entries()) {
+      if (
+        !timestamps.length ||
+        now - timestamps[timestamps.length - 1] >= BANAT_BURST_WINDOW_MS
+      ) {
+        banatBurstState.delete(knownKey);
+      }
+    }
+  }
+
+  return true;
+}
+
 function sendBanatReplyWithTyping(
   api,
   message,
@@ -6462,7 +6516,7 @@ function sendBanatReplyWithTyping(
         ) {
           try {
             api.setMessageReaction(
-              "😂",
+              "😆",
               sentMessageID,
               (reactionError) => {
                 if (reactionError) {
