@@ -3500,7 +3500,8 @@ const HELP_CATEGORIES = {
       "▶ !rpg special summon boss <id> — Admin-only summon.",
       "▶ !rpg special event <id> — Admin-only event start."
     ],
-  }
+  },
+};
 
 /* =========================================================
    HELP — root-level category alias map
