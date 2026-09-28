@@ -3466,6 +3466,128 @@ async function healthCheck() {
   return true;
 }
 
+
+/**
+ * Dashboard user inspector. Read-only; the bot remains the source of truth.
+ */
+async function getDashboardUser(threadId, userId) {
+  threadId = String(threadId || "").trim();
+  userId = String(userId || "").trim();
+  if (!threadId || !userId) throw new Error("thread_id and user_id are required.");
+
+  const conn = requireConn();
+  const [user, rpg, inventory, equipment, skills, spells, pets, transactions, incidents] =
+    await Promise.all([
+      conn.query(`
+        SELECT thread_id, user_id, display_name, balance, bank_balance, xp, level,
+               games_played, wins, daily_streak, last_daily, last_work,
+               credit_score, loan_remaining
+        FROM users WHERE thread_id = $1 AND user_id = $2 LIMIT 1
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT * FROM rpg_players
+        WHERE thread_id = $1 AND user_id = $2 LIMIT 1
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT item_id, quantity, updated_at FROM rpg_inventory_items
+        WHERE thread_id = $1 AND user_id = $2 AND quantity > 0
+        ORDER BY updated_at DESC, item_id LIMIT 50
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT slot, item_id, updated_at FROM rpg_equipment
+        WHERE thread_id = $1 AND user_id = $2 ORDER BY slot
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT skill_id, level, unlocked, updated_at FROM rpg_player_skills
+        WHERE thread_id = $1 AND user_id = $2
+        ORDER BY updated_at DESC, skill_id LIMIT 100
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT spell_id, unlocked, updated_at FROM rpg_player_spells
+        WHERE thread_id = $1 AND user_id = $2
+        ORDER BY updated_at DESC, spell_id LIMIT 100
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT * FROM rpg_player_pets
+        WHERE thread_id = $1 AND user_id = $2
+        ORDER BY updated_at DESC LIMIT 50
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT id, type, amount, description, created_at FROM economy_transactions
+        WHERE thread_id = $1 AND user_id = $2
+        ORDER BY created_at DESC, id DESC LIMIT 25
+      `, [threadId, userId]),
+      conn.query(`
+        SELECT id, category, severity, confidence, suggested_action, action, reason, created_at
+        FROM automod_incidents
+        WHERE thread_id = $1 AND user_id = $2
+        ORDER BY created_at DESC LIMIT 25
+      `, [threadId, userId]),
+    ]);
+
+  return {
+    generated_at: new Date().toISOString(),
+    user: user.rows[0] || null,
+    rpg: rpg.rows[0] || null,
+    inventory: inventory.rows,
+    equipment: equipment.rows,
+    skills: skills.rows,
+    spells: spells.rows,
+    pets: pets.rows,
+    transactions: transactions.rows,
+    moderation: incidents.rows,
+  };
+}
+
+/**
+ * Historical operational metrics using tables already owned by ECLIPSE.
+ */
+async function getDashboardAnalytics(hours = 24) {
+  const safeHours = Math.min(168, Math.max(1, Math.floor(Number(hours) || 24)));
+  const since = Date.now() - safeHours * 60 * 60 * 1000;
+  const conn = requireConn();
+
+  const [economy, rpg, battles, moderation] = await Promise.all([
+    conn.query(`
+      SELECT date_trunc('hour', to_timestamp(created_at / 1000.0)) AS bucket,
+             COALESCE(SUM(CASE WHEN amount > 0 THEN amount ELSE 0 END), 0)::numeric AS inflow,
+             COALESCE(SUM(CASE WHEN amount < 0 THEN ABS(amount) ELSE 0 END), 0)::numeric AS outflow,
+             COUNT(*)::int AS transactions
+      FROM economy_transactions WHERE created_at >= $1
+      GROUP BY 1 ORDER BY 1
+    `, [since]),
+    conn.query(`
+      SELECT date_trunc('hour', to_timestamp(updated_at / 1000.0)) AS bucket,
+             COUNT(*)::int AS players,
+             COALESCE(SUM(reputation), 0)::bigint AS reputation,
+             COALESCE(SUM(renown), 0)::bigint AS renown
+      FROM rpg_players WHERE updated_at >= $1
+      GROUP BY 1 ORDER BY 1
+    `, [since]),
+    conn.query(`
+      SELECT date_trunc('hour', to_timestamp(created_at / 1000.0)) AS bucket,
+             COUNT(*)::int AS battles
+      FROM rpg_battles WHERE created_at >= $1
+      GROUP BY 1 ORDER BY 1
+    `, [since]),
+    conn.query(`
+      SELECT date_trunc('hour', to_timestamp(created_at / 1000.0)) AS bucket,
+             COUNT(*)::int AS incidents
+      FROM automod_incidents WHERE created_at >= $1
+      GROUP BY 1 ORDER BY 1
+    `, [since]),
+  ]);
+
+  return {
+    generated_at: new Date().toISOString(),
+    hours: safeHours,
+    economy: economy.rows,
+    rpg: rpg.rows,
+    battles: battles.rows,
+    moderation: moderation.rows,
+  };
+}
+
 // ╔══════════════════════════════════════════════════════════╗
 // ║                         EXPORTS                          ║
 // ╚══════════════════════════════════════════════════════════╝
@@ -3476,6 +3598,8 @@ module.exports = {
   connect,
   healthCheck,
   getDashboardSnapshot,
+  getDashboardUser,
+  getDashboardAnalytics,
 
   // Users
   getUser,
