@@ -100,11 +100,11 @@ linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
 
 .title{text-align:center}.title h2{font-size:14px;letter-spacing:.45em;font-weight:400;margin:20px 0 12px}.big{font-size:clamp(58px,13vw,145px);line-height:.78;font-weight:300;letter-spacing:-.045em}.sub{font:11px Arial;letter-spacing:.48em;text-transform:uppercase;color:rgba(247,241,231,.5);margin-top:24px}.seal{width:58px;height:58px;border:1px solid rgba(214,183,122,.5);border-radius:50%;display:grid;place-items:center;margin:30px auto;color:var(--g);position:relative}.seal:before{content:"";position:absolute;inset:6px;border:1px solid rgba(214,183,122,.17);border-radius:50%}
 #constellation{cursor:default;overflow:hidden}
-.const-copy{position:absolute;left:50%;bottom:7%;transform:translateX(-50%);text-align:center;pointer-events:none;z-index:8;width:min(700px,90vw)}
-.const-copy h3{font-size:clamp(22px,4vw,38px);font-weight:300;margin:8px 0}
-.const-copy p{font:9px Arial;letter-spacing:.24em;color:rgba(247,241,231,.42);text-transform:uppercase}
-.help{position:absolute;left:50%;top:18%;transform:translateX(-50%);font:9px Arial;letter-spacing:.24em;color:rgba(240,220,169,.7);text-transform:uppercase;white-space:nowrap;z-index:8}
-.const-help{display:inline-flex;align-items:center;gap:9px;margin-top:12px;padding:8px 13px;border:1px solid rgba(214,183,122,.18);background:rgba(3,2,8,.34);color:rgba(247,241,231,.48);font:8px Arial;letter-spacing:.18em;text-transform:uppercase}
+.const-copy{position:absolute;left:50%;top:11%;bottom:auto;transform:translateX(-50%);text-align:center;pointer-events:none;z-index:8;width:min(700px,90vw);padding:0 12px}
+.const-copy h3{font-size:clamp(22px,4vw,38px);font-weight:300;line-height:1.05;margin:7px 0 6px}
+.const-copy p{font:9px Arial;letter-spacing:.24em;color:rgba(247,241,231,.42);text-transform:uppercase;margin:0}
+.help{position:absolute;left:50%;top:22%;transform:translateX(-50%);font:8px Arial;letter-spacing:.24em;color:rgba(240,220,169,.7);text-transform:uppercase;white-space:nowrap;z-index:8}
+.const-help{display:inline-flex;align-items:center;gap:9px;margin-top:11px;padding:7px 12px;border:1px solid rgba(214,183,122,.18);background:rgba(3,2,8,.34);color:rgba(247,241,231,.48);font:8px Arial;letter-spacing:.16em;text-transform:uppercase}
 .const-help-dot{width:5px;height:5px;border-radius:50%;background:var(--g2);box-shadow:0 0 12px var(--g)}
 #constellation-stars{position:absolute;inset:0;z-index:7;pointer-events:none}
 .const-star{position:absolute;width:58px;height:58px;margin:-29px 0 0 -29px;border:0;padding:0;border-radius:50%;background:transparent;cursor:pointer;pointer-events:auto;touch-action:manipulation}
@@ -125,9 +125,10 @@ linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
 .const-progress strong{color:var(--g2);font-weight:400}
 @media(max-width:600px){
   .help{top:14%;font-size:8px}
-  .const-progress{right:50%;top:auto;bottom:18%;transform:translateX(50%)}
-  .const-copy{bottom:7%}
-  .const-copy p{margin-bottom:2px}
+  .const-progress{right:50%;top:auto;bottom:3%;transform:translateX(50%)}
+  .const-copy{top:10%;width:min(92vw,620px)}
+  .const-copy p{margin-bottom:0}
+  .help{top:21%;font-size:7px}
   .const-star{width:66px;height:66px;margin:-33px 0 0 -33px}
   .const-star:before{inset:20px}
 }
@@ -652,8 +653,39 @@ function movePen(x,y,on=true){const p=$("pen");p.style.opacity=on?1:0;p.style.tr
 function setPageMarkup(el,pageIndex,pages,blank=false){const title=el.querySelector(".page-title"),writing=el.querySelector(".page-writing"),num=el.querySelector(".page-number");title.textContent=CFG.letterTitle;writing.textContent=blank?"":(pages[pageIndex]?pages[pageIndex].join("\n\n"):"");num.textContent=pages.length>1&&!blank?"PAGE "+String(pageIndex+1).padStart(2,"0")+" / "+String(pages.length).padStart(2,"0"):"";return writing}
 function makeLetterPages(){const front=$("paperFront"),writing=front.querySelector(".page-writing"),cs=getComputedStyle(writing);const measure=document.createElement("div");measure.style.cssText="position:absolute;left:-99999px;top:0;visibility:hidden;white-space:pre-wrap;overflow:hidden;font-family:"+cs.fontFamily+";font-size:"+cs.fontSize+";font-weight:"+cs.fontWeight+";line-height:"+cs.lineHeight+";letter-spacing:"+cs.letterSpacing+";width:"+writing.clientWidth+"px;height:"+writing.clientHeight+"px;padding:0;margin:0";document.body.appendChild(measure);const pages=[],fits=a=>{measure.textContent=a.join("\n\n");return measure.scrollHeight<=writing.clientHeight+1};let page=[];for(const paragraph of CFG.letter){if(fits(page.concat(paragraph))){page.push(paragraph);continue}if(page.length){pages.push(page);page=[]}if(fits([paragraph])){page=[paragraph];continue}let words=paragraph.split(/(\s+)/),chunk="";for(const token of words){const test=chunk+token;if(fits([test]))chunk=test;else{if(chunk)pages.push([chunk.trim()]);chunk=token.trimStart()}}if(chunk)page=[chunk.trim()]}if(page.length)pages.push(page);measure.remove();return pages}
 async function turnPageTo(pages,nextIndex){const paper=$("paper"),front=$("paperFront"),back=$("paperBack");setPageMarkup(back,nextIndex,pages,false);paper.classList.remove("turning");void paper.offsetWidth;paper.classList.add("turning");await sleep(980);setPageMarkup(front,nextIndex,pages,false);setPageMarkup(back,nextIndex,pages,true);paper.classList.remove("turning");void paper.offsetWidth}
-function brushToCaret(writing){const range=document.createRange();range.selectNodeContents(writing);range.collapse(false);const q=range.getBoundingClientRect(),wr=writing.getBoundingClientRect();if(q.width||q.height)movePen(Math.min(window.innerWidth-30,Math.max(12,q.right+3)),Math.min(window.innerHeight-34,Math.max(12,q.bottom-5)),true);else movePen(wr.left+24,wr.top+5,true)}
-async function writePage(writing,text){writing.textContent="";movePen(writing.getBoundingClientRect().left+24,writing.getBoundingClientRect().top+5,true);let n=0;for(const ch of text){writing.textContent+=ch;n++;brushToCaret(writing);await sleep(ch==="\n"?170:n<45?34:24)}}
+function brushToCaret(writing){
+  const wr=writing.getBoundingClientRect();
+  const text=writing.lastChild;
+  if(text&&text.nodeType===Node.TEXT_NODE&&text.length){
+    const range=document.createRange();
+    const i=text.length-1;
+    range.setStart(text,i);
+    range.setEnd(text,i+1);
+    const r=range.getBoundingClientRect();
+    if(r.width||r.height){
+      movePen(
+        Math.min(window.innerWidth-28,Math.max(10,r.right+3)),
+        Math.min(window.innerHeight-30,Math.max(10,r.bottom-3)),
+        true
+      );
+      return;
+    }
+  }
+  movePen(wr.left+24,wr.top+5,true);
+}
+async function writePage(writing,text){
+  writing.textContent="";
+  writing.getBoundingClientRect();
+  movePen(writing.getBoundingClientRect().left+24,writing.getBoundingClientRect().top+5,true);
+  let n=0;
+  for(const ch of text){
+    writing.append(document.createTextNode(ch));
+    writing.lastChild && writing.lastChild.nodeType===Node.TEXT_NODE && writing.normalize();
+    brushToCaret(writing);
+    n++;
+    await sleep(ch==="\n"?170:n<45?42:28);
+  }
+}
 async function writeLetter(){const paper=$("paper"),front=$("paperFront"),back=$("paperBack");paper.classList.remove("turning");const pages=makeLetterPages();if(!pages.length)return;setPageMarkup(front,0,pages,false);setPageMarkup(back,0,pages,true);$("letter-page-status").textContent="PAGE 01 / "+String(pages.length).padStart(2,"0");let writing=front.querySelector(".page-writing");await writePage(writing,pages[0].join("\n\n"));for(let i=1;i<pages.length;i++){ $("letter-page-status").textContent="TURNING TO PAGE "+String(i+1).padStart(2,"0")+" / "+String(pages.length).padStart(2,"0");movePen(0,0,false);await sleep(350);await turnPageTo(pages,i);writing=front.querySelector(".page-writing");setPageMarkup(front,i,pages,true);$("letter-page-status").textContent="PAGE "+String(i+1).padStart(2,"0")+" / "+String(pages.length).padStart(2,"0");await writePage(writing,pages[i].join("\n\n"))}movePen(0,0,false);$("letter-status").textContent="preserved";$("letter-page-status").textContent="ARCHIVE COMPLETE · "+pages.length+" PAGES";await sleep(1700);await fade(1);show("message");$("message").classList.add("show");await fade(0);chord("warm");await sleep(5200);await fade(1);show("void");$("void").classList.add("ready");await fade(0);busy=false}
 $("void").addEventListener("pointerup",e=>{if(!finalStar.ready||busy)return;if(Math.hypot(e.clientX-finalStar.x,e.clientY-finalStar.y)<55)reveal()});
 async function reveal(){busy=true;tone(90,.25,.025);await sleep(250);burst(finalStar.x,finalStar.y);chord("impact");await fade(1);show("final");$("final").classList.add("show");await fade(0);await sleep(5600);await fade(1);show("end");await fade(0);busy=false}
