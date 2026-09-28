@@ -3438,10 +3438,31 @@ function attemptLogin() {
         eclipseUserID = typeof api.getCurrentUserID === "function"
           ? String(api.getCurrentUserID() || "").trim()
           : "";
-        console.log("[AUTH] ECLIPSE user ID " + (eclipseUserID ? "detected." : "not available."));
+
+        // Fallback to the c_user cookie when the adapter does not expose
+        // getCurrentUserID() reliably. This is only used to identify ECLIPSE's
+        // own incoming self-listen events.
+        if (!eclipseUserID && Array.isArray(appState)) {
+          const ownCookie = appState.find(
+            (cookie) =>
+              String(cookie?.key || cookie?.name || "").trim() === "c_user"
+          );
+
+          if (ownCookie?.value) {
+            eclipseUserID = String(ownCookie.value).trim();
+          }
+        }
+
+        console.log(
+          "[AUTH] ECLIPSE user ID " +
+            (eclipseUserID ? "detected." : "not available.")
+        );
       } catch (error) {
         eclipseUserID = "";
-        console.warn("[AUTH] Could not determine ECLIPSE user ID:", error?.message || error);
+        console.warn(
+          "[AUTH] Could not determine ECLIPSE user ID:",
+          error?.message || error
+        );
       }
 
       watchdogSetMessengerConnected(
@@ -3800,18 +3821,25 @@ async function handleMessage(
       return;
     }
 
+    const reactionCallback = (reactionError) => {
+      if (reactionError) {
+        console.error(
+          "[BANAT] Self-reaction failed:",
+          reactionError
+        );
+      }
+    };
+
     try {
+      // ws3-fca's current reaction path expects the message descriptor
+      // when MQTT is active, so include the thread ID explicitly.
       api.setMessageReaction(
         "😆",
-        event.messageID,
-        (reactionError) => {
-          if (reactionError) {
-            console.error(
-              "[BANAT] Self-reaction failed:",
-              reactionError
-            );
-          }
-        }
+        {
+          messageID: String(event.messageID),
+          threadID: threadId,
+        },
+        reactionCallback
       );
     } catch (reactionError) {
       console.error(
