@@ -112,6 +112,7 @@ const {
 const {
   getTriggerReply,
   getNextPublicReply,
+  getRandomRoastReply,
 } = require("./triggers");
 
 // ============================================================
@@ -6061,14 +6062,12 @@ async function handleMessage(
             Math.floor(Math.random() * banatLinkPool.length)
           ];
 
-        // Ignore rapid-fire messages after the first 2 Banat replies
-        // in the same 4-second burst from this sender.
-        if (
-          !allowBanatBurstReply(
-            threadID,
-            senderId
-          )
-        ) {
+        const banatReplyDelay = allowBanatBurstReply(
+          threadID,
+          senderId
+        );
+
+        if (banatReplyDelay === null) {
           console.log(
             `[BANAT] Ignored rapid-fire message from ${senderId} in ${threadID}`
           );
@@ -6083,7 +6082,8 @@ async function handleMessage(
           banatMemeEnabled,
           banatLinkEnabled
             ? banatProfileUrl
-            : null
+            : null,
+          banatReplyDelay
         );
 
         return;
@@ -6113,12 +6113,24 @@ async function handleMessage(
     )
   ) {
     // Random public roasts remain text-only.
-    const publicReply =
-      getNextPublicReply();
+    const randomRoastReply =
+      getRandomRoastReply();
 
     if (
-      publicReply
+      randomRoastReply
     ) {
+      const randomReplyDelay = allowBanatBurstReply(
+        threadID,
+        senderId
+      );
+
+      if (randomReplyDelay === null) {
+        console.log(
+          `[BANAT] Ignored rapid-fire random roast from ${senderId} in ${threadID}`
+        );
+        return;
+      }
+
       lastRandomRoastByThread.set(
         threadId,
         Date.now()
@@ -6126,10 +6138,12 @@ async function handleMessage(
 
       sendBanatReplyWithTyping(
         api,
-        publicReply,
+        randomRoastReply,
         threadID,
         event.messageID,
-        false
+        false,
+        null,
+        randomReplyDelay
       );
     }
   }
@@ -6411,47 +6425,48 @@ function registerActiveThreadCleanup() {
 // SAFE REPLY
 // ============================================================
 
-const BANAT_MIN_DELAY_MS = 3_000;
-const BANAT_MAX_DELAY_MS = 4_000;
-
-// Rapid-fire Banat protection:
-// One person can receive at most 2 Banat replies inside a 4-second burst.
-// Additional messages in that burst are intentionally ignored instead of
-// creating a backlog of old replies.
+const BANAT_REPLY_DELAY_MS = 2_000;
 const BANAT_BURST_WINDOW_MS = 4_000;
 const BANAT_BURST_MAX_REPLIES = 2;
+
+// A sender gets at most 2 Banat replies in a rolling 4-second burst.
+// Accepted replies are scheduled 2 seconds apart; message #3+ is dropped
+// immediately so old spam never builds up into a delayed backlog.
 const banatBurstState = new Map();
 
 function allowBanatBurstReply(threadID, senderID) {
   const key = `${String(threadID || "")}:${String(senderID || "")}`;
   const now = Date.now();
-
   const previous = banatBurstState.get(key) || [];
   const recent = previous.filter(
-    (timestamp) =>
-      now - timestamp < BANAT_BURST_WINDOW_MS
+    (entry) => now - entry.acceptedAt < BANAT_BURST_WINDOW_MS
   );
 
   if (recent.length >= BANAT_BURST_MAX_REPLIES) {
     banatBurstState.set(key, recent);
-    return false;
+    return null;
   }
 
-  recent.push(now);
+  const nextAvailableAt = recent.length
+    ? Math.max(
+        now + BANAT_REPLY_DELAY_MS,
+        recent[recent.length - 1].scheduledAt + BANAT_REPLY_DELAY_MS
+      )
+    : now + BANAT_REPLY_DELAY_MS;
+
+  recent.push({ acceptedAt: now, scheduledAt: nextAvailableAt });
   banatBurstState.set(key, recent);
 
   if (banatBurstState.size > 1000) {
-    for (const [knownKey, timestamps] of banatBurstState.entries()) {
-      if (
-        !timestamps.length ||
-        now - timestamps[timestamps.length - 1] >= BANAT_BURST_WINDOW_MS
-      ) {
+    for (const [knownKey, entries] of banatBurstState.entries()) {
+      const latest = entries[entries.length - 1];
+      if (!latest || now - latest.acceptedAt >= BANAT_BURST_WINDOW_MS) {
         banatBurstState.delete(knownKey);
       }
     }
   }
 
-  return true;
+  return Math.max(0, nextAvailableAt - now);
 }
 
 function sendBanatReplyWithTyping(
@@ -6460,14 +6475,13 @@ function sendBanatReplyWithTyping(
   threadID,
   replyToMessageID = null,
   attachMeme = false,
-  linkUrl = null
+  linkUrl = null,
+  replyDelayMs = BANAT_REPLY_DELAY_MS
 ) {
   const delayMs =
-    BANAT_MIN_DELAY_MS +
-    Math.floor(
-      Math.random() *
-        (BANAT_MAX_DELAY_MS - BANAT_MIN_DELAY_MS + 1)
-    );
+    Number.isFinite(Number(replyDelayMs))
+      ? Math.max(0, Number(replyDelayMs))
+      : BANAT_REPLY_DELAY_MS;
 
   setTimeout(() => {
     try {
