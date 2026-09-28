@@ -1444,7 +1444,7 @@ async function handleOwnerCommand(
       "   ♡ !game",
       "",
       "୨୧ banat control",
-      "   ♡ !banat",
+      "   ♡ /banat",
       "",
       "୨୧ lucien ai",
       "   ♡ !lucien",
