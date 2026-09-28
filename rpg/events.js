@@ -563,7 +563,7 @@ async function getActiveWorldEvents(threadID) {
         )
       ORDER BY started_at DESC
     `,
-    [String(threadID)]
+    [String(threadID), Date.now()]
   );
 
   return result.rows || [];
@@ -586,7 +586,7 @@ async function getActiveWorldEvent(threadID, eventID) {
       ORDER BY started_at DESC
       LIMIT 1
     `,
-    [String(threadID), id]
+    [String(threadID), id, Date.now()]
   );
 
   return result.rows[0] || null;
@@ -620,11 +620,9 @@ async function startWorldEvent(threadID, eventID, options = {}) {
       ? Number(options.durationMs)
       : event.durationMs || DEFAULT_EVENT_DURATION_MS;
 
-  const startedAt = new Date();
+  const startedAt = Date.now();
 
-  const expiresAt = new Date(
-    startedAt.getTime() + duration
-  );
+  const expiresAt = startedAt + duration;
 
   /*
    * Apply global season override.
@@ -713,7 +711,7 @@ async function endWorldEvent(threadID, eventID) {
       UPDATE rpg_world_events
       SET
         active = FALSE,
-        ended_at = NOW()
+        ended_at = $3
       WHERE thread_id = $1
         AND event_id = $2
         AND active = TRUE
@@ -740,7 +738,7 @@ async function expireWorldEvents(threadID) {
       WHERE thread_id = $1
         AND active = TRUE
         AND expires_at IS NOT NULL
-        AND expires_at <= NOW()
+        AND expires_at <= $2
       RETURNING *
     `,
     [String(threadID)]
