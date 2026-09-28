@@ -1019,7 +1019,7 @@ function trafficSafetyStatus() {
   };
 }
 
-function trafficQueueSend(api, message, threadID, callback) {
+function trafficQueueSend(api, message, threadID, callback, replyToMessageID = null) {
   if (
     trafficSendQueue.length >=
     TRAFFIC_GOVERNOR.queueMax
@@ -1048,6 +1048,7 @@ function trafficQueueSend(api, message, threadID, callback) {
     message,
     threadID: String(threadID),
     callback,
+    replyToMessageID: replyToMessageID || null,
     enqueuedAt: trafficNow(),
   });
 
@@ -1125,10 +1126,7 @@ async function trafficProcessQueue() {
 
         await new Promise((resolve) => {
           try {
-            job.api.sendMessage(
-              job.message,
-              job.threadID,
-              (error, messageInfo) => {
+            const sendCallback = (error, messageInfo) => {
                 if (typeof job.callback === "function") {
                   try {
                     job.callback(
@@ -1145,7 +1143,22 @@ async function trafficProcessQueue() {
 
                 resolve();
               }
-            );
+            };
+
+            if (job.replyToMessageID) {
+              job.api.sendMessage(
+                job.message,
+                job.threadID,
+                sendCallback,
+                job.replyToMessageID
+              );
+            } else {
+              job.api.sendMessage(
+                job.message,
+                job.threadID,
+                sendCallback
+              );
+            }
           } catch (error) {
             if (typeof job.callback === "function") {
               try {
@@ -1215,13 +1228,15 @@ function installTrafficGovernor(api) {
         return function guardedSendMessage(
           message,
           threadID,
-          callback
+          callback,
+          messageID
         ) {
           return trafficQueueSend(
             rawApi,
             message,
             threadID,
-            callback
+            callback,
+            messageID
           );
         };
       }
@@ -1245,8 +1260,20 @@ function installTrafficGovernor(api) {
   return guardedApi;
 }
 
-function trafficSendMessage(api, message, threadID, callback) {
-  return trafficQueueSend(api, message, threadID, callback);
+function trafficSendMessage(
+  api,
+  message,
+  threadID,
+  callback,
+  replyToMessageID = null
+) {
+  return trafficQueueSend(
+    api,
+    message,
+    threadID,
+    callback,
+    replyToMessageID
+  );
 }
 
 const trafficCleanupTimer = setInterval(() => {
@@ -6035,10 +6062,11 @@ async function handleMessage(
             Math.floor(Math.random() * banatLinkPool.length)
           ];
 
-        sendReplyWithTyping(
+        sendBanatReplyWithTyping(
           api,
           triggerReply,
           threadID,
+          event.messageID,
           banatMemeEnabled,
           banatLinkEnabled
             ? banatProfileUrl
@@ -6083,10 +6111,11 @@ async function handleMessage(
         Date.now()
       );
 
-      sendReplyWithTyping(
+      sendBanatReplyWithTyping(
         api,
         publicReply,
         threadID,
+        event.messageID,
         false
       );
     }
@@ -6368,6 +6397,138 @@ function registerActiveThreadCleanup() {
 // ============================================================
 // SAFE REPLY
 // ============================================================
+
+const BANAT_MIN_DELAY_MS = 3_000;
+const BANAT_MAX_DELAY_MS = 4_000;
+
+function sendBanatReplyWithTyping(
+  api,
+  message,
+  threadID,
+  replyToMessageID = null,
+  attachMeme = false,
+  linkUrl = null
+) {
+  const delayMs =
+    BANAT_MIN_DELAY_MS +
+    Math.floor(
+      Math.random() *
+        (BANAT_MAX_DELAY_MS - BANAT_MIN_DELAY_MS + 1)
+    );
+
+  setTimeout(() => {
+    try {
+      const memePath =
+        attachMeme && !linkUrl
+          ? getRandomMemePath()
+          : null;
+
+      const outgoingMessage =
+        linkUrl
+          ? {
+              body: message,
+              url: linkUrl,
+            }
+          : memePath
+          ? {
+              body: message,
+              attachment:
+                fs.createReadStream(
+                  memePath
+                ),
+            }
+          : message;
+
+      const sendCallback = (
+        sendError,
+        messageInfo
+      ) => {
+        if (sendError) {
+          console.error(
+            "[BANAT] Reply failed:",
+            sendError
+          );
+          return;
+        }
+
+        const sentMessageID =
+          messageInfo?.messageID;
+
+        // Banat laughs at its own insult.
+        if (
+          sentMessageID &&
+          api &&
+          typeof api.setMessageReaction ===
+            "function"
+        ) {
+          try {
+            api.setMessageReaction(
+              "😂",
+              sentMessageID,
+              (reactionError) => {
+                if (reactionError) {
+                  console.error(
+                    "[BANAT] Self-reaction failed:",
+                    reactionError
+                  );
+                }
+              }
+            );
+          } catch (reactionError) {
+            console.error(
+              "[BANAT] Self-reaction error:",
+              reactionError
+            );
+          }
+        }
+      };
+
+      trafficSendMessage(
+        api,
+        outgoingMessage,
+        threadID,
+        sendCallback,
+        replyToMessageID || null
+      );
+
+      if (
+        attachMeme &&
+        linkUrl
+      ) {
+        const followUpMemePath =
+          getRandomMemePath();
+
+        if (followUpMemePath) {
+          setTimeout(() => {
+            trafficSendMessage(
+              api,
+              {
+                attachment:
+                  fs.createReadStream(
+                    followUpMemePath
+                  ),
+              },
+              threadID,
+              (sendError) => {
+                if (sendError) {
+                  console.error(
+                    "[BANAT] Meme follow-up failed:",
+                    sendError
+                  );
+                }
+              }
+            );
+          }, 400);
+        }
+      }
+    } catch (sendError) {
+      console.error(
+        "[BANAT] Reply error:",
+        sendError
+      );
+    }
+  }, delayMs);
+}
 
 function sendReplyWithTyping(
   api,
@@ -6705,3 +6866,5 @@ setInterval(() => {
       `Music: ${music.activeDownloads}/${MUSIC_MAX_GLOBAL_DOWNLOADS} downloads`
   );
 }, 60_000);
+
+
