@@ -733,6 +733,68 @@ async function connect() {
     CREATE INDEX IF NOT EXISTS rpg_party_members_lookup_idx
       ON rpg_party_members(thread_id, user_id, party_id);
 
+    CREATE TABLE IF NOT EXISTS rpg_guild_invites (
+      guild_id BIGINT NOT NULL REFERENCES rpg_guilds(id) ON DELETE CASCADE,
+      thread_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      invited_by TEXT NOT NULL,
+      created_at BIGINT NOT NULL,
+      PRIMARY KEY(guild_id, user_id)
+    );
+
+    CREATE TABLE IF NOT EXISTS rpg_guild_upgrades (
+      guild_id BIGINT NOT NULL REFERENCES rpg_guilds(id) ON DELETE CASCADE,
+      upgrade_key TEXT NOT NULL,
+      level INTEGER NOT NULL DEFAULT 1,
+      updated_at BIGINT NOT NULL,
+      PRIMARY KEY(guild_id, upgrade_key)
+    );
+
+    CREATE TABLE IF NOT EXISTS rpg_special_access (
+      thread_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      granted_by TEXT NOT NULL,
+      created_at BIGINT NOT NULL,
+      expires_at BIGINT,
+      PRIMARY KEY(thread_id, user_id, scope)
+    );
+
+    CREATE TABLE IF NOT EXISTS rpg_crafted_equipment (
+      id BIGSERIAL PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      item_id TEXT NOT NULL,
+      rarity TEXT NOT NULL,
+      enhancement INTEGER NOT NULL DEFAULT 0,
+      stats JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at BIGINT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS rpg_world_bosses (
+      id BIGSERIAL PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      boss_id TEXT NOT NULL,
+      hp BIGINT NOT NULL,
+      max_hp BIGINT NOT NULL,
+      phase INTEGER NOT NULL DEFAULT 1,
+      status TEXT NOT NULL DEFAULT 'active',
+      created_at BIGINT NOT NULL,
+      updated_at BIGINT NOT NULL DEFAULT 0,
+      expires_at BIGINT,
+      summoned_by TEXT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS rpg_world_boss_participants (
+      boss_id BIGINT NOT NULL REFERENCES rpg_world_bosses(id) ON DELETE CASCADE,
+      thread_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      damage_dealt BIGINT NOT NULL DEFAULT 0,
+      attacks INTEGER NOT NULL DEFAULT 0,
+      last_attack_at BIGINT,
+      PRIMARY KEY(boss_id, user_id)
+    );
+
     CREATE TABLE IF NOT EXISTS rpg_boss_sessions (
       id BIGSERIAL PRIMARY KEY,
       thread_id TEXT NOT NULL,
