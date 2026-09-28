@@ -3439,7 +3439,43 @@ const HELP_CATEGORIES = {
       "▶ !rpg dungeon advance — Advance through a dungeon.",
     ],
   },
-};
+,
+
+  guild: {
+    emoji: "🏰",
+    title: "🏰 GUILDS",
+    summary: "Guilds, treasury, companions, crafting, and raids.",
+    lines: [
+      "▶ !rpg guild — View your guild.",
+      "▶ !rpg guild create <name> — Found a guild.",
+      "▶ !rpg guild invite @user — Invite a player.",
+      "▶ !rpg guild join — Accept an invite.",
+      "▶ !rpg guild members — List members.",
+      "▶ !rpg guild donate <amount> — Fund the treasury.",
+      "▶ !rpg guild upgrade <armory|stable|blacksmith|vault|quest_board>",
+      "▶ !rpg companion — View companions.",
+      "▶ !rpg companion hatch <egg> — Hatch an egg.",
+      "▶ !rpg companion activate <id> — Activate a companion.",
+      "▶ !rpg companion train <id> — Train a companion.",
+      "▶ !rpg forge — View recipes or forge equipment.",
+      "▶ !rpg worldboss — View the active world boss.",
+      "▶ !rpg worldboss attack — Attack the boss."
+    ],
+  },
+
+  world: {
+    emoji: "🌎",
+    title: "🌎 WORLD EVENTS",
+    summary: "Live world events and admin-summoned bosses.",
+    lines: [
+      "▶ !rpg world event — View active events.",
+      "▶ !rpg worldboss — View the active boss.",
+      "▶ !rpg special access @user [scope] — Admin-only access grant.",
+      "▶ !rpg special revoke @user [scope] — Admin-only revoke.",
+      "▶ !rpg special summon boss <id> — Admin-only summon.",
+      "▶ !rpg special event <id> — Admin-only event start."
+    ],
+  }
 
 /* =========================================================
    HELP — root-level category alias map
