@@ -177,6 +177,115 @@ border:2px solid #1b1009;box-shadow:0 0 28px rgba(239,174,77,.48),0 0 70px rgba(
 .cabin-button .cabin-glow{position:absolute;left:25%;right:25%;bottom:2%;height:34%;background:radial-gradient(ellipse,rgba(232,172,79,.16),transparent 68%);filter:blur(10px);z-index:-1}
 .cabin-button .cabin-path{position:absolute;left:37%;right:37%;bottom:-40%;height:48%;background:linear-gradient(90deg,transparent,#54412a44 48%,transparent);clip-path:polygon(36% 0,64% 0,100% 100%,0 100%);filter:blur(1px)}
 .cabin-prompt{bottom:15%;z-index:9;text-shadow:0 2px 12px #000}
+/* full archive cinematic pass */
+#title{background:
+radial-gradient(circle at 50% 42%,rgba(102,55,83,.18),transparent 20%),
+radial-gradient(circle at 50% 48%,rgba(214,183,122,.07),transparent 36%),
+linear-gradient(180deg,#020208,#09050e 58%,#020207);overflow:hidden}
+#title:before{content:"";position:absolute;inset:0;background:
+radial-gradient(circle at 18% 22%,#fff 0 1px,transparent 2px),
+radial-gradient(circle at 79% 18%,#fff 0 1px,transparent 2px),
+radial-gradient(circle at 67% 72%,#d6b77a 0 1px,transparent 2px),
+radial-gradient(circle at 29% 76%,#fff 0 1px,transparent 2px);
+opacity:.45;animation:archiveStars 8s ease-in-out infinite alternate}
+@keyframes archiveStars{to{opacity:.7;transform:scale(1.02)}}
+.title{position:relative;z-index:2;text-shadow:0 8px 35px #000}
+.title .big{text-shadow:0 0 45px rgba(214,183,122,.08)}
+.seal{box-shadow:0 0 45px rgba(214,183,122,.08),inset 0 0 25px rgba(214,183,122,.04);animation:sealFloat 5s ease-in-out infinite}
+@keyframes sealFloat{50%{transform:translateY(-5px) rotate(2deg)}}
+
+#constellation{background:
+radial-gradient(circle at 50% 40%,rgba(60,33,82,.20),transparent 24%),
+radial-gradient(circle at 50% 50%,rgba(214,183,122,.05),transparent 48%),
+linear-gradient(180deg,#020208,#06040d 60%,#010107)}
+#constellation:before{content:"";position:absolute;inset:0;background:
+radial-gradient(circle at 12% 25%,#fff 0 1px,transparent 2px),
+radial-gradient(circle at 83% 31%,#fff 0 1px,transparent 2px),
+radial-gradient(circle at 24% 72%,#d6b77a 0 1px,transparent 2px),
+radial-gradient(circle at 74% 77%,#fff 0 1px,transparent 2px);
+opacity:.38;animation:starfield 12s linear infinite}
+@keyframes starfield{to{transform:translateY(-5px);opacity:.55}}
+.const-copy{z-index:4;text-shadow:0 5px 25px #000}
+.help{z-index:4}
+
+.mem-card{overflow:hidden;background:
+linear-gradient(145deg,rgba(255,255,255,.075),rgba(255,255,255,.015)),
+radial-gradient(circle at 50% 0,rgba(214,183,122,.08),transparent 45%);
+box-shadow:0 45px 120px #000b,0 0 80px rgba(214,183,122,.035),inset 0 0 60px rgba(255,255,255,.025);
+transform:translateY(0);animation:cardFloat 7s ease-in-out infinite}
+@keyframes cardFloat{50%{transform:translateY(-4px)}}
+.mem-card:after{content:"";position:absolute;inset:-30%;background:linear-gradient(115deg,transparent 35%,rgba(255,255,255,.035) 48%,transparent 55%);transform:translateX(-30%);animation:glassSweep 9s ease-in-out infinite;pointer-events:none}
+@keyframes glassSweep{50%{transform:translateX(30%)}}
+.mem-img{box-shadow:0 18px 45px #0008,inset 0 0 35px #0008;position:relative}
+
+#arch{background:
+radial-gradient(circle at 50% 48%,rgba(214,183,122,.09),transparent 20%),
+radial-gradient(circle at 50% 50%,rgba(74,22,28,.18),transparent 42%),
+linear-gradient(180deg,#020208,#09050c,#020207);overflow:hidden}
+#arch:before{content:"";position:absolute;width:70vmin;height:70vmin;border-radius:50%;border:1px solid rgba(214,183,122,.06);box-shadow:0 0 80px rgba(214,183,122,.03);animation:archPulse 8s ease-in-out infinite}
+@keyframes archPulse{50%{transform:scale(1.04);opacity:.65}}
+.symbol{z-index:2;filter:drop-shadow(0 0 20px rgba(214,183,122,.13))}
+.symbol:before{content:"";position:absolute;inset:15%;border-radius:50%;background:radial-gradient(circle,rgba(214,183,122,.09),transparent 67%);filter:blur(10px);animation:coreGlow 4s ease-in-out infinite}
+@keyframes coreGlow{50%{transform:scale(1.18);opacity:.65}}
+#arch h2,#arch p{position:relative;z-index:3}
+
+.room{background:
+radial-gradient(ellipse at 50% 28%,rgba(214,183,122,.11),transparent 24%),
+radial-gradient(ellipse at 50% 65%,rgba(74,22,28,.17),transparent 42%),
+linear-gradient(180deg,#030309,#0a060e 58%,#020207)}
+.room:before{content:"";position:absolute;inset:0;background:
+linear-gradient(90deg,rgba(0,0,0,.42),transparent 20%,transparent 80%,rgba(0,0,0,.48)),
+linear-gradient(180deg,transparent 70%,rgba(0,0,0,.42));pointer-events:none}
+.room-frame{box-shadow:inset 0 0 120px rgba(214,183,122,.07),0 0 70px rgba(0,0,0,.5);background:linear-gradient(90deg,transparent,rgba(255,255,255,.012),transparent)}
+.window{box-shadow:0 20px 70px #000b,inset 0 0 35px #000;backdrop-filter:blur(2px)}
+.window:after{content:"";position:absolute;inset:0;background:linear-gradient(115deg,transparent 40%,rgba(255,255,255,.045) 50%,transparent 60%);animation:windowGlint 8s ease-in-out infinite}
+@keyframes windowGlint{50%{transform:translateX(35%)}}
+.room-copy{text-shadow:0 4px 24px #000}
+.desk{box-shadow:0 30px 90px #000d,inset 0 1px rgba(214,183,122,.08)}
+.book{box-shadow:0 15px 35px #000c,inset 0 0 20px #000}
+.envelope{box-shadow:0 20px 50px #000b,0 0 25px rgba(214,183,122,.05)}
+.envelope:hover{box-shadow:0 25px 60px #000b,0 0 30px rgba(214,183,122,.1)}
+
+#letter{background:
+radial-gradient(circle at 50% 50%,rgba(214,183,122,.07),transparent 28%),
+linear-gradient(180deg,#030208,#08050b)}
+#letter:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 50% 50%,transparent 28%,rgba(0,0,0,.55) 100%);pointer-events:none}
+.paper{transform:perspective(1100px) rotateX(2deg);box-shadow:0 40px 110px #000d,0 0 45px rgba(214,183,122,.05);animation:paperFloat 8s ease-in-out infinite}
+@keyframes paperFloat{50%{transform:perspective(1100px) rotateX(2deg) translateY(-3px)}}
+.paper:after{content:"";position:absolute;inset:0;background:linear-gradient(110deg,transparent 35%,rgba(255,255,255,.08) 48%,transparent 58%);transform:translateX(-80%);animation:paperLight 12s ease-in-out infinite;pointer-events:none}
+@keyframes paperLight{55%{transform:translateX(80%)}}
+#writing{text-shadow:0 .5px 0 rgba(39,28,24,.2)}
+#letter-status{text-shadow:0 2px 12px #000}
+
+#message{background:
+radial-gradient(circle at 50% 48%,rgba(74,22,28,.14),transparent 25%),
+linear-gradient(180deg,#020207,#09050b 50%,#020207)}
+#message:before{content:"";position:absolute;width:1px;height:45%;left:50%;top:18%;background:linear-gradient(transparent,rgba(214,183,122,.3),transparent);opacity:.5}
+.lines{position:relative;z-index:2;text-shadow:0 8px 35px #000}
+.lines div{letter-spacing:.015em}
+.small{position:relative;z-index:2}
+
+#void{background:#000;overflow:hidden}
+#void:before{content:"";position:absolute;width:55vmin;height:55vmin;border-radius:50%;background:radial-gradient(circle,rgba(255,255,255,.07),rgba(214,183,122,.025) 25%,transparent 68%);animation:voidPulse 6s ease-in-out infinite}
+#void:after{content:"";position:absolute;inset:0;background:radial-gradient(circle at center,transparent 0 18%,rgba(0,0,0,.45) 55%,#000 88%);pointer-events:none}
+@keyframes voidPulse{50%{transform:scale(1.18);opacity:.65}}
+#void .void-copy{z-index:3;text-shadow:0 4px 25px #000}
+
+#final{background:
+radial-gradient(circle at 50% 45%,rgba(214,183,122,.11),transparent 18%),
+radial-gradient(circle at 50% 50%,rgba(74,22,28,.15),transparent 40%),
+linear-gradient(180deg,#020207,#08050c,#020207)}
+#final:before{content:"";position:absolute;width:1px;height:55%;left:50%;top:16%;background:linear-gradient(transparent,rgba(214,183,122,.24),transparent);opacity:.45}
+.reveal{position:relative;z-index:2;text-shadow:0 8px 40px #000}
+.reveal p:nth-child(3){text-shadow:0 0 35px rgba(240,220,169,.14)}
+
+#end{background:
+radial-gradient(circle at 50% 40%,rgba(214,183,122,.10),transparent 20%),
+linear-gradient(180deg,#020207,#09050d 58%,#020207)}
+#end:before{content:"";position:absolute;width:1px;height:120px;top:22%;background:linear-gradient(transparent,rgba(214,183,122,.3),transparent)}
+.end{position:relative;z-index:2;text-shadow:0 7px 30px #000}
+.end-star{animation:endPulse 4s ease-in-out infinite}
+@keyframes endPulse{50%{transform:scale(1.7);box-shadow:0 0 20px #fff,0 0 70px var(--g),0 0 150px #d6b77a66}}
 @media(max-width:600px){.help{display:none}.mem-card{padding:30px 23px;min-height:470px}.mem-img{height:145px}.window{height:45%;top:17%}.desk{bottom:13%;height:21%}.envelope{right:28%;width:135px;height:88px}.book{left:9%}.candle{right:10%}.paper{padding:32px 27px}.paper:before{inset:10px}}
 @media(prefers-reduced-motion:reduce){*{animation-duration:.001ms!important;transition-duration:.001ms!important}}
 </style>
