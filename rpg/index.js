@@ -3722,6 +3722,14 @@ const TOP_LEVEL_ALIASES = new Set([
   "quest",
   "dungeon",
   "rest",
+  "guild",
+  "companion",
+  "companions",
+  "forge",
+  "blacksmith",
+  "worldboss",
+  "boss",
+  "special",
   "affinity",
   "affinities",
 ]);
@@ -4075,42 +4083,34 @@ async function handleRpgCommand(
       action === "special" ||
       action === "specials"
     ) {
-      if (!args.length) {
-        await handleSpecial(
-          api,
-          event,
-          ["list"]
-        );
-      } else if (
-        normalizeKey(args[0]) === "all"
-      ) {
-        await handleSpecial(
-          api,
-          event,
-          ["all"]
-        );
-      } else if (
-        await isInActiveCombat(
-          event.threadID,
-          event.senderID
-        )
-      ) {
-        /*
-         * Live fight: always execute. combat.js resolves
-         * multi-word input itself (e.g. Amaterasu's modes).
-         */
-        await handleSpecialCombat(
-          api,
-          event,
-          args
-        );
+      const specialSub = normalizeKey(args[0] || "");
+      if (["access","revoke","summon","event","end","events","status"].includes(specialSub)) {
+        await handleSpecialRpgCommand(api,event,args);
+      } else if (!args.length) {
+        await handleSpecial(api,event,["list"]);
+      } else if (normalizeKey(args[0]) === "all") {
+        await handleSpecial(api,event,["all"]);
+      } else if (await isInActiveCombat(event.threadID,event.senderID)) {
+        await handleSpecialCombat(api,event,args);
       } else {
-        await handleSpecial(
-          api,
-          event,
-          args
-        );
+        await handleSpecial(api,event,args);
       }
+    }
+
+    else if (action === "guild") {
+      await handleGuildCommand(api,event,args);
+    }
+
+    else if (action === "companion" || action === "companions" || action === "pet" || action === "pets") {
+      await handleCompanionCommand(api,event,args);
+    }
+
+    else if (action === "forge" || action === "blacksmith") {
+      await handleForgeCommand(api,event,args);
+    }
+
+    else if (action === "worldboss" || action === "boss") {
+      await handleWorldBossCommand(api,event,args);
     }
 
     /* =====================================================
