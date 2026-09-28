@@ -3807,8 +3807,9 @@ async function handleSpecialRpgCommand(api,event,args) {
   if(sub==="access"){
     if(!root)throw new Error("🔒 RPG special access is admin-only.");
     const target=mentionedUser(event);if(!target)throw new Error("Mention the player receiving access.");
-    await specialAccess.grant(t,target,u,args[2]||"all");
-    await send(api,t,"🔐 RPG Special Access granted to the mentioned player. Scope: "+(args[2]||"all"));
+    const requestedScope = args.slice(2).map(normalizeKey).find(x => specialAccess.SCOPES.has(x)) || "all";
+    await specialAccess.grant(t,target,u,requestedScope);
+    await send(api,t,"🔐 RPG Special Access granted to the mentioned player. Scope: "+requestedScope);
     return;
   }
   if(sub==="revoke"){
