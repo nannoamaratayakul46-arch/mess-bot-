@@ -2824,6 +2824,7 @@ app.get(
           watchdog: getWatchdogStatus(),
           traffic: trafficSafetyStatus(),
           music: getMusicStats(),
+          database: await db.healthCheck().catch(() => false),
           uptime_seconds: Math.floor(process.uptime()),
           node_version: process.version,
           memory: process.memoryUsage(),
