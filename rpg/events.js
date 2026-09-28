@@ -559,7 +559,7 @@ async function getActiveWorldEvents(threadID) {
         AND active = TRUE
         AND (
           expires_at IS NULL
-          OR expires_at > NOW()
+          OR expires_at > $2
         )
       ORDER BY started_at DESC
     `,
@@ -581,7 +581,7 @@ async function getActiveWorldEvent(threadID, eventID) {
         AND active = TRUE
         AND (
           expires_at IS NULL
-          OR expires_at > NOW()
+          OR expires_at > $2
         )
       ORDER BY started_at DESC
       LIMIT 1
@@ -734,7 +734,7 @@ async function expireWorldEvents(threadID) {
       UPDATE rpg_world_events
       SET
         active = FALSE,
-        ended_at = NOW()
+        ended_at = $2
       WHERE thread_id = $1
         AND active = TRUE
         AND expires_at IS NOT NULL
