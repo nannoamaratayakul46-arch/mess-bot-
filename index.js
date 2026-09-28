@@ -2809,6 +2809,37 @@ app.get(
   }
 );
 
+
+app.get(
+  "/api/dashboard/snapshot",
+  requireDashboardAccess,
+  async (_req, res) => {
+    try {
+      const snapshot = await db.getDashboardSnapshot();
+
+      res.json({
+        ok: true,
+        snapshot,
+        runtime: {
+          watchdog: getWatchdogStatus(),
+          traffic: trafficSafetyStatus(),
+          music: getMusicStats(),
+          uptime_seconds: Math.floor(process.uptime()),
+          node_version: process.version,
+          memory: process.memoryUsage(),
+        },
+      });
+    } catch (error) {
+      console.error("[DASHBOARD] Snapshot query failed:", error);
+
+      res.status(503).json({
+        ok: false,
+        error: "Dashboard data is temporarily unavailable.",
+      });
+    }
+  }
+);
+
 app.post(
   "/api/dashboard/connect-credentials",
   requireDashboardAccess,
