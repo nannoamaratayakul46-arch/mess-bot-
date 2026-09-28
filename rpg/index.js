@@ -3474,7 +3474,9 @@ const HELP_CATEGORIES = {
       "▶ !rpg dungeon enter <key> — Enter a dungeon.",
       "▶ !rpg dungeon advance — Advance through a dungeon.",
     ],
-  },\n\n  guild: {
+  },
+
+  guild: {
     emoji: "🏰",
     title: "🏰 GUILDS",
     summary: "Guild creation, ranks, treasury, upgrades, armory, relics, and cooperative raids.",
