@@ -26,10 +26,69 @@ canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#spa
 #chapter{left:19px;top:22px;font:9px Arial;letter-spacing:.2em;color:rgba(247,241,231,.4);text-transform:uppercase}
 #progress{left:50%;bottom:18px;transform:translateX(-50%);width:min(300px,55vw);height:1px;background:rgba(255,255,255,.1)}#progress i{display:block;height:100%;width:0;background:var(--g);box-shadow:0 0 12px rgba(214,183,122,.5);transition:width .8s var(--ease)}
 #fade{position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:100;transition:opacity 1s}
-#intro{text-align:center}.star{width:5px;height:5px;border-radius:50%;background:#fff;margin:0 auto 38px;box-shadow:0 0 10px #fff,0 0 35px var(--g),0 0 100px rgba(214,183,122,.35);animation:pulse 3s ease-in-out infinite}
+#intro{padding:0;overflow:hidden;background:#020810}
+.ocean{position:absolute;inset:0;overflow:hidden;background:
+radial-gradient(circle at 50% 24%,rgba(150,190,214,.10),transparent 20%),
+linear-gradient(180deg,#020812 0%,#061522 45%,#02080d 100%)}
+.ocean:before{content:"";position:absolute;inset:35% -10% -10%;background:
+repeating-linear-gradient(174deg,rgba(117,164,188,.08) 0 2px,transparent 2px 11px);
+transform:perspective(500px) rotateX(22deg);transform-origin:center top;opacity:.72;animation:water 10s linear infinite}
+.ocean:after{content:"";position:absolute;left:-10%;right:-10%;bottom:-9%;height:48%;
+background:radial-gradient(ellipse at 50% 0%,rgba(170,207,221,.12),transparent 54%),
+linear-gradient(180deg,transparent,#010407 70%);
+filter:blur(2px)}
+@keyframes water{to{transform:perspective(500px) rotateX(22deg) translateX(-38px)}}
+.ocean-horizon{position:absolute;left:0;right:0;top:45%;height:1px;background:rgba(188,215,224,.12);box-shadow:0 0 35px rgba(122,180,207,.08)}
+.ocean-moon{position:absolute;left:50%;top:28%;width:clamp(76px,12vw,135px);height:clamp(76px,12vw,135px);transform:translate(-50%,-50%);border-radius:50%;border:0;padding:0;cursor:pointer;
+background:radial-gradient(circle at 35% 30%,#fff 0 5%,#e9edf0 32%,#c9d1d5 66%,#9daab0 100%);
+box-shadow:0 0 18px #fff,0 0 55px rgba(202,226,239,.38),0 0 130px rgba(102,163,194,.22);
+transition:.8s var(--ease);z-index:3}
+.ocean-moon:before{content:"";position:absolute;inset:8%;border-radius:50%;background:
+radial-gradient(circle at 27% 36%,#9da8aa 0 4%,transparent 5%),
+radial-gradient(circle at 66% 24%,#a5afb1 0 7%,transparent 8%),
+radial-gradient(circle at 55% 68%,#a2acae 0 9%,transparent 10%),
+radial-gradient(circle at 30% 74%,#aeb7b9 0 4%,transparent 5%);opacity:.45}
+.ocean-moon:hover,.ocean-moon:focus-visible{transform:translate(-50%,-50%) scale(1.08);box-shadow:0 0 24px #fff,0 0 80px rgba(202,226,239,.5),0 0 160px rgba(102,163,194,.3)}
+.moon-reflection{position:absolute;left:50%;top:40%;width:min(170px,22vw);height:42%;transform:translateX(-50%);background:linear-gradient(180deg,rgba(230,241,246,.46),rgba(150,199,219,.12) 35%,transparent);
+clip-path:polygon(42% 0,58% 0,100% 100%,0 100%);filter:blur(7px);opacity:.72;animation:reflection 3.5s ease-in-out infinite}
+@keyframes reflection{50%{opacity:.48;transform:translateX(-50%) scaleX(.78)}}
+.ocean-copy{position:absolute;left:50%;top:9%;transform:translateX(-50%);text-align:center;z-index:4;width:min(680px,88vw)}
+.ocean-copy .ey{color:rgba(220,235,241,.5);letter-spacing:.34em}
+.ocean-copy h1{font-weight:300;font-size:clamp(22px,4vw,40px);line-height:1.25;letter-spacing:.04em;margin:16px 0 8px}
+.ocean-copy p{font:italic 17px "Cormorant Garamond",serif;color:rgba(224,235,238,.65);margin:0}
+.moon-prompt{position:absolute;left:50%;top:50%;transform:translateX(-50%);z-index:4;font:9px Arial;letter-spacing:.25em;text-transform:uppercase;color:rgba(235,241,243,.46);white-space:nowrap}
+.moon-prompt:after{content:"";display:block;width:1px;height:32px;background:linear-gradient(#b9d6e3,transparent);margin:10px auto 0}
+#forest{padding:0;overflow:hidden;background:#061008}
+.forest{position:absolute;inset:0;overflow:hidden;background:
+radial-gradient(circle at 50% 43%,rgba(177,198,129,.17),transparent 18%),
+radial-gradient(circle at 18% 66%,rgba(68,117,73,.20),transparent 25%),
+linear-gradient(180deg,#07120f 0%,#10241a 48%,#07100a 100%)}
+.forest:before{content:"";position:absolute;inset:0;background:
+linear-gradient(105deg,transparent 0 16%,rgba(2,11,6,.82) 16.5% 19%,transparent 19.5% 30%,rgba(2,10,5,.72) 30.5% 34%,transparent 34.5% 63%,rgba(2,10,5,.78) 63.5% 67%,transparent 67.5% 78%,rgba(2,10,5,.82) 78.5% 83%,transparent 83.5%),
+radial-gradient(ellipse at 50% 100%,#020604 0 28%,transparent 29%);opacity:.95}
+.forest:after{content:"";position:absolute;left:0;right:0;bottom:0;height:35%;background:
+radial-gradient(circle at 12% 65%,#76925f 0 2px,transparent 3px),
+radial-gradient(circle at 21% 78%,#b4a86d 0 2px,transparent 3px),
+radial-gradient(circle at 31% 63%,#8ca66b 0 2px,transparent 3px),
+radial-gradient(circle at 71% 73%,#a8a06b 0 2px,transparent 3px),
+radial-gradient(circle at 82% 63%,#839d62 0 2px,transparent 3px),
+linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
+.tree{position:absolute;bottom:-3%;width:22%;height:78%;background:linear-gradient(90deg,#071008,#14271a 48%,#050b06);clip-path:polygon(43% 0,58% 0,64% 16%,78% 27%,67% 30%,88% 47%,68% 48%,91% 69%,64% 66%,78% 91%,56% 82%,50% 100%,43% 82%,22% 91%,36% 66%,9% 69%,32% 48%,12% 47%,33% 30%,22% 27%,36% 16%);opacity:.95}
+.tree.t1{left:-4%;transform:scale(1.25)}.tree.t2{left:18%;height:65%;transform:scale(.85)}.tree.t3{right:14%;height:69%;transform:scale(.9)}.tree.t4{right:-5%;transform:scale(1.3)}
+.fog{position:absolute;left:-10%;right:-10%;bottom:16%;height:28%;background:radial-gradient(ellipse,rgba(170,201,159,.12),transparent 66%);filter:blur(18px);animation:fog 7s ease-in-out infinite alternate}
+@keyframes fog{to{transform:translateX(5%) scaleX(1.08);opacity:.7}}
+.cabin-button{position:absolute;left:50%;bottom:27%;transform:translateX(-50%);width:min(260px,52vw);height:min(180px,23vh);border:0;background:linear-gradient(155deg,#493729,#24170f 60%,#100b07);clip-path:polygon(50% 0,96% 35%,92% 100%,8% 100%,4% 35%);cursor:pointer;z-index:4;box-shadow:0 20px 50px #000;transition:.8s var(--ease)}
+.cabin-button:before{content:"";position:absolute;left:12%;right:12%;top:29%;bottom:0;background:linear-gradient(90deg,#26170e,#4c3421 50%,#20130b);border:1px solid rgba(219,186,117,.22)}
+.cabin-button:after{content:"";position:absolute;left:36%;top:51%;width:28%;height:27%;background:radial-gradient(circle,#ffe6a3 0 15%,#c88839 38%,#5d361a 72%);box-shadow:0 0 24px #e4a84d66}
+.cabin-button:hover,.cabin-button:focus-visible{transform:translateX(-50%) translateY(-8px) scale(1.025);filter:brightness(1.14);box-shadow:0 25px 70px #000,0 0 35px rgba(184,164,91,.12)}
+.forest-copy{position:absolute;left:50%;top:11%;transform:translateX(-50%);text-align:center;z-index:4;width:min(620px,88vw)}
+.forest-copy h2{font-size:clamp(24px,4vw,42px);font-weight:300;margin:13px 0 7px}.forest-copy p{font:italic 16px "Cormorant Garamond",serif;color:rgba(222,232,210,.65);margin:0}
+.cabin-prompt{position:absolute;left:50%;bottom:19%;transform:translateX(-50%);z-index:5;font:9px Arial;letter-spacing:.25em;text-transform:uppercase;color:rgba(230,235,215,.52);white-space:nowrap}
+.cabin-prompt:before{content:"";display:block;width:1px;height:25px;background:linear-gradient(transparent,#b9c98d);margin:0 auto 9px}
+#title{background:radial-gradient(circle at 50% 45%,#171020 0,#08050d 45%,#030208 100%)}
+.title{text-align:center}.star{width:5px;height:5px;border-radius:50%;background:#fff;margin:0 auto 38px;box-shadow:0 0 10px #fff,0 0 35px var(--g),0 0 100px rgba(214,183,122,.35);animation:pulse 3s ease-in-out infinite}
 @keyframes pulse{50%{transform:scale(1.45);opacity:1}}
-#intro h1{font-weight:300;font-size:clamp(19px,3.2vw,31px);line-height:1.45;letter-spacing:.07em;margin:0}#intro h1 span{display:block}
-#intro .cta{margin-top:45px;opacity:0;transition:opacity 1.4s 2.1s}.ready .cta{opacity:1}
+
 .title{text-align:center}.title h2{font-size:14px;letter-spacing:.45em;font-weight:400;margin:20px 0 12px}.big{font-size:clamp(58px,13vw,145px);line-height:.78;font-weight:300;letter-spacing:-.045em}.sub{font:11px Arial;letter-spacing:.48em;text-transform:uppercase;color:rgba(247,241,231,.5);margin-top:24px}.seal{width:58px;height:58px;border:1px solid rgba(214,183,122,.5);border-radius:50%;display:grid;place-items:center;margin:30px auto;color:var(--g);position:relative}.seal:before{content:"";position:absolute;inset:6px;border:1px solid rgba(214,183,122,.17);border-radius:50%}
 #constellation{cursor:crosshair}.const-copy{position:absolute;left:50%;bottom:8%;transform:translateX(-50%);text-align:center;pointer-events:none}.const-copy h3{font-size:clamp(22px,4vw,38px);font-weight:300;margin:8px 0}.const-copy p{font:9px Arial;letter-spacing:.24em;color:rgba(247,241,231,.42);text-transform:uppercase}.help{position:absolute;right:5%;bottom:7%;font:9px Arial;letter-spacing:.18em;color:rgba(247,241,231,.3);text-transform:uppercase}
 .mem-card{width:min(690px,92vw);min-height:min(520px,76vh);border:1px solid rgba(214,183,122,.24);background:linear-gradient(145deg,rgba(255,255,255,.055),rgba(255,255,255,.01));box-shadow:0 35px 90px #0008,inset 0 0 50px rgba(255,255,255,.02);backdrop-filter:blur(16px);display:grid;place-items:center;padding:42px;position:relative;text-align:center}.mem-card:before{content:"";position:absolute;inset:9px;border:1px solid rgba(255,255,255,.06)}
@@ -53,7 +112,33 @@ canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#spa
 <div id="chapter">ARCHIVE 01 · THE LAST STAR</div><button id="mute" aria-label="Toggle sound">♫</button><div id="progress"><i></i></div><div id="fade"></div>
 <audio id="bgMusic" preload="auto" loop playsinline><source src="/letter/audio/wave%20to%20earth%20-%20seasons.mp3" type="audio/mpeg"></audio>
 
-<section class="scene on" id="intro"><div><div class="star"></div><div class="ey">A PRIVATE ARCHIVE</div><h1>SOME THINGS ARE NOT MEANT TO BE FORGOTTEN.<br><span class="gold">THEY ARE MEANT TO BE PRESERVED.</span></h1><button class="cta" id="enter">Enter the archive</button></div></section>
+<section class="scene on" id="intro">
+  <div class="ocean">
+    <div class="ocean-horizon"></div>
+    <div class="ocean-copy">
+      <div class="ey">SOMEWHERE BETWEEN THE WAVES AND THE STARS</div>
+      <h1>There is a memory I never want to lose.</h1>
+      <p>The night kept it safe. The moon remembers the way.</p>
+    </div>
+    <div class="moon-reflection"></div>
+    <button class="ocean-moon" id="moon" aria-label="Follow the moon"></button>
+    <div class="moon-prompt">tap the moon</div>
+  </div>
+</section>
+
+<section class="scene" id="forest">
+  <div class="forest">
+    <div class="tree t1"></div><div class="tree t2"></div><div class="tree t3"></div><div class="tree t4"></div>
+    <div class="fog"></div>
+    <div class="forest-copy">
+      <div class="ey">THE PATH LEADS SOMEWHERE QUIET</div>
+      <h2>A place that feels like home.</h2>
+      <p>Surrounded by trees, flowers, and everything the night refuses to forget.</p>
+    </div>
+    <button class="cabin-button" id="cabin" aria-label="Enter the cabin"></button>
+    <div class="cabin-prompt">tap the cabin</div>
+  </div>
+</section>
 
 <section class="scene" id="title"><div class="title"><div class="k">ARCHIVE 01</div><h2>THE</h2><div class="big">LAST<br>STAR</div><div class="sub">AN ARCHIVE OF US</div><div class="seal">✦</div><button class="cta" id="access">Access archive</button></div></section>
 
@@ -107,25 +192,28 @@ function startMusic(target=.32){
   bgMusic.play().then(()=>fadeMusic(target,2200)).catch(()=>{});
 }
 function setSceneMusic(id){
-  const levels={intro:0,title:0,constellation:.24,memory:.29,arch:.32,room:.36,letter:.30,message:.16,void:.045,final:.38,end:.22};
+  const levels={intro:.14,forest:.20,title:.04,constellation:.24,memory:.29,arch:.32,room:.36,letter:.30,message:.16,void:.045,final:.38,end:.22};
   if(levels[id]!==undefined){if(levels[id]>0 && bgMusic.paused)startMusic(levels[id]);else fadeMusic(levels[id],1600);}
 }
 const nodes=[{x:.22,y:.38},{x:.37,y:.24},{x:.51,y:.41},{x:.66,y:.25},{x:.78,y:.43},{x:.62,y:.63},{x:.39,y:.66}],edges=[[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,2],[0,6]];
 const stars=Array.from({length:Math.min(260,Math.max(120,Math.floor(innerWidth*innerHeight/6500)))},()=>({x:Math.random(),y:Math.random(),z:Math.random(),s:.3+Math.random()*1.4,p:Math.random()*7,a:.3+Math.random()*.7}));
 function resize(){W=innerWidth;H=innerHeight;D=Math.min(devicePixelRatio||1,2);for(const c of[space,fx]){c.width=W*D;c.height=H*D;c.style.width=W+"px";c.style.height=H+"px"}sx.setTransform(D,0,0,D,0,0);xx.setTransform(D,0,0,D,0,0)}addEventListener("resize",resize);resize();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function show(id){scenes.forEach(s=>s.classList.toggle("on",s.id===id));scene=id;setSceneMusic(id);const names={intro:"PROLOGUE",title:"ACCESS",constellation:"CONSTELLATION",memory:"MEMORY CHAMBER",arch:"CELESTIAL SEAL",room:"CELESTIAL ARCHIVE",letter:"THE LETTER",message:"ARCHIVE STATUS",void:"THE MISSING STAR",final:"REVELATION",end:"COMPLETE"};$("chapter").textContent="ARCHIVE 01 · "+names[id];const order=["intro","title","constellation","memory","arch","room","letter","message","void","final","end"];$("progress").firstElementChild.style.width=Math.max(0,order.indexOf(id)/(order.length-1)*100)+"%";document.body.style.cursor=id==="constellation"?"crosshair":"default"}
+function show(id){scenes.forEach(s=>s.classList.toggle("on",s.id===id));scene=id;setSceneMusic(id);const names={intro:"MOONLIT OCEAN",forest:"THE HIDDEN PATH",title:"ACCESS",constellation:"CONSTELLATION",memory:"MEMORY CHAMBER",arch:"CELESTIAL SEAL",room:"CELESTIAL ARCHIVE",letter:"THE LETTER",message:"ARCHIVE STATUS",void:"THE MISSING STAR",final:"REVELATION",end:"COMPLETE"};$("chapter").textContent="ARCHIVE 01 · "+names[id];const order=["intro","title","constellation","memory","arch","room","letter","message","void","final","end"];$("progress").firstElementChild.style.width=Math.max(0,order.indexOf(id)/(order.length-1)*100)+"%";document.body.style.cursor=id==="constellation"?"crosshair":"default"}
 async function fade(v){$("fade").style.opacity=v?1:0;await sleep(v?850:1000)}
 function tone(f=440,d=.15,g=.025){if(!sound)return;try{audio||=new(window.AudioContext||window.webkitAudioContext)();if(audio.state==="suspended")audio.resume();const o=audio.createOscillator(),a=audio.createGain();o.frequency.value=f;a.gain.setValueAtTime(.0001,audio.currentTime);a.gain.exponentialRampToValueAtTime(g,audio.currentTime+.02);a.gain.exponentialRampToValueAtTime(.0001,audio.currentTime+d);o.connect(a).connect(audio.destination);o.start();o.stop(audio.currentTime+d+.02)}catch{}}
 function chord(a="soft"){({soft:[261.6,329.6,392],star:[293.7,440,587],warm:[220,277,330],impact:[130,196,262]}[a]||[261.6]).forEach((f,i)=>setTimeout(()=>tone(f,.6,.018),i*85))}
 function draw(t){sx.clearRect(0,0,W,H);const g=sx.createRadialGradient(W*.5,H*.45,0,W*.5,H*.5,Math.max(W,H)*.75);g.addColorStop(0,"#100a16");g.addColorStop(.5,"#07050c");g.addColorStop(1,"#010106");sx.fillStyle=g;sx.fillRect(0,0,W,H);
 for(const s of stars){const x=((s.x+t*.000006*(.3+s.z))%1)*W,y=((s.y+t*.000001)%1)*H;sx.globalAlpha=s.a*(.45+.55*Math.sin(t*.001+s.p)**2);sx.fillStyle=s.z>.78?"#f0dca9":"#fff";sx.beginPath();sx.arc(x,y,s.s*(.55+s.z),0,7);sx.fill()}sx.globalAlpha=1;
 if(["constellation","memory","arch"].includes(scene)){const cx=W/2,cy=H*.46,p=nodes.map(n=>({x:cx+(n.x-.5)*W*.74,y:cy+(n.y-.5)*H*.74}));sx.strokeStyle="#d6b77a3b";sx.lineWidth=1;edges.forEach(([a,b],i)=>{if(i<visited.size+1){sx.beginPath();sx.moveTo(p[a].x,p[a].y);sx.lineTo(p[b].x,p[b].y);sx.stroke()}});p.forEach((q,i)=>{const active=visited.has(i),allowed=i===visited.size;sx.globalAlpha=active?.95:allowed?.9:.32;sx.fillStyle=allowed?"#fff2c9":"#d6b77a";sx.beginPath();sx.arc(q.x,q.y,allowed?4.8:active?3.2:2.2,0,7);sx.fill();if(allowed){sx.globalAlpha=.2;sx.beginPath();sx.arc(q.x,q.y,14+Math.sin(t*.004)*3,0,7);sx.fill()}})}
+if(scene==="intro"){sx.fillStyle="rgba(130,170,190,.035)";for(let i=0;i<7;i++){sx.beginPath();sx.ellipse(W*(.12+i*.13),H*(.67+i%2*.035),W*(.13+i*.01),H*.018,0,0,7);sx.fill()}}
+if(scene==="forest"){for(let i=0;i<18;i++){const x=(i*83+Math.sin(t*.0005+i)*18)%W,y=H*(.32+(i%6)*.095);sx.globalAlpha=.06;sx.fillStyle="#b6d18f";sx.beginPath();sx.arc(x,y,2+(i%3),0,7);sx.fill()}sx.globalAlpha=1}
 if(scene==="void"){finalStar.x=W*.5+Math.sin(t*.0004)*W*.12;finalStar.y=H*.43+Math.cos(t*.0003)*H*.1;const q=sx.createRadialGradient(finalStar.x,finalStar.y,0,finalStar.x,finalStar.y,100);q.addColorStop(0,"#fff");q.addColorStop(.06,"#f0dca977");q.addColorStop(1,"transparent");sx.fillStyle=q;sx.beginPath();sx.arc(finalStar.x,finalStar.y,100,0,7);sx.fill();sx.fillStyle="#fff";sx.shadowBlur=18;sx.shadowColor="#fff";sx.beginPath();sx.arc(finalStar.x,finalStar.y,4,0,7);sx.fill();sx.shadowBlur=0;finalStar.ready=true}requestAnimationFrame(draw)}
 requestAnimationFrame(draw);
 function burst(x,y){const p=Array.from({length:700},()=>{const a=Math.random()*7,v=1+Math.random()*7;return{x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:.5+Math.random()*2,l:1}});let last=performance.now();function run(now){const dt=Math.min(2,(now-last)/16);last=now;xx.clearRect(0,0,W,H);p.forEach(q=>{q.x+=q.vx*dt;q.y+=q.vy*dt;q.vy+=.018*dt;q.l-=.012*dt;xx.globalAlpha=Math.max(0,q.l);xx.fillStyle=Math.random()>.5?"#fff":"#d6b77a";xx.beginPath();xx.arc(q.x,q.y,q.r,0,7);xx.fill()});if(p.some(q=>q.l>0))requestAnimationFrame(run);else xx.clearRect(0,0,W,H)}requestAnimationFrame(run)}
-async function intro(){ $("intro").classList.add("ready");tone(220,.3,.02);await sleep(4200);if(scene!=="intro")return;await fade(1);show("title");await fade(0);chord()}
-$("enter").onclick=()=>{if(!busy){busy=true;intro().finally(()=>busy=false)}};
+async function intro(){if(scene!=="intro")return;await fade(1);show("title");await fade(0);chord("star")}
+$("moon").onclick=async()=>{if(busy||scene!=="intro")return;busy=true;tone(330,.22,.025);await fade(1);show("forest");await fade(0);chord("warm");busy=false};
+$("cabin").onclick=async()=>{if(busy||scene!=="forest")return;busy=true;tone(392,.22,.025);await fade(1);show("title");await fade(0);chord("star");busy=false};
 $("access").onclick=async()=>{if(busy)return;busy=true;tone(440);startMusic(.24);await fade(1);show("constellation");await fade(0);chord("star");busy=false};
 function pos(i){return{x:W/2+(nodes[i].x-.5)*W*.74,y:H*.46+(nodes[i].y-.5)*H*.74}}
 function openMemory(i){if(i!==visited.size)return;visited.add(i);const m=CFG.memories[i];$("mn").textContent="MEMORY 0"+(i+1);$("mt").textContent=m.title;$("mc").textContent=m.caption;$("mx").textContent=m.text;const img=$("mi");img.style.backgroundImage=m.image?"url('"+m.image.replace(/'/g,"\\'")+"')":"linear-gradient(135deg,#4a161c55,#0c0812)";img.classList.add("show");$("mcount").textContent=visited.size+" / "+CFG.memories.length+" memories preserved";show("memory");tone(visited.size===7?587:330,.3,.03)}
