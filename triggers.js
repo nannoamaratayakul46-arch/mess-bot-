@@ -156,209 +156,391 @@ const groups = [
     triggers: [],
     index: 0,
     replies: [
-      "bro brought confidence with no receipt",
-      "that comeback needs a second draft",
-      "your point is still loading",
-      "that take missed the exit",
-      "bro queued up without reading the rules",
-      "your reply arrived three business days late",
-      "that argument needs a map",
-      "bro is running on tutorial settings",
-      "your comeback needs better timing",
-      "that point just took a coffee break",
-      "bro really pressed send on that",
-      "your logic needs a quick restart",
-      "that take belongs in the drafts",
-      "bro brought vibes instead of evidence",
-      "your reply needs a patch note",
-      "that argument took the scenic route",
-      "bro is debating in spectator mode",
-      "your comeback got lost in transit",
-      "that point needs subtitles",
-      "bro activated confidence mode again",
-      "your reasoning is taking the long way around",
-      "that reply needs quality control",
-      "bro is playing on battery saver",
-      "your argument needs an update",
-      "that comeback is still buffering",
-      "bro selected hard mode by accident",
-      "your point needs a loading bar",
-      "that take came without instructions",
-      "bro forgot to equip common sense",
-      "your reply needs a restart",
-      "that argument just disconnected",
-      "bro is speedrunning the wrong answer",
-      "your comeback needs a little polish",
-      "that point missed the checkpoint",
-      "bro brought a draft to the final",
-      "your reasoning needs technical support",
-      "that reply is still in beta",
-      "bro is operating on demo mode",
-      "your take needs a return label",
-      "that argument needs a timeout",
-      "bro picked the wrong dialogue option",
-      "your comeback needs another attempt",
-      "that point got sent to voicemail",
-      "bro is navigating without GPS",
-      "your reply needs a software update",
-      "that argument is under maintenance",
-      "bro forgot the objective",
-      "your comeback needs a stronger signal",
-      "that point just went AFK",
-      "bro is running legacy firmware",
-      "your reasoning needs a quick reboot",
-      "that reply needs an editor",
-      "bro is fighting the loading screen",
-      "your take needs a patch",
-      "that argument has connection issues",
-      "bro is still on the tutorial",
-      "your comeback needs better bandwidth",
-      "that point took a wrong turn",
-      "bro is debating with airplane mode on",
-      "your reply needs a restart button",
-      "that take is still downloading",
-      "bro pressed send before thinking",
-      "your argument needs a user manual",
-      "that comeback needs more RAM",
-      "bro is running background processes",
-      "your point is currently unavailable",
-      "that reply needs a system check",
-      "bro forgot to save the game",
-      "your take needs a hotfix",
-      "that argument is buffering again",
-      "bro is using trial-version confidence",
-      "your comeback needs a better connection",
-      "that point is waiting for deployment",
-      "bro is stuck on the splash screen",
-      "your reasoning needs a compass",
-      "that reply took the wrong route",
-      "bro brought a side quest to the main mission",
-      "your argument needs a checkpoint",
-      "that comeback needs a little bandwidth",
-      "bro is playing without the patch",
-      "your point is still syncing",
-      "that take needs a quick refresh",
-      "bro is operating in safe mode",
-      "your reply needs a firmware update",
-      "that argument just timed out",
-      "bro is permanently one update behind",
-      "your comeback needs a search function",
-      "that point needs a second monitor",
-      "bro forgot the password to his own argument",
-      "your reasoning needs a status check",
-      "that reply needs a better server",
-      "bro is running on weak Wi-Fi",
-      "your take needs a reboot",
-      "that argument needs a loading screen",
-      "bro is stuck at one percent",
-      "your comeback needs a little maintenance",
-      "that point got archived",
-      "bro is debating from the wrong tab",
-      "your reasoning needs a browser refresh",
-      "that reply needs a stronger signal",
-      "bro selected the wrong settings",
-      "your take needs a restart",
-      "that argument is still processing",
-      "bro is waiting for the next update",
-      "your comeback needs a progress bar",
-      "that point needs a navigation marker",
-      "bro is running without the required plugin",
-      "your reasoning needs a quick scan",
-      "that reply needs a better connection",
-      "bro forgot to install the common-sense update",
-      "your take needs a timeout",
-      "that argument is in maintenance mode",
-      "bro is buffering mid-thought",
-      "your comeback needs a new save file",
-      "that point is stuck in drafts",
-      "bro is using outdated instructions",
-      "your reasoning needs a fresh tab",
-      "that reply needs a signal boost",
-      "bro is playing with default settings",
-      "your take needs a balance patch",
-      "that argument needs a restart sequence",
-      "bro is still searching for the objective",
-      "your comeback needs a better route",
-      "that point is pending approval",
-      "bro is running on demo hardware",
-      "your reasoning needs a calibration",
-      "that reply needs a connection test",
-      "bro forgot to update the firmware",
-      "your take needs a loading icon",
-      "that argument needs a status refresh",
-      "bro is stuck in queue",
-      "your comeback needs a hotfix",
-      "that point is still compiling",
-      "bro is navigating by vibes",
-      "your reasoning needs a diagnostics check",
-      "that reply needs a better processor",
-      "bro is running at one frame per second",
-      "your take needs a restart prompt",
-      "that argument is waiting for a response",
-      "bro is still installing the update",
-      "your comeback needs a new server",
-      "that point needs a little optimization",
-      "bro is using yesterday's patch",
-      "your reasoning needs a sync",
-      "that reply needs a stronger processor",
-      "bro is stuck in offline mode",
-      "your take needs a better connection",
-      "that argument needs a save point",
-      "bro is still reading the tutorial",
-      "your comeback needs an extra checkpoint",
-      "that point needs a system reboot",
-      "bro is running the wrong version",
-      "your reasoning needs a fresh install",
-      "that reply needs a little debugging",
-      "bro forgot to restart after the update",
-      "your take needs a connection reset",
-      "that argument is still in the queue",
-      "bro is buffering at full volume",
-      "your comeback needs a quality check",
-      "that point needs a better route",
-      "bro is playing without the manual",
-      "your reasoning needs a quick refresh",
-      "that reply needs an emergency patch",
-      "bro is still waiting for the server",
-      "your take needs a new tab",
-      "that argument needs a checkpoint save",
-      "bro is operating on default settings",
-      "your comeback needs a little debugging",
-      "that point is still loading",
-      "bro needs to restart the conversation",
-      "your reasoning needs a signal check",
-      "that reply needs another pass",
-      "bro is running on legacy settings",
-      "your take needs a status update",
-      "that argument needs a better connection",
-      "bro is stuck in the loading screen",
-      "your comeback needs one more patch",
-      "that point needs a refresh",
-      "bro forgot to press update",
-      "your reasoning needs a restart",
-      "that reply needs a cleaner route",
-      "bro is still looking for the answer",
-      "your take needs a progress bar",
-      "that argument needs a system check",
-      "bro is running on low bandwidth",
-      "your comeback needs a little maintenance",
-      "that point needs to finish loading",
-      "bro is stuck on the previous version",
-      "your reasoning needs a reboot",
-      "that reply needs a better signal",
-      "bro is still waiting for the patch",
-      "your take needs a quick reset",
-      "that argument needs a final draft",
-      "bro forgot to read the patch notes",
-      "that reply needs one more checkpoint",
-      "your point is waiting for the server",
-      "bro is still loading the conclusion",
-      "that take needs a cleaner connection",
-      "your comeback needs a better route",
-      "bro is running yesterday's settings"
-],
+      "bro walked in with confidence and left with no evidence",
+      "that comeback sounded better in your head",
+      "you talk like the group chat owes you attention",
+      "bro brought a whole paragraph just to say nothing",
+      "your argument got folded before it even landed",
+      "you got volume, not validity",
+      "bro is undefeated in arguments nobody is having",
+      "that take has more holes than a broken screen",
+      "you came prepared to yap, not to win",
+      "bro threw a punchline and forgot the punch",
+      "your comeback got lost between thought and delivery",
+      "you really typed that and trusted the send button",
+      "bro got confidence on unlimited data",
+      "that argument needs witnesses",
+      "your point entered the chat without identification",
+      "bro is cooking but forgot to turn the stove on",
+      "you brought attitude to a logic fight",
+      "that reply had potential until the words arrived",
+      "bro is fighting allegations from his own sentence",
+      "your whole argument is running on vibes",
+      "you came with smoke and forgot the fire",
+      "bro got a microphone but no material",
+      "that comeback needs a better writer",
+      "your point is doing parkour around the question",
+      "bro really made nonsense sound confident",
+      "you are speedrunning a self-own",
+      "that take aged badly before it finished",
+      "bro is debating like the facts are optional",
+      "your logic took the emergency exit",
+      "you brought main-character confidence to an NPC argument",
+      "that reply was three words away from making sense",
+      "bro has premium confidence and free-trial logic",
+      "your argument needs a receipt, warranty, and return label",
+      "you said a lot and somehow answered nothing",
+      "bro is arguing with the version of the conversation in his head",
+      "that comeback landed somewhere in another timezone",
+      "you got the energy right, just not the point",
+      "bro turned a simple question into a side quest",
+      "your explanation needs an explanation",
+      "that point walked in backwards",
+      "bro is talking like he has a subscription to being wrong",
+      "your comeback came with no warranty",
+      "you brought a spoon to a fork fight",
+      "bro's confidence has better attendance than his logic",
+      "that argument needs a map and a tour guide",
+      "you almost had a point, then you kept typing",
+      "bro is doing overtime for a weak take",
+      "your reply has the structural integrity of wet cardboard",
+      "that comeback needs another rehearsal",
+      "bro is shadowboxing with basic reasoning",
+      "you made the easy question look competitive",
+      "your point just tripped over its own shoelaces",
+      "bro is arguing from vibes, rumors, and imagination",
+      "that take belongs in the recycle bin",
+      "you brought a whole attitude with zero supporting documents",
+      "bro is trying to win by increasing the font size",
+      "your comeback has no landing gear",
+      "that sentence needed adult supervision",
+      "bro is carrying confidence like a backpack full of bricks",
+      "you are loud enough to hide how little the point weighs",
+      "that argument came with missing parts",
+      "bro is negotiating with reality again",
+      "your comeback took the scenic route and still got lost",
+      "you made a valid point impossible by adding five invalid ones",
+      "bro is fighting for his life in a conversation he started",
+      "that response had ambition, I'll give it that",
+      "your logic needs a mechanic",
+      "bro brought a whole toolbox and still couldn't fix the point",
+      "you turned one sentence into a public service announcement",
+      "that take has expired",
+      "bro is collecting Ls like loyalty points",
+      "your comeback needs subtitles and a director's cut",
+      "you got jokes, just not the good kind",
+      "bro is arguing like the scoreboard is hidden",
+      "that point is held together by hope",
+      "you came in swinging and hit your own argument",
+      "bro is one edit away from making sense",
+      "your response needs a quality-control department",
+      "that take belongs in witness protection",
+      "bro is trying to gaslight the dictionary",
+      "you brought confidence to a spelling bee and still lost",
+      "your argument needs a tune-up before another lap",
+      "bro is building a case out of loose change",
+      "that comeback is fighting for screen time",
+      "you made silence look like the stronger argument",
+      "bro is giving motivational speech to a dead point",
+      "your logic has too many missing persons",
+      "that response needs less ego and more substance",
+      "bro is trying to speedrun embarrassment",
+      "you had the floor and still fell through it",
+      "that comeback needs a second opinion",
+      "bro is using confidence as a substitute for proof",
+      "your point needs a passport because it keeps leaving the topic",
+      "that argument is held together by duct tape and optimism",
+      "bro came with receipts and somehow forgot the receipt",
+      "you are debating the wrong question with impressive commitment",
+      "that reply was loud enough to be wrong in surround sound",
+      "bro is taking the scenic route to a simple answer",
+      "your comeback needs a steering wheel",
+      "that point got benched for lack of performance",
+      "bro is doing cardio around the actual issue",
+      "your argument is all trailer, no movie",
+      "that comeback needs better timing and less confidence",
+      "bro is trying to make a point out of punctuation",
+      "you turned a debate into a confidence competition",
+      "that take has zero balance and maximum swagger",
+      "bro is fighting facts like they stole his lunch",
+      "your response needs a fact-check and a nap",
+      "that point is currently missing in action",
+      "bro has unlimited audacity and limited material",
+      "you brought the attitude, I brought the receipts",
+      "that comeback just filed for early retirement",
+      "bro is talking like the mute button is personal",
+      "your argument has been promoted to professional nonsense",
+      "that response is a rough draft with stage fright",
+      "bro is trying to intimidate a sentence",
+      "you made a simple roast need a committee meeting",
+      "that take needs less seasoning and more substance",
+      "bro is arguing from the deep end with no floaties",
+      "your comeback got caught between confidence and coherence",
+      "that point needs to be released from custody",
+      "bro is writing checks his argument cannot cash",
+      "you really brought that sentence into public",
+      "that comeback needs a helmet",
+      "bro is throwing words at the wall and calling it strategy",
+      "your point has excellent confidence, terrible navigation",
+      "that argument missed the target and blamed the weather",
+      "bro is making a mountain out of a typo",
+      "you got the last word, not the last laugh",
+      "that reply needs a cleaner exit",
+      "bro is auditioning for the role of loud and incorrect",
+      "your argument has side effects",
+      "that comeback needs a warning label",
+      "bro is farming reactions instead of making points",
+      "you are doing too much for a sentence that says so little",
+      "that take needs a timeout",
+      "bro is carrying the conversation and dropping the point",
+      "your logic just clocked out",
+      "that comeback needs a better ending",
+      "bro has entered his unnecessary speech era",
+      "you could've stopped three sentences ago",
+      "that argument needs fewer acrobatics",
+      "bro is trying to outtalk the topic",
+      "your point got lost in the delivery",
+      "that response is confidence with no supporting cast",
+      "bro is making the group chat work overtime",
+      "you brought drama to a math problem",
+      "that take is allergic to evidence",
+      "bro is arguing like there is a trophy for typing",
+      "your comeback needs a shorter route",
+      "that point is somewhere nearby, probably",
+      "bro is doing all this just to circle back to nothing",
+      "your argument is wearing confidence like a costume",
+      "that reply needs a reality check",
+      "bro is treating every disagreement like a final boss",
+      "you have enough confidence for three people and enough logic for half",
+      "that comeback arrived before the idea did",
+      "bro is making noise, not progress",
+      "your point needs a witness statement",
+      "that argument should come with a table of contents",
+      "bro is still searching for the plot",
+      "you started strong and then betrayed your own sentence",
+      "that take is sponsored by pure audacity",
+      "bro is giving lecture energy with no lesson",
+      "your comeback needs a stronger opening and a better ending",
+      "that point is fighting for its own survival",
+      "bro is trying to win by exhausting the chat",
+      "you got persistence, I'll give you that",
+      "that argument needs a fresh pair of eyes",
+      "bro is arguing like the facts are behind a paywall",
+      "your reply is a plot twist nobody requested",
+      "that comeback needs a director",
+      "bro is turning every sentence into a boss battle",
+      "you are confidently approaching the wrong conclusion",
+      "that point has left the building",
+      "bro is making the dictionary reconsider its career",
+      "your argument needs less seasoning and more structure",
+      "that comeback has potential, somewhere, maybe",
+      "bro is trying to freestyle a fact",
+      "you brought a whole speech to a two-word problem",
+      "that reply needs to go outside and think about what it did",
+      "bro is still negotiating with common sense",
+      "your point is on a business trip",
+      "that argument is one typo away from surrender",
+      "bro is making confidence look expensive",
+      "you are giving final-boss dialogue with tutorial stats",
+      "that comeback needs a clean save file",
+      "bro is trying to patch a hole with another hole",
+      "your response has more filler than a season finale",
+      "that take is running on empty",
+      "bro is doing a TED Talk nobody requested",
+      "your point got lost in the footnotes",
+      "that comeback is a draft wearing a suit",
+      "bro is debating like the audience is imaginary",
+      "you got the last word because nobody wanted another round",
+      "that argument needs a referee",
+      "bro is trying to win by sheer typing stamina",
+      "your point is hiding behind the confidence",
+      "that response needs a better exit strategy",
+      "bro is giving CEO of yap energy",
+      "your argument has excellent presentation and questionable content",
+      "that comeback needs to be returned to sender",
+      "bro is making a case for the mute button",
+      "you are doing parkour around the actual question",
+      "that point needs a boarding pass",
+      "bro's argument has left the chat",
+      "your comeback is built different, unfortunately not better",
+      "that take needs a second draft and less ego",
+      "bro is running a full campaign for a bad point",
+      "you brought fireworks to a candle fight",
+      "that argument has no brakes",
+      "bro is trying to speedrun a debate",
+      "your reply needs an intermission",
+      "that point is still looking for directions",
+      "bro is talking like the conclusion owes him money",
+      "your comeback has been delayed due to technical difficulties",
+      "that take needs a refund",
+      "bro is one sentence away from writing a whole autobiography",
+      "you turned a comeback into a documentary",
+      "that argument is doing laps around itself",
+      "bro has enough audacity to power the whole room",
+      "your point is hiding in the witness protection program",
+      "that reply needs a better opening act",
+      "bro is trying to roast with a microwave",
+      "your comeback is medium effort with maximum confidence",
+      "that take needs a seat and a glass of water",
+      "bro is arguing like he gets paid per word",
+      "your logic is currently out of office",
+      "that response has been forwarded to nobody",
+      "bro is fighting the air and losing",
+      "you brought a sword to a paperwork fight",
+      "that comeback needs to marinate",
+      "bro is trying to turn a weak point into a trilogy",
+      "your argument has no main quest",
+      "that take is all posture, no payload",
+      "bro is doing verbal gymnastics without stretching",
+      "your reply needs an emergency exit",
+      "that argument is on life support",
+      "bro is trying to make a point through sheer repetition",
+      "you could've said less and somehow still said too much",
+      "that comeback needs a better soundtrack",
+      "bro is giving undefeated-in-his-own-head energy",
+      "your argument is built like a house of cards",
+      "that point has gone missing since the opening sentence",
+      "bro is bringing boss music to a tutorial",
+      "your comeback needs a cooldown",
+      "that take is trying very hard to be important",
+      "bro is debating like there is a secret ending",
+      "your point needs a translator",
+      "that reply is confidence wearing fake credentials",
+      "bro is running on pure audacity and two brain cells",
+      "you are fighting for the title of most unnecessary reply",
+      "that argument has reached maximum yap capacity",
+      "bro is still warming up the sentence",
+      "your comeback needs a parking space",
+      "that take took a wrong turn at common sense",
+      "bro is trying to make a weak point sound legendary",
+      "your argument needs a fresh battery",
+      "that reply has more filler than substance",
+      "bro is doing side quests in a main-story debate",
+      "you made confidence louder than content",
+      "that comeback needs an editor and a mercy rule",
+      "bro is trying to out-volume the facts",
+      "your point needs a search party",
+      "that take has been officially overcooked",
+      "bro is giving championship speech with practice-round stats",
+      "your comeback needs a reset button",
+      "that argument is one screenshot away from embarrassment",
+      "bro is trying to win the conversation by never ending it",
+      "your point needs less decoration and more direction",
+      "that reply just asked for a rematch with common sense",
+      "bro is talking like the group chat is a courtroom",
+      "your argument has been denied for insufficient evidence",
+      "that comeback needs a stronger signal",
+      "bro is still looking for the point he started with",
+      "your take has too much confidence per sentence",
+      "that argument is currently under investigation",
+      "bro brought premium audacity with basic reasoning",
+      "your comeback is taking attendance instead of making impact",
+      "that point needs a rescue team",
+      "bro is trying to make nonsense sound philosophical",
+      "your reply has been placed on a watchlist for excessive yap",
+      "that take needs a clean reboot",
+      "bro is still on the intro screen",
+      "your argument needs a compass and a conscience",
+      "that comeback came with no brakes and no destination",
+      "bro is trying to make the wrong answer iconic",
+      "your point needs a witness protection program",
+      "that reply is a whole lot of setup for no payoff",
+      "bro is giving final-boss confidence with side-quest logic",
+      "your comeback needs a better punchline",
+      "that take should've stayed in the drafts",
+      "bro is arguing with the concept of being wrong",
+      "your point has been delayed indefinitely",
+      "that argument needs a maintenance check",
+      "bro is running on fumes and audacity",
+      "your response has entered unnecessary difficulty",
+      "that comeback needs a better route home",
+      "bro is making a simple L into a three-part series",
+      "your argument is all headline, no article",
+      "that point is still waiting for approval",
+      "bro is trying to bluff the facts",
+      "your reply needs a plot and a budget",
+      "that take has been rejected by the group chat",
+      "bro is talking like he has a season pass to confidence",
+      "your comeback needs to pass inspection",
+      "that argument is currently experiencing delays",
+      "bro is doing side quests in a main-story debate",
+      "your point needs a little less theater",
+      "that reply is trying to become a trilogy",
+      "bro is stretching one point into a whole franchise",
+      "your comeback needs a shorter runtime",
+      "that take has more confidence than content",
+      "bro is trying to turn a typo into a philosophy",
+      "your argument needs a fact-checking intern",
+      "that point is somewhere between almost and absolutely not",
+      "bro is speaking in premium nonsense",
+      "your response has been audited and found unnecessary",
+      "that comeback needs a better final line",
+      "bro is trying to make the chat lose patience before he loses the argument",
+      "your point has been sent for repairs",
+      "that take needs a seatbelt",
+      "bro is driving the conversation without a license",
+      "your comeback is currently under construction",
+      "that argument needs fewer words and more accuracy",
+      "bro is trying to unlock a debate achievement",
+      "your point needs to stop sightseeing",
+      "that reply is doing cardio around the truth",
+      "bro has turned a sentence into a survival game",
+      "your take needs a better foundation",
+      "that comeback is running on borrowed confidence",
+      "bro is trying to make every disagreement a personality trait",
+      "your argument needs a timeout and a map",
+      "that point is still looking for its passport",
+      "bro is making the chat qualify for overtime",
+      "your reply needs a better opening and a quieter ending",
+      "that take has been declined by basic reasoning",
+      "bro is giving speech competition energy in a roast battle",
+      "your argument needs a loading dock",
+      "that comeback has no destination",
+      "bro is trying to negotiate with a fact",
+      "your point needs a reality-based itinerary",
+      "that reply is a lot of confidence in a small package",
+      "bro is making a weak point do all the heavy lifting",
+      "your comeback needs to be quality-tested",
+      "that take needs a cooldown before another attempt",
+      "bro is still searching for the part where this makes sense",
+      "your argument has a suspicious amount of confidence",
+      "that reply should've been peer-reviewed first",
+      "bro is trying to turn a bad take into a personality",
+      "your point needs a better support system",
+      "that comeback has entered its flop era",
+      "bro is fighting for relevance with both hands",
+      "your argument needs a shorter route and a stronger engine",
+      "that take is a lot of sauce on a plain point",
+      "bro is trying to win the volume championship",
+      "your response needs a final boss called proofreading",
+      "that point got lost somewhere between hello and conclusion",
+      "bro is giving keynote speech for a broken argument",
+      "your comeback needs a cleaner cut",
+      "that take is still waiting for its upgrade",
+      "bro is trying to make a weak point immortal",
+      "your argument needs less confidence inflation",
+      "that reply is currently unavailable due to lack of substance",
+      "bro is trying to turn a debate into a monologue",
+      "your point needs a better launch angle",
+      "that comeback has too much mileage",
+      "bro is driving in circles with the same argument",
+      "your take needs a new engine",
+      "that response has officially overstayed its welcome",
+      "bro is making repetition look like strategy",
+      "your point needs to report to the main topic",
+      "that argument is taking the scenic route again",
+      "bro is trying to make the same L look different",
+      "your comeback needs fresh batteries",
+      "that take needs a little less confidence and a little more thought",
+      "bro is still loading the part that matters",
+      "your reply has been returned due to insufficient impact",
+      "that argument needs a better ending than 'trust me bro'",
+      "bro is trying to make audacity a substitute for accuracy",
+      "your point needs to stop doing laps",
+      "that comeback needs a new draft",
+      "bro is running yesterday's argument on today's chat",
+    ],
   },
-
   {
     name: "casual-comebacks",
     triggers: [
@@ -479,6 +661,118 @@ const groups = [
   },
 ];
 
+
+// ============================================================
+  // RANDOM RAP DROPS
+  // ============================================================
+
+const RAP_DROP_CHANCE = 0.14;
+const RAP_RECENT_LIMIT = 6;
+
+const rapTypes = [
+  {
+    name: "battle",
+    replies: [
+      "you came for the smoke, now the whole room knows / big talk in the chat but your punchline froze / I don't need a crown, the cadence already shows / you brought a whole speech, I brought the closing blows",
+      "step in the ring, better tighten that stance / one line from me got your whole take a chance / you talk like a boss but you move like a glance / this ain't luck, bro, this is timing and plans",
+      "you wanted a round, so I gave you the verse / tried to make a comeback, somehow made it worse / every bar lands clean, every excuse gets dispersed / you brought your best line and still came in reverse",
+      "talk loud, stand proud, but the rhythm says no / you can raise all the volume, still the facts gonna show / I don't chase every argument, I just let the bars flow / then watch your whole comeback disappear in the echo",
+      "you entered with confidence, left with a lesson / every line got pressure, every pause got direction / no need for a speech, no need for aggression / the beat says enough, that's the final assessment"
+    ]
+  },
+  {
+    name: "freestyle",
+    replies: [
+      "off the top, no script, just a spark and a beat / you brought ten explanations, I brought one clean feat / every word got a bounce, every bar got a seat / if the chat wants a round, then the rhythm's complete",
+      "no pen, no plan, just a flow in the moment / you keep forcing the point, I keep casually owning it / every bar moves clean, every rhyme keeps going / you thought this was random, now the whole chat is showing",
+      "freestyle mode, let the syllables run / you started with a challenge, now the verse has begun / no need for a setup when the cadence is fun / you can keep typing paragraphs, I'm already on one",
+      "beat in my head, got the room on pause / you brought a weak take with a list of applause / I turn one little line into sixteen bars / then leave your whole argument parked under stars"
+    ]
+  },
+  {
+    name: "taglish",
+    replies: [
+      "angas sa chat pero pag bars na, tahimik / sabi mo ikaw solid, bakit verse mo sablay at pilit / I keep it clean sa beat, bawat linya precise / habang ikaw paikot-ikot, same point, same advice",
+      "nagdadaldal ka nang todo, pero walang punch / I got rhythm sa sentence, bawat cadence may crunch / kung gusto mo ng laban, sige, step to the front / pero wag kang magtaka kung sa chorus ka ma-stuck",
+      "eto ang banat, hindi kailangan ng hype / isang verse lang sapat para makita ang type / you talk about winning, but the timing ain't right / ako chill lang sa corner, still controlling the mic",
+      "wala namang galit, bars lang ang usapan / kung weak ang iyong point, natural lang masapawan / you brought noise to the room, I brought rhythm and pattern / pag tapos nitong verse, balik ka na sa drafting"
+    ]
+  },
+  {
+    name: "quick-bars",
+    replies: [
+      "talk slick, miss quick / weak take, same trick / one bar, clean hit / next round, don't quit",
+      "big talk, no proof / weak line, no roof / I rhyme, you loop / chat knows the truth",
+      "you type, I rhyme / you stall, I shine / one beat, one line / now that's good timing",
+      "no hype, just flow / no fear, just show / you came too slow / now everybody knows",
+      "one line, two bars / you reached way too far / I stay on beat / you stay where you are"
+    ]
+  },
+  {
+    name: "story-rap",
+    replies: [
+      "you walked in the chat with a point to defend / typed one little comeback, then doubled it again / by the third paragraph even your logic needed a friend / now the verse got the ending that the argument couldn't send",
+      "once upon a group chat, somebody talked brave / brought a weak little take like a trophy to save / then the rhythm showed up and the whole room behaved / funny how confidence disappears when the bars get engraved",
+      "late in the chat, when the messages were loud / somebody claimed victory and started feeling proud / then a random little verse pulled the whole thing out the crowd / now the loudest person suddenly ain't making a sound",
+      "you started with a question, turned it into a fight / then kept adding details trying to make yourself right / I turned the whole scene into four bars tonight / now the ending writes itself and the timing feels right"
+    ]
+  },
+  {
+    name: "pinoy-cypher",
+    replies: [
+      "sa chat ka matapang, sa bars kailangan steady / bawat salita may timbang, bawat rhyme dapat ready / di kailangan mag-ingay para masabing heavy / isang clean na verse lang, tapos alam na who's ready",
+      "dito sa cypher, walang takas sa timing / kung puro yabang lang, mahuhuli rin sa rhyming / chill lang ang delivery pero sharp ang lining / pag pumasok ang beat, lahat biglang quiet sa timing",
+      "banat kung banat, pero gawin mong maayos / hindi puro sigaw, dapat may laman ang bawat kilos / isang verse, isang flow, walang kailangang palabok / pag rhythm na ang usapan, kita agad kung sino ang sablay",
+      "walang drama sa mic, puro bars at timing / kung mahina ang point mo, wag pilitin ang rhyming / I keep the flow clean, no need for extra styling / pag tapos ng round, balik tayo sa normal na chatting"
+    ]
+  }
+];
+
+const recentRapDrops = [];
+const recentBanatReplies = [];
+
+function rememberRecent(list, value, limit) {
+  list.push(value);
+  while (list.length > limit) {
+    list.shift();
+  }
+}
+
+function pickFreshRandom(items, recentList) {
+  if (!Array.isArray(items) || items.length === 0) {
+    return null;
+  }
+
+  const fresh = items.filter(
+    (item) => !recentList.includes(item)
+  );
+
+  const pool = fresh.length > 0 ? fresh : items;
+  return pool[Math.floor(Math.random() * pool.length)];
+}
+
+function getRandomRapDrop() {
+  const type = rapTypes[
+    Math.floor(Math.random() * rapTypes.length)
+  ];
+
+  const reply = pickFreshRandom(
+    type.replies,
+    recentRapDrops
+  );
+
+  if (!reply) {
+    return null;
+  }
+
+  rememberRecent(
+    recentRapDrops,
+    reply,
+    RAP_RECENT_LIMIT
+  );
+
+  return reply;
+}
 
 // ============================================================
 // PUBLIC ROAST
@@ -856,32 +1150,49 @@ function getNextPublicReply() {
 // ============================================================
 
 function getRandomRoastReply() {
-  const genericGroups =
-    groups.filter(
-      (group) =>
-        group.name === "trash-talk" ||
-        group.name === "banat-expanded" ||
-        group.name === "public"
-    );
+  // Occasionally drop a full rap instead of a one-liner.
+  if (Math.random() < RAP_DROP_CHANCE) {
+    const rap = getRandomRapDrop();
 
-  const replies =
-    genericGroups.flatMap(
-      (group) =>
-        Array.isArray(group.replies)
-          ? group.replies
-          : []
-    );
+    if (rap) {
+      return rap;
+    }
+  }
+
+  const genericGroups = groups.filter(
+    (group) =>
+      group.name === "trash-talk" ||
+      group.name === "banat-expanded" ||
+      group.name === "public"
+  );
+
+  const replies = genericGroups.flatMap(
+    (group) =>
+      Array.isArray(group.replies)
+        ? group.replies
+        : []
+  );
 
   if (replies.length === 0) {
     return null;
   }
 
-  return replies[
-    Math.floor(
-      Math.random() *
-      replies.length
-    )
-  ];
+  const reply = pickFreshRandom(
+    replies,
+    recentBanatReplies
+  );
+
+  if (!reply) {
+    return null;
+  }
+
+  rememberRecent(
+    recentBanatReplies,
+    reply,
+    12
+  );
+
+  return reply;
 }
 
 
