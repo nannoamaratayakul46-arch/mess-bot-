@@ -6062,29 +6062,24 @@ async function handleMessage(
             Math.floor(Math.random() * banatLinkPool.length)
           ];
 
-        const banatReplyDelay = allowBanatBurstReply(
+        const accepted = acceptBanatBurstMessage(
           threadID,
-          senderId
+          {
+            api,
+            message: triggerReply,
+            replyToMessageID: event.messageID,
+            attachMeme: banatMemeEnabled,
+            linkUrl: banatLinkEnabled
+              ? banatProfileUrl
+              : null,
+          }
         );
 
-        if (banatReplyDelay === null) {
+        if (!accepted) {
           console.log(
-            `[BANAT] Ignored rapid-fire message from ${senderId} in ${threadID}`
+            `[BANAT] Ignored burst message from ${senderId} in ${threadID}`
           );
-          return;
         }
-
-        sendBanatReplyWithTyping(
-          api,
-          triggerReply,
-          threadID,
-          event.messageID,
-          banatMemeEnabled,
-          banatLinkEnabled
-            ? banatProfileUrl
-            : null,
-          banatReplyDelay
-        );
 
         return;
       }
@@ -6425,69 +6420,85 @@ function registerActiveThreadCleanup() {
 // SAFE REPLY
 // ============================================================
 
+
 const BANAT_REPLY_DELAY_MS = 2_000;
-const BANAT_BURST_WINDOW_MS = 4_000;
 const BANAT_BURST_MAX_REPLIES = 2;
 
-// A sender gets at most 2 Banat replies in a rolling 4-second burst.
-// Accepted replies are scheduled 2 seconds apart; message #3+ is dropped
-// immediately so old spam never builds up into a delayed backlog.
+// One Banat burst is shared by everyone in the same conversation.
+// At most 2 incoming messages are accepted. Each accepted message waits
+// 2 seconds before its actual send. When the queue empties, the burst
+// state is removed and the next message starts a fresh burst.
 const banatBurstState = new Map();
 
-function allowBanatBurstReply(threadID, senderID) {
-  const key = `${String(threadID || "")}:${String(senderID || "")}`;
-  const now = Date.now();
-  const previous = banatBurstState.get(key) || [];
-  const recent = previous.filter(
-    (entry) => now - entry.acceptedAt < BANAT_BURST_WINDOW_MS
-  );
+const sleep = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 
-  if (recent.length >= BANAT_BURST_MAX_REPLIES) {
-    banatBurstState.set(key, recent);
-    return null;
+function acceptBanatBurstMessage(threadID, job) {
+  const key = String(threadID || "");
+  let state = banatBurstState.get(key);
+
+  if (!state) {
+    state = {
+      accepted: 0,
+      queue: [],
+      running: false,
+    };
+    banatBurstState.set(key, state);
   }
 
-  const nextAvailableAt = recent.length
-    ? Math.max(
-        now + BANAT_REPLY_DELAY_MS,
-        recent[recent.length - 1].scheduledAt + BANAT_REPLY_DELAY_MS
-      )
-    : now + BANAT_REPLY_DELAY_MS;
-
-  recent.push({ acceptedAt: now, scheduledAt: nextAvailableAt });
-  banatBurstState.set(key, recent);
-
-  if (banatBurstState.size > 1000) {
-    for (const [knownKey, entries] of banatBurstState.entries()) {
-      const latest = entries[entries.length - 1];
-      if (!latest || now - latest.acceptedAt >= BANAT_BURST_WINDOW_MS) {
-        banatBurstState.delete(knownKey);
-      }
-    }
+  if (state.accepted >= BANAT_BURST_MAX_REPLIES) {
+    return false;
   }
 
-  return Math.max(0, nextAvailableAt - now);
+  state.accepted++;
+  state.queue.push(job);
+
+  if (!state.running) {
+    runBanatBurstQueue(key).catch((error) => {
+      console.error("[BANAT] Burst queue failed:", error);
+      banatBurstState.delete(key);
+    });
+  }
+
+  return true;
 }
 
-const BANAT_BURST_CLEANUP = setInterval(() => {
-  const now = Date.now();
+async function runBanatBurstQueue(threadID) {
+  const key = String(threadID || "");
+  const state = banatBurstState.get(key);
 
-  for (const [knownKey, entries] of banatBurstState.entries()) {
-    const recent = entries.filter(
-      (entry) =>
-        now - entry.acceptedAt < BANAT_BURST_WINDOW_MS
-    );
+  if (!state || state.running) {
+    return;
+  }
 
-    if (recent.length) {
-      banatBurstState.set(knownKey, recent);
-    } else {
-      banatBurstState.delete(knownKey);
+  state.running = true;
+
+  try {
+    while (state.queue.length) {
+      const job = state.queue.shift();
+
+      // Every accepted message waits 2 seconds before sending.
+      await sleep(BANAT_REPLY_DELAY_MS);
+
+      // The existing sender keeps using ECLIPSE's Traffic Governor.
+      // delay=0 here because the burst queue already supplied the 2s wait.
+      sendBanatReplyWithTyping(
+        job.api,
+        job.message,
+        key,
+        job.replyToMessageID,
+        job.attachMeme,
+        job.linkUrl,
+        0
+      );
+    }
+  } finally {
+    const current = banatBurstState.get(key);
+
+    if (current === state && state.queue.length === 0) {
+      banatBurstState.delete(key);
     }
   }
-}, 60_000);
-
-if (typeof BANAT_BURST_CLEANUP.unref === "function") {
-  BANAT_BURST_CLEANUP.unref();
 }
 
 function sendBanatReplyWithTyping(
