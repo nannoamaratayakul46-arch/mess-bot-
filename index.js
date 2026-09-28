@@ -6491,6 +6491,10 @@ async function runBanatBurstQueue(threadID) {
         job.linkUrl,
         0
       );
+
+      if (state.queue.length) {
+        await sleep(BANAT_REPLY_DELAY_MS);
+      }
     }
   } finally {
     const current = banatBurstState.get(key);
