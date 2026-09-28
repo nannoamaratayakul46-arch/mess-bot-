@@ -200,6 +200,13 @@ const {
   armory: guildArmory,
   depositArmory,
   withdrawArmory,
+  RELICS,
+  RAIDS,
+  setRelic,
+  getRelic,
+  startRaid,
+  raidAttack,
+  raidStatus,
 } = require("./guilds");
 
 const companions = require("./companions");
@@ -3771,6 +3778,9 @@ async function handleGuildCommand(api,event,args) {
   if(sub==="armory"){const rows=await guildArmory(t,u);await send(api,t,box("⚔️ GUILD ARMORY",rows.length?rows.map(x=>"#"+x.equipment_id+" · "+x.item_id+" · "+x.rarity):["Empty. Forge equipment, then !rpg guild armory deposit <id>."]));return;}
   if(sub==="armory_deposit"||sub==="deposit"){await depositArmory(t,u,args[1]);await send(api,t,"⚔️ Item deposited into the guild armory.");return;}
   if(sub==="armory_withdraw"||sub==="withdraw"){await withdrawArmory(t,u,args[1]);await send(api,t,"⚔️ Item withdrawn from the guild armory.");return;}
+  if(sub==="relic"){const r=await getRelic(t,u);if(!r){await send(api,t,"🌌 No guild relic chosen.\nGuild Master: !rpg guild relic <war|wild|inferno|frost|stars>");return;}const d=RELICS[r.relic_id];await send(api,t,"🌌 "+d.emoji+" "+d.name+" · Lv."+r.level+"\n"+d.bonus);return;}
+  if(sub==="relic_set"){const r=await setRelic(t,u,args[1]);await send(api,t,"🌌 Guild relic chosen: "+r.emoji+" "+r.name);return;}
+  if(sub==="raid"){const raidSub=normalizeKey(args[1]||"status");if(raidSub==="start"){const r=await startRaid(t,u,args[2]||"ruins");await send(api,t,"⚔️ Guild raid started: "+r.raid_id.replace(/_/g," "));return;}if(raidSub==="attack"){const r=await raidAttack(t,u);await send(api,t,"⚔️ Raid damage: "+r.damage.toLocaleString()+"\nHP: "+r.hp.toLocaleString()+(r.defeated?"\n\n🏆 RAID CLEARED. Guild treasury rewarded.":""));return;}const r=await raidStatus(t,u);await send(api,t,r?box("⚔️ GUILD RAID",[r.raid.name,"HP: "+Number(r.state.hp).toLocaleString()+" / "+Number(r.state.max_hp).toLocaleString(),"Phase: "+r.state.phase]):"No active guild raid.");return;}
   await send(api,t,await formatGuild(t,u));
 }
 
