@@ -51,6 +51,7 @@ canvas{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}#spa
 <body>
 <div id="app"><canvas id="space"></canvas><canvas id="fx"></canvas><div class="vig"></div><div id="grain"></div>
 <div id="chapter">ARCHIVE 01 · THE LAST STAR</div><button id="mute" aria-label="Toggle sound">♫</button><div id="progress"><i></i></div><div id="fade"></div>
+<audio id="bgMusic" preload="auto" loop playsinline><source src="/letter/audio/wave%20to%20earth%20-%20seasons.mp3" type="audio/mpeg"></audio>
 
 <section class="scene on" id="intro"><div><div class="star"></div><div class="ey">A PRIVATE ARCHIVE</div><h1>SOME THINGS ARE NOT MEANT TO BE FORGOTTEN.<br><span class="gold">THEY ARE MEANT TO BE PRESERVED.</span></h1><button class="cta" id="enter">Enter the archive</button></div></section>
 
@@ -93,11 +94,27 @@ const CFG={
 
 const $=id=>document.getElementById(id),scenes=[...document.querySelectorAll(".scene")],space=$("space"),fx=$("fx"),sx=space.getContext("2d"),xx=fx.getContext("2d");
 let W=innerWidth,H=innerHeight,D=Math.min(devicePixelRatio||1,2),scene="intro",visited=new Set(),busy=false,sound=true,audio=null,finalStar={x:0,y:0,ready:false};
+const bgMusic=$("bgMusic");let musicTarget=0,musicTimer=null;
+bgMusic.volume=0;
+function fadeMusic(target,duration=1800){
+  musicTarget=Math.max(0,Math.min(1,target));clearInterval(musicTimer);
+  const start=bgMusic.volume,delta=musicTarget-start,steps=Math.max(1,Math.round(duration/40));let step=0;
+  musicTimer=setInterval(()=>{step++;const p=Math.min(1,step/steps),e=1-Math.pow(1-p,3);bgMusic.volume=start+delta*e;if(p>=1){clearInterval(musicTimer);if(musicTarget===0){try{bgMusic.pause()}catch{}}}},40);
+}
+function startMusic(target=.32){
+  if(!sound)return;
+  bgMusic.volume=Math.min(bgMusic.volume,target);
+  bgMusic.play().then(()=>fadeMusic(target,2200)).catch(()=>{});
+}
+function setSceneMusic(id){
+  const levels={intro:0,title:0,constellation:.24,memory:.29,arch:.32,room:.36,letter:.30,message:.16,void:.045,final:.38,end:.22};
+  if(levels[id]!==undefined){if(levels[id]>0 && bgMusic.paused)startMusic(levels[id]);else fadeMusic(levels[id],1600);}
+}
 const nodes=[{x:.22,y:.38},{x:.37,y:.24},{x:.51,y:.41},{x:.66,y:.25},{x:.78,y:.43},{x:.62,y:.63},{x:.39,y:.66}],edges=[[0,1],[1,2],[2,3],[3,4],[4,5],[5,6],[6,2],[0,6]];
 const stars=Array.from({length:Math.min(260,Math.max(120,Math.floor(innerWidth*innerHeight/6500)))},()=>({x:Math.random(),y:Math.random(),z:Math.random(),s:.3+Math.random()*1.4,p:Math.random()*7,a:.3+Math.random()*.7}));
 function resize(){W=innerWidth;H=innerHeight;D=Math.min(devicePixelRatio||1,2);for(const c of[space,fx]){c.width=W*D;c.height=H*D;c.style.width=W+"px";c.style.height=H+"px"}sx.setTransform(D,0,0,D,0,0);xx.setTransform(D,0,0,D,0,0)}addEventListener("resize",resize);resize();
 const sleep=ms=>new Promise(r=>setTimeout(r,ms));
-function show(id){scenes.forEach(s=>s.classList.toggle("on",s.id===id));scene=id;const names={intro:"PROLOGUE",title:"ACCESS",constellation:"CONSTELLATION",memory:"MEMORY CHAMBER",arch:"CELESTIAL SEAL",room:"CELESTIAL ARCHIVE",letter:"THE LETTER",message:"ARCHIVE STATUS",void:"THE MISSING STAR",final:"REVELATION",end:"COMPLETE"};$("chapter").textContent="ARCHIVE 01 · "+names[id];const order=["intro","title","constellation","memory","arch","room","letter","message","void","final","end"];$("progress").firstElementChild.style.width=Math.max(0,order.indexOf(id)/(order.length-1)*100)+"%";document.body.style.cursor=id==="constellation"?"crosshair":"default"}
+function show(id){scenes.forEach(s=>s.classList.toggle("on",s.id===id));scene=id;setSceneMusic(id);const names={intro:"PROLOGUE",title:"ACCESS",constellation:"CONSTELLATION",memory:"MEMORY CHAMBER",arch:"CELESTIAL SEAL",room:"CELESTIAL ARCHIVE",letter:"THE LETTER",message:"ARCHIVE STATUS",void:"THE MISSING STAR",final:"REVELATION",end:"COMPLETE"};$("chapter").textContent="ARCHIVE 01 · "+names[id];const order=["intro","title","constellation","memory","arch","room","letter","message","void","final","end"];$("progress").firstElementChild.style.width=Math.max(0,order.indexOf(id)/(order.length-1)*100)+"%";document.body.style.cursor=id==="constellation"?"crosshair":"default"}
 async function fade(v){$("fade").style.opacity=v?1:0;await sleep(v?850:1000)}
 function tone(f=440,d=.15,g=.025){if(!sound)return;try{audio||=new(window.AudioContext||window.webkitAudioContext)();if(audio.state==="suspended")audio.resume();const o=audio.createOscillator(),a=audio.createGain();o.frequency.value=f;a.gain.setValueAtTime(.0001,audio.currentTime);a.gain.exponentialRampToValueAtTime(g,audio.currentTime+.02);a.gain.exponentialRampToValueAtTime(.0001,audio.currentTime+d);o.connect(a).connect(audio.destination);o.start();o.stop(audio.currentTime+d+.02)}catch{}}
 function chord(a="soft"){({soft:[261.6,329.6,392],star:[293.7,440,587],warm:[220,277,330],impact:[130,196,262]}[a]||[261.6]).forEach((f,i)=>setTimeout(()=>tone(f,.6,.018),i*85))}
@@ -109,7 +126,7 @@ requestAnimationFrame(draw);
 function burst(x,y){const p=Array.from({length:700},()=>{const a=Math.random()*7,v=1+Math.random()*7;return{x,y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,r:.5+Math.random()*2,l:1}});let last=performance.now();function run(now){const dt=Math.min(2,(now-last)/16);last=now;xx.clearRect(0,0,W,H);p.forEach(q=>{q.x+=q.vx*dt;q.y+=q.vy*dt;q.vy+=.018*dt;q.l-=.012*dt;xx.globalAlpha=Math.max(0,q.l);xx.fillStyle=Math.random()>.5?"#fff":"#d6b77a";xx.beginPath();xx.arc(q.x,q.y,q.r,0,7);xx.fill()});if(p.some(q=>q.l>0))requestAnimationFrame(run);else xx.clearRect(0,0,W,H)}requestAnimationFrame(run)}
 async function intro(){ $("intro").classList.add("ready");tone(220,.3,.02);await sleep(4200);if(scene!=="intro")return;await fade(1);show("title");await fade(0);chord()}
 $("enter").onclick=()=>{if(!busy){busy=true;intro().finally(()=>busy=false)}};
-$("access").onclick=async()=>{if(busy)return;busy=true;tone(440);await fade(1);show("constellation");await fade(0);chord("star");busy=false};
+$("access").onclick=async()=>{if(busy)return;busy=true;tone(440);startMusic(.24);await fade(1);show("constellation");await fade(0);chord("star");busy=false};
 function pos(i){return{x:W/2+(nodes[i].x-.5)*W*.74,y:H*.46+(nodes[i].y-.5)*H*.74}}
 function openMemory(i){if(i!==visited.size)return;visited.add(i);const m=CFG.memories[i];$("mn").textContent="MEMORY 0"+(i+1);$("mt").textContent=m.title;$("mc").textContent=m.caption;$("mx").textContent=m.text;const img=$("mi");img.style.backgroundImage=m.image?"url('"+m.image.replace(/'/g,"\\'")+"')":"linear-gradient(135deg,#4a161c55,#0c0812)";img.classList.add("show");$("mcount").textContent=visited.size+" / "+CFG.memories.length+" memories preserved";show("memory");tone(visited.size===7?587:330,.3,.03)}
 $("constellation").addEventListener("pointerup",e=>{if(busy||scene!=="constellation")return;const p=pos(visited.size),d=Math.hypot(e.clientX-p.x,e.clientY-p.y);if(d<40)openMemory(visited.size);else tone(150,.08,.01)});
@@ -120,7 +137,7 @@ async function writeLetter(){const box=$("writing");box.textContent="";$("letter
 $("void").addEventListener("pointerup",e=>{if(!finalStar.ready||busy)return;if(Math.hypot(e.clientX-finalStar.x,e.clientY-finalStar.y)<55)reveal()});
 async function reveal(){busy=true;tone(90,.25,.025);await sleep(250);burst(finalStar.x,finalStar.y);chord("impact");await fade(1);show("final");$("final").classList.add("show");await fade(0);await sleep(5600);await fade(1);show("end");await fade(0);busy=false}
 $("replay").onclick=()=>location.reload();
-$("mute").onclick=()=>{sound=!sound;$("mute").textContent=sound?"♫":"×";if(sound)tone(440,.15,.02)};
+$("mute").onclick=()=>{sound=!sound;$("mute").textContent=sound?"♫":"×";if(sound){startMusic(musicTarget||.24);tone(440,.15,.02)}else fadeMusic(0,500)};
 document.addEventListener("visibilitychange",()=>{if(document.hidden&&audio)try{audio.suspend()}catch{}});
 document.addEventListener("keydown",e=>{if((e.key==="Enter"||e.key===" ")&&scene==="void"){e.preventDefault();reveal()}if(e.key==="Escape"&&scene==="memory")$("back").click()});
 </script></body></html>
