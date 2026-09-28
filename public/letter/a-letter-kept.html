@@ -138,7 +138,25 @@ linear-gradient(180deg,transparent,#020704 78%);opacity:.8}
 .room{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 35%,#4a161c33,transparent 45%),linear-gradient(#05040a,#09060d 58%,#020208)}.room-frame{position:absolute;left:9%;right:9%;top:13%;height:63%;border:1px solid #d6b77a20;box-shadow:inset 0 0 100px #d6b77a08}.window{position:absolute;left:50%;top:15%;width:min(430px,65vw);height:52%;transform:translateX(-50%);border:1px solid #d6b77a2e;background:#020207;overflow:hidden}.window:before{content:"";position:absolute;inset:0;background:radial-gradient(circle at 21% 26%,#fff 0 1px,transparent 2px),radial-gradient(circle at 73% 31%,#fff 0 1px,transparent 2px),radial-gradient(circle at 38% 71%,#d6b77a 0 1px,transparent 2px),radial-gradient(circle at 81% 78%,#fff 0 1px,transparent 2px)}.room-copy{position:absolute;left:50%;top:7%;transform:translateX(-50%);text-align:center;z-index:3;pointer-events:none}.room-copy h2{font-size:clamp(24px,4vw,42px);font-weight:300;margin:8px 0}.room-copy p{font:9px Arial;letter-spacing:.25em;text-transform:uppercase;color:#fff6}
 .desk{position:absolute;left:50%;bottom:15%;width:min(720px,86vw);height:24%;transform:translateX(-50%);border:1px solid #d6b77a2b;background:linear-gradient(#211016,#0b070b 20%,#050307);box-shadow:0 20px 70px #000b}.book{position:absolute;left:13%;top:18%;width:29%;height:42%;background:#10070b;border:1px solid #d6b77a33;transform:rotate(-4deg);box-shadow:0 10px 25px #000}.book:after{content:"THE LAST STAR";position:absolute;inset:0;display:grid;place-items:center;color:#d6b77a88;font:8px Arial;letter-spacing:.18em}.candle{position:absolute;right:16%;top:-34%;width:28px;height:75px;background:linear-gradient(90deg,#a58c78,#eee0cb,#8f7968)}.flame{position:absolute;left:50%;top:-25px;width:14px;height:25px;background:radial-gradient(ellipse at 50% 75%,#fff 0 16%,#e9b85e 35%,transparent 70%);transform:translateX(-50%);filter:drop-shadow(0 0 12px #e6a74d);animation:flame .12s infinite alternate}@keyframes flame{to{transform:translateX(-50%) scale(.86,.94) rotate(2deg)}}
 .envelope{position:absolute;right:34%;top:-38%;width:180px;height:115px;background:#e9dfcf;border:1px solid #a48e70;box-shadow:0 15px 35px #000;cursor:pointer;transform:rotate(3deg);transition:.5s var(--ease)}.envelope:hover{transform:rotate(0) translateY(-8px)}.envelope:before{content:"";position:absolute;inset:0;background:linear-gradient(135deg,transparent 49%,#cdbfa7 50%,transparent 51%),linear-gradient(225deg,transparent 49%,#cdbfa7 50%,transparent 51%)}.envelope:after{content:"✦";position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:31px;height:31px;border-radius:50%;background:#681d27;color:#e8c987;display:grid;place-items:center;border:1px solid #d6b77a}
-#letter{background:#08050a}.paper{width:min(650px,90vw);height:min(82vh,820px);overflow:hidden;background:radial-gradient(circle at 15% 20%,#4a161c0d,transparent 20%),linear-gradient(135deg,#eee5d5,#f6eddf 42%,#e4d8c4);color:#271c18;padding:clamp(35px,6vw,65px);box-shadow:0 30px 80px #000;position:relative;border:1px solid #d6b77a70;transform:rotateX(3deg)}.paper:before{content:"";position:absolute;inset:18px;border:1px solid #56362624}.paper-head{font:8px Arial;letter-spacing:.25em;color:#715a4a;text-transform:uppercase;text-align:center}.paper h2{font-size:clamp(28px,5vw,45px);font-weight:400;text-align:center;margin:12px 0 22px}#writing{font-size:clamp(16px,2.25vw,20px);line-height:1.65;white-space:pre-wrap;max-height:calc(100% - 100px);overflow:hidden}#pen{position:fixed;left:0;top:0;width:65px;height:65px;z-index:70;pointer-events:none;opacity:0;filter:drop-shadow(0 4px 5px #0006)}#letter-status{position:absolute;bottom:4%;left:50%;transform:translateX(-50%);font:8px Arial;letter-spacing:.2em;text-transform:uppercase;color:#fff5}
+#letter{background:#08050a;perspective:1800px}
+.paper{width:min(650px,90vw);height:min(82vh,820px);position:relative;transform-style:preserve-3d;perspective:1800px;overflow:visible;filter:drop-shadow(0 30px 80px #000)}
+.paper:after{content:"";position:absolute;left:5%;right:5%;bottom:-12px;height:18px;background:linear-gradient(180deg,rgba(40,25,18,.55),rgba(0,0,0,0));filter:blur(9px);z-index:-1}
+.paper-page{position:absolute;inset:0;padding:clamp(35px,6vw,65px);overflow:hidden;background:radial-gradient(circle at 15% 20%,#4a161c0d,transparent 20%),linear-gradient(135deg,#eee5d5,#f6eddf 42%,#e4d8c4);color:#271c18;border:1px solid #d6b77a70;box-shadow:inset 0 0 35px rgba(92,59,34,.08);backface-visibility:hidden;transform-style:preserve-3d}
+.paper-page:before{content:"";position:absolute;inset:18px;border:1px solid #56362624;pointer-events:none}
+.paper-page:after{content:"";position:absolute;left:0;top:0;bottom:0;width:9px;background:linear-gradient(90deg,rgba(55,34,21,.14),transparent);opacity:.55;pointer-events:none}
+.paper-front{z-index:2;transform-origin:left center}
+.paper-back{z-index:1;transform-origin:left center;box-shadow:inset 8px 0 18px rgba(60,38,25,.07)}
+.paper.turning .paper-front{animation:paperTurn .95s cubic-bezier(.72,.02,.22,1) forwards}
+@keyframes paperTurn{0%{transform:rotateY(0deg);box-shadow:0 0 0 rgba(0,0,0,0)}38%{transform:rotateY(-82deg);box-shadow:-22px 18px 35px rgba(0,0,0,.18)}100%{transform:rotateY(-180deg);box-shadow:-10px 8px 20px rgba(0,0,0,.08)}}
+.paper-head{font:8px Arial;letter-spacing:.25em;color:#715a4a;text-transform:uppercase;text-align:center}
+.page-title{font-size:clamp(28px,5vw,45px);font-weight:400;text-align:center;margin:12px 0 22px}
+.page-writing{font-size:clamp(16px,2.25vw,20px);line-height:1.65;white-space:pre-wrap;height:calc(100% - 100px);overflow:hidden}
+#pen{position:fixed;left:0;top:0;width:72px;height:72px;z-index:70;pointer-events:none;opacity:0;filter:drop-shadow(0 5px 6px #0008) drop-shadow(0 0 7px rgba(214,183,122,.14));transform-origin:16% 86%;will-change:transform,opacity}
+#letter-status{position:absolute;bottom:4%;left:50%;transform:translateX(-50%);font:8px Arial;letter-spacing:.2em;text-transform:uppercase;color:#fff5;z-index:4}
+#letter-page-status{position:absolute;right:5%;bottom:4%;font:8px Arial;letter-spacing:.16em;text-transform:uppercase;color:rgba(247,241,231,.35);z-index:4}
+.paper-page .page-number{position:absolute;right:clamp(26px,4vw,48px);bottom:22px;font:7px Arial;letter-spacing:.2em;color:#715a4a66}
+.paper-page .page-writing{scrollbar-width:none}
+.paper-page .page-writing::-webkit-scrollbar{display:none}
 #message{text-align:center}.lines div{font-size:clamp(25px,5vw,55px);font-weight:300;line-height:1.15;opacity:0;transform:translateY(18px);transition:1.2s var(--ease)}#message.show .lines div{opacity:1;transform:none}#message.show .lines div:nth-child(2){transition-delay:.9s}#message.show .lines div:nth-child(3){transition-delay:1.8s}.small{margin-top:35px;font:9px Arial;letter-spacing:.3em;text-transform:uppercase;color:#fff5}
 #void .void-copy{position:absolute;left:50%;bottom:12%;transform:translateX(-50%);text-align:center;opacity:0;transition:1s}#void.ready .void-copy{opacity:1}.void-copy p{font:9px Arial;letter-spacing:.28em;text-transform:uppercase;color:#fff6}
 #final{text-align:center}.reveal p{font-size:clamp(27px,5.5vw,64px);font-weight:300;line-height:1.05;margin:0;opacity:0;transform:translateY(18px)}#final.show .reveal p{animation:reveal 1.2s var(--ease) forwards}#final.show .reveal p:nth-child(2){animation-delay:1.1s}#final.show .reveal p:nth-child(3){animation-delay:2.2s;color:var(--g2)}@keyframes reveal{to{opacity:1;transform:none}}
@@ -375,7 +393,45 @@ linear-gradient(180deg,#020207,#09050d 58%,#020207)}
 
 <section class="scene" id="room"><div class="room"><div class="room-frame"></div><div class="window"></div><div class="room-copy"><div class="k">CELESTIAL ARCHIVE</div><h2>The room beyond memory.</h2><p>There is one thing left to preserve.</p></div><div class="desk"><div class="book"></div><div class="candle"><div class="flame"></div></div><button class="envelope" id="envelope" aria-label="Open the sealed letter"></button></div></div></section>
 
-<section class="scene" id="letter"><div class="paper"><div class="paper-head">ECLIPSE · ARCHIVE ENTRY 001</div><h2 id="letterTitle"></h2><div id="writing"></div></div><svg id="pen" viewBox="0 0 80 80"><path d="M18 61L57 22l9 9-39 39-13 3 4-12z" fill="#25202a" stroke="#d6b77a" stroke-width="2"/><path d="M57 22l5-5 9 9-5 5z" fill="#6a2631"/><path d="M18 61l-4 12 13-3" fill="#d6b77a"/></svg><div id="letter-status">the letter is being written</div></section>
+<section class="scene" id="letter">
+  <div class="paper" id="paper">
+    <div class="paper-page paper-front" id="paperFront">
+      <div class="paper-head">ECLIPSE · ARCHIVE ENTRY 001</div>
+      <h2 class="page-title"></h2>
+      <div class="page-writing"></div>
+      <div class="page-number"></div>
+    </div>
+    <div class="paper-page paper-back" id="paperBack" aria-hidden="true">
+      <div class="paper-head">ECLIPSE · ARCHIVE ENTRY 001</div>
+      <h2 class="page-title"></h2>
+      <div class="page-writing"></div>
+      <div class="page-number"></div>
+    </div>
+  </div>
+  <svg id="pen" viewBox="0 0 120 120" aria-hidden="true">
+    <defs>
+      <linearGradient id="brushHandle" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#160b0d"/>
+        <stop offset=".45" stop-color="#5b1822"/>
+        <stop offset="1" stop-color="#12080a"/>
+      </linearGradient>
+      <linearGradient id="goldBrush" x1="0" y1="0" x2="1" y2="1">
+        <stop offset="0" stop-color="#fff0b8"/>
+        <stop offset=".35" stop-color="#d6b77a"/>
+        <stop offset="1" stop-color="#78562b"/>
+      </linearGradient>
+    </defs>
+    <path d="M18 91 C35 73 57 48 82 22 L94 34 C69 59 45 82 27 101 Z" fill="url(#brushHandle)" stroke="#d6b77a" stroke-width="1.8"/>
+    <path d="M77 18 L86 9 L104 27 L95 36 Z" fill="url(#goldBrush)" stroke="#8f6a35" stroke-width="1.4"/>
+    <path d="M82 13 L89 6 L108 25 L101 32" fill="#241016" stroke="#d6b77a" stroke-width="1.2"/>
+    <path d="M18 91 C12 97 8 105 8 112 C16 111 25 108 31 101 Z" fill="#201318" stroke="#d6b77a" stroke-width="1.2"/>
+    <path d="M10 110 C16 106 22 102 27 98" fill="none" stroke="#f0dca9" stroke-width="1.5"/>
+    <path d="M38 74 L47 83" stroke="#d6b77a" stroke-width="3" opacity=".75"/>
+    <path d="M48 64 L57 73" stroke="#d6b77a" stroke-width="2" opacity=".5"/>
+  </svg>
+  <div id="letter-status">the letter is being written</div>
+  <div id="letter-page-status" aria-live="polite"></div>
+</section>
 
 <section class="scene" id="message"><div class="lines"><div>THE ARCHIVE IS COMPLETE.</div><div>but...</div><div class="gold">there is still one star missing.</div><div class="small">wait for it</div></div></section>
 <section class="scene" id="void"><div class="void-copy"><p>The final record has no name.</p><p class="gold">Touch the last star.</p></div></section>
@@ -592,8 +648,12 @@ renderConstellationStars();
 addEventListener("resize",updateConstellationStarPositions);
 $("back").onclick=async()=>{if(busy)return;busy=true;if(visited.size===CFG.memories.length){await fade(1);show("arch");await fade(0);chord("star");await sleep(4000);await fade(1);show("room");await fade(0);chord("warm")}else show("constellation");busy=false};
 $("envelope").onclick=async()=>{if(busy)return;busy=true;tone(392,.2,.025);await fade(1);show("letter");await fade(0);await writeLetter()};
-function movePen(x,y,on=true){const p=$("pen");p.style.opacity=on?1:0;p.style.transform="translate("+x+"px,"+y+"px) rotate(-8deg)"}
-async function writeLetter(){const box=$("writing");box.textContent="";$("letterTitle").textContent=CFG.letterTitle;const full=CFG.letter.join("\n\n");const r=box.getBoundingClientRect();movePen(r.left+30,r.top+5);let n=0;for(const ch of full){box.textContent+=ch;n++;const range=document.createRange();range.selectNodeContents(box);range.collapse(false);const q=range.getBoundingClientRect();if(q.width)movePen(Math.min(W-25,q.right+2),Math.min(H-25,q.bottom-4));await sleep(ch==="\n"?180:n<45?38:28)}movePen(0,0,false);$("letter-status").textContent="preserved";await sleep(1700);await fade(1);show("message");$("message").classList.add("show");await fade(0);chord("warm");await sleep(5200);await fade(1);show("void");$("void").classList.add("ready");await fade(0);busy=false}
+function movePen(x,y,on=true){const p=$("pen");p.style.opacity=on?1:0;p.style.transform="translate3d("+x+"px,"+y+"px,0) rotate(-18deg)"}
+function setPageMarkup(el,pageIndex,pages){const title=el.querySelector(".page-title"),writing=el.querySelector(".page-writing"),num=el.querySelector(".page-number");title.textContent=CFG.letterTitle;writing.textContent=pages[pageIndex]?pages[pageIndex].join("\n\n"):"";num.textContent=pages.length>1?"PAGE "+String(pageIndex+1).padStart(2,"0")+" / "+String(pages.length).padStart(2,"0"):"";return writing}
+function makeLetterPages(){const front=$("paperFront"),writing=front.querySelector(".page-writing"),cs=getComputedStyle(writing);const measure=document.createElement("div");measure.style.cssText="position:absolute;left:-99999px;top:0;visibility:hidden;white-space:pre-wrap;overflow:hidden;font-family:"+cs.fontFamily+";font-size:"+cs.fontSize+";font-weight:"+cs.fontWeight+";line-height:"+cs.lineHeight+";letter-spacing:"+cs.letterSpacing+";width:"+writing.clientWidth+"px;height:"+writing.clientHeight+"px;padding:0;margin:0";document.body.appendChild(measure);const pages=[],current=[];const fits=a=>{measure.textContent=a.join("\n\n");return measure.scrollHeight<=writing.clientHeight+1};let page=[];for(const paragraph of CFG.letter){if(fits(page.concat(paragraph))){page.push(paragraph);continue}if(page.length){pages.push(page);page=[]}if(fits([paragraph])){page=[paragraph];continue}let words=paragraph.split(/(\s+)/),chunk="";for(const token of words){const test=chunk+token;if(fits([test]))chunk=test;else{if(chunk)pages.push([chunk.trim()]);chunk=token.trimStart()}}if(chunk)page=[chunk.trim()]}if(page.length)pages.push(page);measure.remove();return pages}
+async function turnPage(pages,nextIndex){const paper=$("paper"),back=$("paperBack"),front=$("paperFront");setPageMarkup(back,nextIndex,pages);paper.classList.add("turning");await sleep(980);setPageMarkup(front,nextIndex,pages);paper.classList.remove("turning");await sleep(90);setPageMarkup(back,nextIndex+1,pages)}
+async function writePage(writing,text){writing.textContent="";let n=0;for(const ch of text){writing.textContent+=ch;n++;const range=document.createRange();range.selectNodeContents(writing);range.collapse(false);const q=range.getBoundingClientRect();if(q.width||q.height){movePen(Math.min(W-24,q.right+2),Math.min(H-28,q.bottom-3),true)}await sleep(ch==="\n"?170:n<45?34:24)}}
+async function writeLetter(){const paper=$("paper");paper.classList.remove("turning");const pages=makeLetterPages();if(!pages.length)return;setPageMarkup($("paperFront"),0,pages);setPageMarkup($("paperBack"),Math.min(1,pages.length-1),pages);$("letter-page-status").textContent="PAGE 01 / "+String(pages.length).padStart(2,"0");const frontWriting=$("paperFront").querySelector(".page-writing");movePen(frontWriting.getBoundingClientRect().left+24,frontWriting.getBoundingClientRect().top+4,true);for(let i=0;i<pages.length;i++){await writePage(frontWriting,pages[i].join("\n\n"));if(i<pages.length-1){$("letter-page-status").textContent="PAGE "+String(i+1).padStart(2,"0")+" / "+String(pages.length).padStart(2,"0");movePen(0,0,false);await sleep(420);await turnPage(pages,i+1);$("letter-page-status").textContent="PAGE "+String(i+2).padStart(2,"0")+" / "+String(pages.length).padStart(2,"0");frontWriting=$("paperFront").querySelector(".page-writing");movePen(frontWriting.getBoundingClientRect().left+24,frontWriting.getBoundingClientRect().top+4,true);await sleep(260)}}movePen(0,0,false);$("letter-status").textContent="preserved";$("letter-page-status").textContent="ARCHIVE COMPLETE · "+pages.length+" PAGES";await sleep(1700);await fade(1);show("message");$("message").classList.add("show");await fade(0);chord("warm");await sleep(5200);await fade(1);show("void");$("void").classList.add("ready");await fade(0);busy=false}
 $("void").addEventListener("pointerup",e=>{if(!finalStar.ready||busy)return;if(Math.hypot(e.clientX-finalStar.x,e.clientY-finalStar.y)<55)reveal()});
 async function reveal(){busy=true;tone(90,.25,.025);await sleep(250);burst(finalStar.x,finalStar.y);chord("impact");await fade(1);show("final");$("final").classList.add("show");await fade(0);await sleep(5600);await fade(1);show("end");await fade(0);busy=false}
 $("replay").onclick=()=>location.reload();
