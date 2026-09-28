@@ -859,7 +859,9 @@ function getRandomRoastReply() {
   const genericGroups =
     groups.filter(
       (group) =>
-        group.name === "trash-talk"
+        group.name === "trash-talk" ||
+        group.name === "banat-expanded" ||
+        group.name === "public"
     );
 
   const replies =
