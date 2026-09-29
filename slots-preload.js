@@ -7,6 +7,53 @@
 const Module = require("module");
 const path = require("path");
 
+// The main command router historically only entered handleGamesCommand when
+// the parsed command was literally `games`. That meant the social commands
+// could exist in the games handler but never reach it. Expand that gate at
+// startup instead of rewriting the large index.js router.
+const originalCompile = Module.prototype._compile;
+let indexRouterPatched = false;
+
+Module.prototype._compile = function patchedCompile(content, filename) {
+  if (
+    !indexRouterPatched &&
+    path.basename(filename || "") === "index.js" &&
+    path.dirname(filename || "") === __dirname
+  ) {
+    const socialCommands = [
+      "games",
+      "game",
+      "rizz",
+      "simp",
+      "clown",
+      "aura",
+      "npc",
+      "delulu",
+      "menace",
+      "grass",
+      "bro",
+      "battle",
+      "vibes",
+      "social",
+      "socialgames",
+    ];
+
+    const gate = /if\s*\(\s*gameCommand\s*===\s*["']games["']\s*\)\s*\{/g;
+    const replacement = `if (${JSON.stringify(socialCommands)}.includes(gameCommand)) {`;
+
+    if (gate.test(content)) {
+      gate.lastIndex = 0;
+      content = content.replace(gate, replacement);
+      indexRouterPatched = true;
+      console.log(
+        "[social-games] Expanded game command router for Social Chaos."
+      );
+    }
+  }
+
+  return originalCompile.call(this, content, filename);
+};
+
 const originalLoad = Module._load;
 let installed = false;
 
