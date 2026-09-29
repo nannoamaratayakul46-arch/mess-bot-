@@ -3932,7 +3932,7 @@ async function handleSpecialRpgCommand(api,event,args) {
     if(!e)throw new Error("Unknown world event.");
     await startWorldEvent(t,id);
     const bossLine=(e.bossPool||[]).length?"👹 Event bosses: "+e.bossPool.join(", "):"👹 Event has no boss pool.";
-    await send(api,t,"🌎 WORLD EVENT STARTED\n"+(e.symbol||"✦")+" "+e.name+"\n"+e.description+"\n⏳ "+Math.round(Number(e.durationMs||3600000)/60000)+" minutes\\n"+bossLine);
+    await send(api,t,"🌎 WORLD EVENT STARTED\n"+(e.symbol||"✦")+" "+e.name+"\n"+e.description+"\n⏳ "+Math.round(Number(e.durationMs||3600000)/60000)+" minutes\n"+bossLine);
     return;
   }
   if(sub==="end"){
