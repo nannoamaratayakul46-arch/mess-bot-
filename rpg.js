@@ -1,149 +1,17 @@
 "use strict";
-
 const original = require("./rpg/index.js");
 const companions = require("./rpg/companions");
 const economy = require("./rpg/economy");
 const domainEvents = require("./rpg/domain-events");
 const tradeRoutes = require("./rpg/trade-routes");
+const army = require("./rpg/army");
+const armyFactions = require("./rpg/army-factions");
 const { HUNT_MILESTONES, getTotalHunts } = require("./rpg/adventure");
 const { reply } = require("./util");
-
-function tokens(value) {
-  return String(value || "").trim().replace(/^!rpg\b/i, "").trim().split(/\s+/).filter(Boolean);
-}
-function cleanId(value) {
-  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
-}
-
-async function handleCompanionCompatibility(api, event, args) {
-  const sub = cleanId(args[0] || "list");
-  const id = cleanId(args[1]);
-  if (sub === "evolve" || sub === "evolution") {
-    if (!id) { await reply(api, event.threadID, "🐾 Usage: !rpg companion evolve <companion_id>"); return true; }
-    const result = await companions.evolve(event.threadID, event.senderID, id);
-    await reply(api, event.threadID, ["✨ COMPANION EVOLVED", "", `${result.emoji} ${result.name}`, `Rarity: ${result.rarity}`, `Evolution: Stage ${result.evolutionStage}/10 — ${result.evolutionName}`, `Level: ${result.level}`, `Unlocked: ${result.unlocked || "New evolution trait"}`, `Skill: ${result.skill || result.ability}`, `💰 Cost: ${Number(result.cost || 0).toLocaleString()} coins`].join("\n"));
-    return true;
-  }
-  if (sub === "stages" || sub === "stage") {
-    const stages = companions.getEvolutionStages();
-    await reply(api, event.threadID, ["🐾 COMPANION EVOLUTION", "", ...stages.map(stage => `Stage ${stage.stage}/10 — ${stage.name} · ${stage.unlock}`), "", "Use !rpg companion evolve <id> when the requirements are met."].join("\n"));
-    return true;
-  }
-  return false;
-}
-
-async function handleEconomyCompatibility(api, event, args) {
-  const sub = cleanId(args[0] || "status");
-  if (!["economy", "domain", "prosperity", "market", "tax", "taxes", "event", "events", "route", "routes", "trade"].includes(sub)) return false;
-
-  if (sub === "route" || sub === "routes" || sub === "trade") {
-    const action = cleanId(args[1] || "list");
-    try {
-      if (action === "list") {
-        const routes = await tradeRoutes.listRoutes(event.threadID, event.senderID);
-        if (!routes.length) { await reply(api, event.threadID, "🛤️ TRADE ROUTES\n\nNo trade routes established yet.\nUse !rpg route establish <origin> <destination>"); return true; }
-        await reply(api, event.threadID, ["🛤️ TRADE ROUTES", "", ...routes.map(route => `• ${route.origin_location_id} → ${route.destination_location_id} · ${route.successful_runs} successful · ${route.disrupted_runs} disrupted`), "", "Use !rpg route dispatch <origin> <destination>"].join("\n"));
-        return true;
-      }
-      if (action === "establish" || action === "create") {
-        if (!args[2] || !args[3]) throw new Error("Usage: !rpg route establish <origin> <destination>");
-        const result = await tradeRoutes.establishRoute(event.threadID, event.senderID, args[2], args[3]);
-        if (result.alreadyExists) await reply(api, event.threadID, `🛤️ That route already exists: ${result.origin.name} → ${result.destination.name}.`);
-        else await reply(api, event.threadID, [`🛤️ TRADE ROUTE ESTABLISHED`, "", `${result.origin.name} → ${result.destination.name}`, `Distance: ${result.distance}`, `Kingdom relation: ${result.relation}`, `Establishment cost: ${result.cost.toLocaleString()} coins`].join("\n"));
-        return true;
-      }
-      if (action === "dispatch" || action === "run") {
-        if (!args[2] || !args[3]) throw new Error("Usage: !rpg route dispatch <origin> <destination>");
-        const result = await tradeRoutes.dispatchRoute(event.threadID, event.senderID, args[2], args[3]);
-        if (!result.dispatched) await reply(api, event.threadID, `⏳ That caravan is not ready. Next dispatch in about ${Math.ceil(result.remainingMs / 60000)} minute(s).`);
-        else if (result.success) await reply(api, event.threadID, [`🚚 CARAVAN ARRIVED`, "", `${result.info.origin.name} → ${result.info.destination.name}`, `💰 Revenue: ${result.revenue.toLocaleString()} coins`, `🛡️ Route safety: ${Math.round(result.safety * 100)}%`, `🤝 Relation: ${result.info.relation}`].join("\n"));
-        else await reply(api, event.threadID, [`🛑 CARAVAN DISRUPTED`, "", `${result.info.origin.name} → ${result.info.destination.name}`, `🛡️ Route safety: ${Math.round(result.safety * 100)}%`, `🤝 Relation: ${result.info.relation}`, "No revenue was recovered from this run."].join("\n"));
-        return true;
-      }
-      throw new Error("Route commands: list, establish <origin> <destination>, dispatch <origin> <destination>");
-    } catch (error) { await reply(api, event.threadID, `❌ ${error.message}`); }
-    return true;
-  }
-
-  if (sub === "event" || sub === "events") {
-    const action = cleanId(args[1] || "roll");
-    if (action === "list") { await reply(api, event.threadID, ["🌍 DOMAIN EVENTS", "", ...domainEvents.EVENTS.map(item => `${item.title} — ${item.description}`), "", "Events are influenced by domain prosperity.", "Use !rpg event roll to resolve one when available."].join("\n")); return true; }
-    try {
-      const result = await domainEvents.rollDomainEvent(event.threadID, event.senderID, { force: action === "force" });
-      if (!result.triggered) await reply(api, event.threadID, `⏳ No domain event yet. Another event can occur in about ${Math.ceil(result.remainingMs / 60000)} minute(s).`);
-      else await reply(api, event.threadID, [`🌍 ${result.event.title}`, "", result.event.description, "", "Effects:", ...Object.entries(result.event.effects || {}).map(([key, value]) => `${value >= 0 ? "✦" : "✧"} ${key}: ${value >= 0 ? "+" : ""}${value}`)].join("\n"));
-    } catch (error) { await reply(api, event.threadID, `❌ ${error.message}`); }
-    return true;
-  }
-
-  if (sub === "market") {
-    const action = cleanId(args[1]);
-    if (action === "buy" || action === "sell") {
-      try {
-        const result = await economy.marketTrade(event.threadID, event.senderID, action, args[2], args[3]);
-        await reply(api, event.threadID, `${action === "buy" ? "🏪 PURCHASE" : "💰 MARKET SALE"}\n\n${economy.RESOURCES[result.resource].emoji} ${economy.RESOURCES[result.resource].name} × ${result.quantity.toLocaleString()}\nRate: ${result.price.toLocaleString()} coins each\nTotal: ${result.total.toLocaleString()} coins`);
-      } catch (error) { await reply(api, event.threadID, `❌ ${error.message}`); }
-      return true;
-    }
-  }
-
-  if (sub === "tax" || sub === "taxes") {
-    const action = cleanId(args[1]);
-    if (action === "set") {
-      try { const rate = await economy.setTaxRate(event.threadID, event.senderID, args[2]); await reply(api, event.threadID, `🏛️ Domain tax rate set to ${rate}%. Taxes can be collected once every 24 hours.`); } catch (error) { await reply(api, event.threadID, `❌ ${error.message}`); }
-      return true;
-    }
-    if (action === "collect" || action === "claim") {
-      try {
-        const result = await economy.collectTaxes(event.threadID, event.senderID);
-        if (!result.claimed) await reply(api, event.threadID, `⏳ Taxes are not ready yet. Next collection in about ${Math.ceil(result.remainingMs / 60000)} minute(s).`);
-        else await reply(api, event.threadID, `🏛️ TAXES COLLECTED\n\n💰 Revenue: ${result.amount.toLocaleString()} coins\n📊 Prosperity: ${result.prosperity}/100 · ${result.prosperityName}\n📜 Tax rate: ${result.taxRate}%`);
-      } catch (error) { await reply(api, event.threadID, `❌ ${error.message}`); }
-      return true;
-    }
-  }
-
-  try {
-    const state = await economy.getEconomy(event.threadID, event.senderID);
-    await reply(api, event.threadID, ["🏰 DOMAIN ECONOMY", "", `🌟 Prosperity: ${state.prosperity}/100 · ${state.prosperityName}`, `👥 Population: ${state.population.population.toLocaleString()} / ${state.population.capacity.toLocaleString()}`, `⚔️ Army: ${state.armyUnits.toLocaleString()} soldiers`, `🏪 Market: Level ${state.marketLevel}`, `📜 Tax rate: ${state.tax_rate}%`, "", `🌾 Food: ${Number(state.stock.food).toLocaleString()}`, `🪵 Wood: ${Number(state.stock.wood).toLocaleString()}`, `🪨 Stone: ${Number(state.stock.stone).toLocaleString()}`, `⛓️ Iron: ${Number(state.stock.iron).toLocaleString()}`, `📦 Storage: ${state.stock.capacity.toLocaleString()}`, "", "Commands:", "!rpg market buy <resource> <amount>", "!rpg market sell <resource> <amount>", "!rpg tax set <0-25>", "!rpg tax collect", "!rpg event roll", "!rpg event list", "!rpg route list", "!rpg route establish <origin> <destination>", "!rpg route dispatch <origin> <destination>"].join("\n"));
-  } catch (error) { await reply(api, event.threadID, `❌ ${error.message}`); }
-  return true;
-}
-
-async function handleRpgCommand(api, event, text, originalText) {
-  const args = tokens(text);
-  if (["companion", "companions", "pet", "pets"].includes(args[0]) && ["evolve", "evolution", "stages", "stage"].includes(cleanId(args[1]))) {
-    if (await handleCompanionCompatibility(api, event, args.slice(1))) return true;
-  }
-  if (await handleEconomyCompatibility(api, event, args)) return true;
-
-  const isHuntCommand = args[0] === "hunt";
-  let beforeHunts = null;
-  if (isHuntCommand) {
-    try { beforeHunts = await getTotalHunts(event.threadID, event.senderID); } catch (_) {}
-  }
-
-  const result = await original.handleRpgCommand(api, event, text, originalText);
-
-  // The canonical combat/adventure systems grant the reward. This wrapper
-  // only reports the newly crossed milestone; it never grants it twice.
-  if (isHuntCommand && beforeHunts !== null) {
-    try {
-      const afterHunts = await getTotalHunts(event.threadID, event.senderID);
-      if (afterHunts > beforeHunts) {
-        const milestone = HUNT_MILESTONES.find(item => item.hunts === afterHunts);
-        if (milestone) {
-          const lines = [`🎁 HUNT MILESTONE — ${afterHunts} HUNTS`, ""];
-          if (milestone.special) lines.push(`🌟 Special Move: ${milestone.special.replace(/_/g, " ")}`);
-          if (milestone.specialPoints) lines.push(`✨ Special Points: +${milestone.specialPoints}`);
-          lines.push("", "The reward has been permanently added to your RPG profile.");
-          await reply(api, event.threadID, lines.join("\n"));
-        }
-      }
-    } catch (error) { console.error("[RPG] Hunt milestone display failed:", error); }
-  }
-
-  return result;
-}
-
-module.exports = { handleRpgCommand };
+function tokens(value) { return String(value || "").trim().replace(/^!rpg\b/i, "").trim().split(/\s+/).filter(Boolean); }
+function cleanId(value) { return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_"); }
+async function handleCompanionCompatibility(api,event,args){const sub=cleanId(args[0]||"list"),id=cleanId(args[1]);if(sub==="evolve"||sub==="evolution"){if(!id){await reply(api,event.threadID,"🐾 Usage: !rpg companion evolve <companion_id>");return true;}const r=await companions.evolve(event.threadID,event.senderID,id);await reply(api,event.threadID,["✨ COMPANION EVOLVED","",`${r.emoji} ${r.name}`,`Rarity: ${r.rarity}`,`Evolution: Stage ${r.evolutionStage}/10 — ${r.evolutionName}`,`Level: ${r.level}`,`Unlocked: ${r.unlocked||"New evolution trait"}`,`Skill: ${r.skill||r.ability}`,`💰 Cost: ${Number(r.cost||0).toLocaleString()} coins`].join("\n"));return true;}if(sub==="stages"||sub==="stage"){const s=companions.getEvolutionStages();await reply(api,event.threadID,["🐾 COMPANION EVOLUTION","",...s.map(x=>`Stage ${x.stage}/10 — ${x.name} · ${x.unlock}`),"","Use !rpg companion evolve <id> when the requirements are met."].join("\n"));return true;}return false;}
+async function handleArmyCompatibility(api,event,args){const sub=cleanId(args[0]||"status");if(!["army","soldiers","troops","legion","legions"].includes(sub))return false;try{if(["factions","kingdoms","types"].includes(cleanId(args[1]))){const lines=["⚔️ KINGDOM ARMIES","",...armyFactions.listKingdomArmies().map(f=>`${f.signature.emoji} ${f.title} — ${f.signature.name} · ${f.doctrine}\n   Elite: ${f.elite.name}\n   Enemies: ${f.enemies.join(", ")}`)];await reply(api,event.threadID,lines.join("\n"));return true;}const a=await army.getArmy(event.threadID,event.senderID);if(!a){await reply(api,event.threadID,"❌ Army not initialized yet.");return true;}if(["train","recruit"].includes(cleanId(args[1]))){const type=cleanId(args[2]),amount=args[3];if(type==="signature"||type==="unique"||type==="elite"){const r=await army.trainSignature(event.threadID,event.senderID,amount);await reply(api,event.threadID,`⚔️ ${r.faction}\n\n🛡️ ${r.name}\nRecruited: +${r.count}\n💰 Cost: ${r.cost.toLocaleString()} coins`);return true;}const r=await army.train(event.threadID,event.senderID,type,amount);await reply(api,event.threadID,`⚔️ RECRUITED\n\n${r.unit.emoji} ${r.unit.name} × ${r.count}\n💰 Cost: ${r.cost.toLocaleString()} coins`);return true;}if(["formation","form"].includes(cleanId(args[1]))){const r=await army.setFormation(event.threadID,event.senderID,args[2]);await reply(api,event.threadID,`⚔️ Formation: ${r.emoji} ${r.name}`);return true;}const power=army.armyPower(a,a.formation);await reply(api,event.threadID,["⚔️ YOUR LEGION","",`🏳️ Faction: ${a.faction_id||"unassigned"}`,`🛡️ Signature: ${a.signature_name||"Unassigned"}`,`👥 Signature troops: ${Number(a.signature_count||0).toLocaleString()}`,`⚔️ Doctrine: ${a.doctrine||"balanced"}`,`🎖️ Veterancy: ${Number(a.veterancy||0)}/100`,"",`Infantry: ${Number(a.infantry||0).toLocaleString()}`,`Archers: ${Number(a.archers||0).toLocaleString()}`,`Spearmen: ${Number(a.spearmen||0).toLocaleString()}`,`Cavalry: ${Number(a.cavalry||0).toLocaleString()}`,`Heavy Swordsmen: ${Number(a.heavy_swordsmen||0).toLocaleString()}`,`Shielders: ${Number(a.shielders||0).toLocaleString()}`,`Mages: ${Number(a.mages||0).toLocaleString()}`,`Assassins: ${Number(a.assassins||0).toLocaleString()}`,"",`Total strength: ${power.strength.toLocaleString()}`,`Attack: ${power.attack.toLocaleString()} · Defense: ${power.defense.toLocaleString()}`,`Supplies: ${Number(a.supplies||0)}/100`,"",`Use !rpg soldiers kingdoms to see faction troops.`,`Use !rpg soldiers train signature <amount> to recruit your personal regiment.`].join("\n"));return true;}catch(error){await reply(api,event.threadID,`❌ ${error.message}`);return true;}}
+async function handleEconomyCompatibility(api,event,args){const sub=cleanId(args[0]||"status");if(!["economy","domain","prosperity","market","tax","taxes","event","events","route","routes","trade"].includes(sub))return false;if(sub==="route"||sub==="routes"||sub==="trade"){const action=cleanId(args[1]||"list");try{if(action==="list"){const r=await tradeRoutes.listRoutes(event.threadID,event.senderID);await reply(api,event.threadID,r.length?["🛤️ TRADE ROUTES","",...r.map(x=>`• ${x.origin_location_id} → ${x.destination_location_id} · ${x.successful_runs} successful · ${x.disrupted_runs} disrupted`),"","Use !rpg route dispatch <origin> <destination>"].join("\n"):"🛤️ TRADE ROUTES\n\nNo trade routes established yet.");return true;}if(action==="establish"||action==="create"){const r=await tradeRoutes.establishRoute(event.threadID,event.senderID,args[2],args[3]);await reply(api,event.threadID,r.alreadyExists?`🛤️ That route already exists: ${r.origin.name} → ${r.destination.name}.`:["🛤️ TRADE ROUTE ESTABLISHED","",`${r.origin.name} → ${r.destination.name}`,`Distance: ${r.distance}`,`Kingdom relation: ${r.relation}`,`Establishment cost: ${r.cost.toLocaleString()} coins`].join("\n"));return true;}if(action==="dispatch"||action==="run"){const r=await tradeRoutes.dispatchRoute(event.threadID,event.senderID,args[2],args[3]);await reply(api,event.threadID,!r.dispatched?`⏳ That caravan is not ready. Next dispatch in about ${Math.ceil(r.remainingMs/60000)} minute(s).`:r.success?["🚚 CARAVAN ARRIVED","",`${r.info.origin.name} → ${r.info.destination.name}`,`💰 Revenue: ${r.revenue.toLocaleString()} coins`,`🛡️ Route safety: ${Math.round(r.safety*100)}%`,`🤝 Relation: ${r.info.relation}`].join("\n"):["🛑 CARAVAN DISRUPTED","",`${r.info.origin.name} → ${r.info.destination.name}`,`🛡️ Route safety: ${Math.round(r.safety*100)}%`,`🤝 Relation: ${r.info.relation}`].join("\n"));return true;}throw new Error("Route commands: list, establish <origin> <destination>, dispatch <origin> <destination>");}catch(e){await reply(api,event.threadID,`❌ ${e.message}`);}return true;}if(sub==="event"||sub==="events"){const action=cleanId(args[1]||"roll");if(action==="list"){await reply(api,event.threadID,["🌍 DOMAIN EVENTS","",...domainEvents.EVENTS.map(x=>`${x.title} — ${x.description}`)].join("\n"));return true;}try{const r=await domainEvents.rollDomainEvent(event.threadID,event.senderID,{force:action==="force"});await reply(api,event.threadID,!r.triggered?`⏳ No domain event yet. Another event can occur in about ${Math.ceil(r.remainingMs/60000)} minute(s).`:[`🌍 ${r.event.title}`,"",r.event.description,"","Effects:",...Object.entries(r.event.effects||{}).map(([k,v])=>`${v>=0?"✦":"✧"} ${k}: ${v>=0?"+":""}${v}`)].join("\n"));}catch(e){await reply(api,event.threadID,`❌ ${e.message}`);}return true;}if(sub==="market"){const action=cleanId(args[1]);if(action==="buy"||action==="sell"){try{const r=await economy.marketTrade(event.threadID,event.senderID,action,args[2],args[3]);await reply(api,event.threadID,`${action==="buy"?"🏪 PURCHASE":"💰 MARKET SALE"}\n\n${economy.RESOURCES[r.resource].emoji} ${economy.RESOURCES[r.resource].name} × ${r.quantity.toLocaleString()}\nRate: ${r.price.toLocaleString()} coins each\nTotal: ${r.total.toLocaleString()} coins`);}catch(e){await reply(api,event.threadID,`❌ ${e.message}`);}return true;}}if(sub==="tax"||sub==="taxes"){const action=cleanId(args[1]);if(action==="set"){try{const r=await economy.setTaxRate(event.threadID,event.senderID,args[2]);await reply(api,event.threadID,`🏛️ Domain tax rate set to ${r}%.`);}catch(e){await reply(api,event.threadID,`❌ ${e.message}`);}return true;}if(action==="collect"||action==="claim"){try{const r=await economy.collectTaxes(event.threadID,event.senderID);await reply(api,event.threadID,!r.claimed?`⏳ Taxes are not ready yet. Next collection in about ${Math.ceil(r.remainingMs/60000)} minute(s).`:`🏛️ TAXES COLLECTED\n\n💰 Revenue: ${r.amount.toLocaleString()} coins\n📊 Prosperity: ${r.prosperity}/100 · ${r.prosperityName}\n📜 Tax rate: ${r.taxRate}%`);}catch(e){await reply(api,event.threadID,`❌ ${e.message}`);}return true;}}try{const s=await economy.getEconomy(event.threadID,event.senderID);await reply(api,event.threadID,["🏰 DOMAIN ECONOMY","",`🌟 Prosperity: ${s.prosperity}/100 · ${s.prosperityName}`,`👥 Population: ${s.population.population.toLocaleString()} / ${s.population.capacity.toLocaleString()}`,`⚔️ Army: ${s.armyUnits.toLocaleString()} soldiers`,`🏪 Market: Level ${s.marketLevel}`,`📜 Tax rate: ${s.tax_rate}%`,"",`🌾 Food: ${Number(s.stock.food).toLocaleString()}`,`🪵 Wood: ${Number(s.stock.wood).toLocaleString()}`,`🪨 Stone: ${Number(s.stock.stone).toLocaleString()}`,`⛓️ Iron: ${Number(s.stock.iron).toLocaleString()}`,`📦 Storage: ${s.stock.capacity.toLocaleString()}`].join("\n"));}catch(e){await reply(api,event.threadID,`❌ ${e.message}`);}return true;}
+async function handleRpgCommand(api,event,text,originalText){const args=tokens(text);if(["companion","companions","pet","pets"].includes(args[0])&&["evolve","evolution","stages","stage"].includes(cleanId(args[1]))){if(await handleCompanionCompatibility(api,event,args.slice(1)))return true;}if(await handleArmyCompatibility(api,event,args))return true;if(await handleEconomyCompatibility(api,event,args))return true;const isHunt=args[0]==="hunt";let before=null;if(isHunt)try{before=await getTotalHunts(event.threadID,event.senderID);}catch(_){}const result=await original.handleRpgCommand(api,event,text,originalText);if(isHunt&&before!==null)try{const after=await getTotalHunts(event.threadID,event.senderID);if(after>before){const m=HUNT_MILESTONES.find(x=>x.hunts===after);if(m){const lines=[`🎁 HUNT MILESTONE — ${after} HUNTS`,""];if(m.special)lines.push(`🌟 Special Move: ${m.special.replace(/_/g," ")}`);if(m.specialPoints)lines.push(`✨ Special Points: +${m.specialPoints}`);lines.push("","The reward has been permanently added to your RPG profile.");await reply(api,event.threadID,lines.join("\n"));}}}catch(e){console.error("[RPG] Hunt milestone display failed:",e);}return result;}
+module.exports={handleRpgCommand};
