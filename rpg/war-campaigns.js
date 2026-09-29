@@ -1,0 +1,58 @@
+"use strict";
+
+const db = require("../db");
+const army = require("./army");
+const { resolveLocation } = require("./world");
+const { getKingdom, getLocationOwner } = require("./kingdoms");
+const { getRelation, declareWar, offerPeace } = require("./diplomacy");
+
+const schemaPromise = db.query(`CREATE TABLE IF NOT EXISTS rpg_war_campaigns (
+  id BIGSERIAL PRIMARY KEY, thread_id TEXT NOT NULL, attacker_kingdom_id TEXT NOT NULL,
+  defender_kingdom_id TEXT NOT NULL, target_location_id TEXT NOT NULL, commander_user_id TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'active', battles INTEGER NOT NULL DEFAULT 0,
+  attacker_victories INTEGER NOT NULL DEFAULT 0, defender_victories INTEGER NOT NULL DEFAULT 0,
+  attacker_losses INTEGER NOT NULL DEFAULT 0, defender_losses INTEGER NOT NULL DEFAULT 0,
+  created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL
+);`);
+async function ensureSchema(){await schemaPromise;}
+function clamp(n,min,max){return Math.max(min,Math.min(max,Number(n)||0));}
+async function playerKingdom(threadID,userID){
+  const r=await db.query(`SELECT kingdom_id FROM rpg_players WHERE thread_id=$1 AND user_id=$2 LIMIT 1`,[String(threadID),String(userID)]);
+  const id=r.rows[0]?.kingdom_id;if(!id)throw new Error("You must pledge to a kingdom before commanding a campaign.");
+  return getKingdom(threadID,id);
+}
+async function startCampaign(threadID,userID,target){
+  await ensureSchema();const attacker=await playerKingdom(threadID,userID);const location=resolveLocation(target);
+  if(!location)throw new Error("Unknown target location.");const defenderId=await getLocationOwner(threadID,location.id);
+  if(!defenderId)throw new Error("That location has no kingdom owner and cannot be attacked as a kingdom campaign.");
+  if(defenderId===attacker.kingdom_id)throw new Error("You cannot campaign against your own kingdom.");
+  const defender=await getKingdom(threadID,defenderId);const relation=await getRelation(threadID,attacker.kingdom_id,defenderId);
+  if(relation!=="at_war")await declareWar(threadID,attacker.kingdom_id,defenderId);
+  const active=await db.query(`SELECT id FROM rpg_war_campaigns WHERE thread_id=$1 AND commander_user_id=$2 AND status='active' LIMIT 1`,[String(threadID),String(userID)]);
+  if(active.rows.length)throw new Error("You already command an active campaign.");
+  const state=await db.query(`SELECT garrison,defense,prosperity FROM rpg_location_states WHERE thread_id=$1 AND location_id=$2 LIMIT 1`,[String(threadID),location.id]);
+  const s=state.rows[0]||{},now=Date.now();
+  const result=await db.query(`INSERT INTO rpg_war_campaigns(thread_id,attacker_kingdom_id,defender_kingdom_id,target_location_id,commander_user_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$6) RETURNING *`,[String(threadID),attacker.kingdom_id,defender.kingdom_id,location.id,String(userID),now]);
+  return{campaign:result.rows[0],attacker,defender,location,garrison:Number(s.garrison||0),defense:Number(s.defense||0),prosperity:Number(s.prosperity||100)};
+}
+async function resolveBattle(threadID,userID){
+  await ensureSchema();const c=await db.query(`SELECT * FROM rpg_war_campaigns WHERE thread_id=$1 AND commander_user_id=$2 AND status='active' ORDER BY id DESC LIMIT 1`,[String(threadID),String(userID)]);const campaign=c.rows[0];
+  if(!campaign)throw new Error("No active campaign. Start one with !rpg campaign start <location>.");const a=await army.getArmy(threadID,userID);if(!a)throw new Error("Your army is not initialized.");
+  const power=army.armyPower(a,a.formation),state=await db.query(`SELECT garrison,defense,prosperity FROM rpg_location_states WHERE thread_id=$1 AND location_id=$2 LIMIT 1`,[String(threadID),campaign.target_location_id]);
+  const s=state.rows[0]||{},garrison=Math.max(0,Number(s.garrison||0)),defense=Math.max(0,Number(s.defense||0));const defenderPower=Math.max(50,garrison*1.15+defense*4);
+  const attackerScore=power.strength*(0.9+Math.random()*0.2),defenderScore=defenderPower*(0.9+Math.random()*0.2),victory=attackerScore>=defenderScore;
+  const ratio=victory?clamp(defenderScore/Math.max(1,attackerScore),.08,.85):clamp(attackerScore/Math.max(1,defenderScore),.08,.9),totalAttacker=Math.max(1,army.totalUnits(a));
+  const attackerLosses=Math.max(1,Math.floor(totalAttacker*(victory?ratio*.16:ratio*.28))),defenderLosses=Math.max(1,Math.floor(Math.max(1,garrison)*(victory?.28:.12)));
+  const columns=["infantry","archers","spearmen","cavalry","heavy_swordsmen","shielders","mages","assassins","signature_count","elite_count"];let remaining=attackerLosses;
+  for(const col of columns){if(remaining<=0)break;const current=Math.max(0,Number(a[col]||0));const take=Math.min(current,Math.ceil(attackerLosses*current/totalAttacker)||(current?1:0));if(take){await db.query(`UPDATE rpg_armies SET ${col}=GREATEST(0,${col}-$3),updated_at=$4 WHERE thread_id=$1 AND user_id=$2`,[String(threadID),String(userID),take,Date.now()]);remaining-=take;}}
+  const newGarrison=victory?Math.max(0,Math.floor(garrison-defenderLosses)):Math.max(0,Math.floor(garrison-Math.floor(defenderLosses*.35)));
+  await db.query(`UPDATE rpg_location_states SET garrison=$3,prosperity=GREATEST(0,prosperity-$4),defense=GREATEST(0,defense-$5) WHERE thread_id=$1 AND location_id=$2`,[String(threadID),campaign.target_location_id,newGarrison,victory?8:3,victory?12:4]);
+  const newBattles=Number(campaign.battles)+1,newAV=Number(campaign.attacker_victories)+(victory?1:0),newDV=Number(campaign.defender_victories)+(victory?0:1),newAL=Number(campaign.attacker_losses)+attackerLosses,newDL=Number(campaign.defender_losses)+defenderLosses,captured=victory&&newGarrison<=0,status=captured?"won":(newBattles>=10&&newAV<newDV?"stalled":"active");
+  await db.query(`UPDATE rpg_war_campaigns SET battles=$3,attacker_victories=$4,defender_victories=$5,attacker_losses=$6,defender_losses=$7,status=$8,updated_at=$9 WHERE id=$1 AND thread_id=$2`,[campaign.id,String(threadID),newBattles,newAV,newDV,newAL,newDL,status,Date.now()]);
+  if(captured){await db.query(`UPDATE rpg_location_states SET owner_kingdom_id=$3,garrison=0,defense=GREATEST(10,defense) WHERE thread_id=$1 AND location_id=$2`,[String(threadID),campaign.target_location_id,campaign.attacker_kingdom_id]);await db.query(`UPDATE rpg_kingdoms SET stability=GREATEST(0,stability-5),updated_at=$3 WHERE thread_id=$1 AND kingdom_id=$2`,[String(threadID),campaign.defender_kingdom_id,Date.now()]);await db.query(`UPDATE rpg_kingdoms SET stability=LEAST(100,stability+3),military=military+25,updated_at=$3 WHERE thread_id=$1 AND kingdom_id=$2`,[String(threadID),campaign.attacker_kingdom_id,Date.now()]);}
+  return{victory,captured,status,locationId:campaign.target_location_id,attackerLosses,defenderLosses,battles:newBattles,attackerVictories:newAV,defenderVictories:newDV,attackerPower:Math.round(attackerScore),defenderPower:Math.round(defenderScore)};
+}
+async function getCampaign(threadID,userID){await ensureSchema();return(await db.query(`SELECT * FROM rpg_war_campaigns WHERE thread_id=$1 AND commander_user_id=$2 ORDER BY id DESC LIMIT 1`,[String(threadID),String(userID)])).rows[0]||null;}
+async function listCampaigns(threadID,limit=10){await ensureSchema();return(await db.query(`SELECT * FROM rpg_war_campaigns WHERE thread_id=$1 ORDER BY id DESC LIMIT $2`,[String(threadID),Math.max(1,Math.min(50,Number(limit)||10))])).rows;}
+async function peace(threadID,userID){const c=await getCampaign(threadID,userID);if(!c)throw new Error("No campaign history found.");if(c.status!=="active")return{accepted:false,alreadyResolved:true};const result=await offerPeace(threadID,c.attacker_kingdom_id,c.defender_kingdom_id);if(result.accepted)await db.query(`UPDATE rpg_war_campaigns SET status='peace',updated_at=$3 WHERE id=$1 AND thread_id=$2`,[c.id,String(threadID),Date.now()]);return result;}
+module.exports={getCampaign,listCampaigns,peace,resolveBattle,startCampaign};
