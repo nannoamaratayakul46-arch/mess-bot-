@@ -106,6 +106,68 @@ function socialMenu() {
     "⚔️ !battle [user1] [user2] — social battle",
     "",
     "♡ !vibes — open this menu",
+    "♡ !vibes rules — see how it works",
+  ].join("\n");
+}
+
+function socialRules() {
+  return [
+    "╭──────────────────────────────╮",
+    "          ♡ ECLIPSE ♡",
+    "        🎭 SOCIAL CHAOS",
+    "╰──────────────────────────────╯",
+    "",
+    "୨୧ HOW IT WORKS",
+    "",
+    "♡ These are fictional social-chaos meters.",
+    "♡ Scores are deterministic for each name, so",
+    "  checking the same target gives the same result.",
+    "♡ They do not change coins, XP, RPG stats,",
+    "  inventory, ranks, or other permanent data.",
+    "♡ Mention a user or type a name after the command.",
+    "",
+    "💘 RIZZ",
+    "   !rizz [user]",
+    "   Measures fictional rizz from 0–100.",
+    "",
+    "🫡 SIMP",
+    "   !simp [user]",
+    "   Measures fictional simp energy from 0–100.",
+    "",
+    "🤡 CLOWN",
+    "   !clown [user]",
+    "   Measures fictional clownery from 0–100.",
+    "",
+    "🧿 AURA",
+    "   !aura [user]",
+    "   Gives a fictional aura score.",
+    "",
+    "🎮 NPC",
+    "   !npc [user]",
+    "   Measures fictional NPC energy.",
+    "",
+    "🌀 DELULU",
+    "   !delulu [user]",
+    "   Measures fictional delusion levels.",
+    "",
+    "😈 MENACE",
+    "   !menace [user]",
+    "   Measures fictional menace energy.",
+    "",
+    "🌱 GRASS",
+    "   !grass [user]",
+    "   Estimates how badly the target needs grass.",
+    "",
+    "🗿 BRO",
+    "   !bro [user]",
+    "   Gives a random-style bro verdict from a stable score.",
+    "",
+    "⚔️ SOCIAL BATTLE",
+    "   !battle [user1] [user2]",
+    "   Compares aura, rizz, and clownery to pick",
+    "   a fictional winner and a ridiculous reason.",
+    "",
+    "♡ No betting. No penalties. Just vibes. ♡",
   ].join("\n");
 }
 
@@ -121,8 +183,14 @@ function renderMetric(type, label, target, title, unit = "%") {
 }
 
 function handleSocialGame(command, args = []) {
+  const normalized = String(command).toLowerCase();
   const target = args[0] || "you";
-  switch (String(command).toLowerCase()) {
+
+  if ((normalized === "vibes" || normalized === "social" || normalized === "socialgames") && target.toLowerCase() === "rules") {
+    return socialRules();
+  }
+
+  switch (normalized) {
     case "rizz": return renderMetric("rizz", "Rizz", target, "💘 RIZZ METER");
     case "simp": return renderMetric("simp", "Simp Level", target, "🫡 SIMP CHECK");
     case "clown": return renderMetric("clown", "Clownery", target, "🤡 CLOWN METER");
@@ -159,5 +227,7 @@ module.exports = {
     "   ┊ !bro        · bro check",
     "   ┊ !battle     · social battle",
     "   ┊ !vibes      · open social chaos",
+    "   ┊ !vibes rules · how it works",
   ],
+  getSocialGameRules: socialRules,
 };
