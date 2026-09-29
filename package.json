@@ -4,7 +4,7 @@
   "description": "Facebook Messenger bot using saved session cookies",
   "main": "index.js",
   "scripts": {
-    "start": "node -r ./slots-preload index.js"
+    "start": "node -r ./rpg-help-preload -r ./slots-preload index.js"
   },
   "engines": {
     "node": ">=18.18.0"
