@@ -1,5 +1,7 @@
 const db = require("../db");
 const { normalizeKey, totalUnits } = require("./utils");
+const { applyResourceProduction } = require("./properties");
+
 const UNITS = {
   infantry: {
     name: "Infantry",
@@ -66,6 +68,7 @@ const UNITS = {
     defense: 0.4,
   },
 };
+
 const FORMATIONS = {
   balanced: {
     name: "Balanced",
@@ -124,7 +127,152 @@ const FORMATIONS = {
     speed: 1.1,
   },
 };
+
+/*
+ * ARMY LOGISTICS
+ *
+ * 5 real seconds = 20 in-game minutes.
+ * Armies consume food every in-game hour. This makes the domain economy,
+ * population and military operate on the same simulation clock.
+ *
+ * 1 food feeds 10 soldiers for one in-game hour.
+ * If food runs out, supplies fall. At zero supplies, a small number of
+ * soldiers desert each processed hour rather than the army disappearing.
+ */
+const REAL_MS_PER_GAME_HOUR = 15_000;
+const FOOD_PER_10_SOLDIERS_PER_HOUR = 1;
+const SUPPLY_LOSS_PER_SHORTAGE_HOUR = 3;
+const DESERTION_RATE_AT_ZERO_SUPPLY = 0.01;
+
+let logisticsSchemaReady;
+
+async function ensureLogisticsSchema() {
+  if (!logisticsSchemaReady) {
+    logisticsSchemaReady = db.query(`
+      CREATE TABLE IF NOT EXISTS rpg_army_logistics (
+        thread_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        last_tick_at BIGINT NOT NULL,
+        PRIMARY KEY(thread_id, user_id)
+      );
+    `);
+  }
+  await logisticsSchemaReady;
+}
+
+async function tickArmyLogistics(threadID, userID) {
+  await ensureLogisticsSchema();
+  await applyResourceProduction(threadID, userID);
+
+  const armyResult = await db.query(
+    `SELECT * FROM rpg_armies WHERE thread_id = $1 AND user_id = $2 LIMIT 1`,
+    [String(threadID), String(userID)]
+  );
+  const army = armyResult.rows[0];
+  if (!army) return { hoursProcessed: 0, foodConsumed: 0, shortage: false, deserted: 0 };
+
+  const now = Date.now();
+  const stateResult = await db.query(
+    `SELECT last_tick_at FROM rpg_army_logistics WHERE thread_id = $1 AND user_id = $2 LIMIT 1`,
+    [String(threadID), String(userID)]
+  );
+
+  let lastTick = Number(stateResult.rows[0]?.last_tick_at || now);
+  if (!stateResult.rows[0]) {
+    await db.query(
+      `INSERT INTO rpg_army_logistics (thread_id, user_id, last_tick_at)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (thread_id, user_id) DO NOTHING`,
+      [String(threadID), String(userID), now]
+    );
+    lastTick = now;
+  }
+
+  const elapsed = Math.max(0, now - lastTick);
+  const hours = Math.floor(elapsed / REAL_MS_PER_GAME_HOUR);
+  if (hours <= 0) return { hoursProcessed: 0, foodConsumed: 0, shortage: false, deserted: 0 };
+
+  let foodResult = await db.query(
+    `SELECT food FROM rpg_domain_resources WHERE thread_id = $1 AND user_id = $2 LIMIT 1`,
+    [String(threadID), String(userID)]
+  );
+  let food = Math.max(0, Number(foodResult.rows[0]?.food || 0));
+  let supplies = Math.max(0, Math.min(100, Number(army.supplies || 0)));
+  let foodConsumed = 0;
+  let shortage = false;
+  let deserted = 0;
+
+  let units = totalUnits(army);
+  const foodNeed = Math.max(1, Math.ceil(units / 10));
+
+  for (let hour = 0; hour < hours; hour += 1) {
+    if (units <= 0) break;
+
+    if (food >= foodNeed) {
+      food -= foodNeed;
+      foodConsumed += foodNeed;
+      supplies = Math.min(100, supplies + 1);
+    } else {
+      shortage = true;
+      supplies = Math.max(0, supplies - SUPPLY_LOSS_PER_SHORTAGE_HOUR);
+
+      if (supplies <= 0) {
+        const loss = Math.max(1, Math.floor(units * DESERTION_RATE_AT_ZERO_SUPPLY));
+        let remainingLoss = loss;
+        for (const unit of Object.values(UNITS)) {
+          if (remainingLoss <= 0) break;
+          const count = Math.max(0, Number(army[unit.column] || 0));
+          if (!count) continue;
+          const taken = Math.min(count, remainingLoss);
+          army[unit.column] = count - taken;
+          remainingLoss -= taken;
+          deserted += taken;
+          units -= taken;
+        }
+      }
+    }
+  }
+
+  const consumedMs = hours * REAL_MS_PER_GAME_HOUR;
+  lastTick += consumedMs;
+
+  await db.query(
+    `UPDATE rpg_domain_resources
+     SET food = $3, updated_at = $4
+     WHERE thread_id = $1 AND user_id = $2`,
+    [String(threadID), String(userID), Math.max(0, Math.floor(food)), now]
+  );
+
+  const unitColumns = Object.values(UNITS).map(unit => unit.column);
+  const updateValues = [String(threadID), String(userID), supplies, now, ...unitColumns.map(column => Math.max(0, Math.floor(Number(army[column] || 0))))];
+  const assignments = unitColumns.map((column, index) => `${column} = $${index + 5}`).join(",\n        ");
+
+  await db.query(
+    `UPDATE rpg_armies
+     SET supplies = $3,
+         updated_at = $4,
+         ${assignments}
+     WHERE thread_id = $1 AND user_id = $2`,
+    updateValues
+  );
+
+  await db.query(
+    `UPDATE rpg_army_logistics SET last_tick_at = $3 WHERE thread_id = $1 AND user_id = $2`,
+    [String(threadID), String(userID), lastTick]
+  );
+
+  return {
+    hoursProcessed: hours,
+    foodConsumed,
+    foodRemaining: Math.max(0, Math.floor(food)),
+    shortage,
+    supplies,
+    deserted,
+  };
+}
+
 async function getArmy(threadID, userID) {
+  await tickArmyLogistics(threadID, userID);
   const result = await db.query(
     `
     SELECT *
@@ -136,6 +284,7 @@ async function getArmy(threadID, userID) {
   );
   return result.rows[0] || null;
 }
+
 async function train(threadID, userID, unitName, amount) {
   const key = normalizeKey(unitName);
   const unit = UNITS[key];
@@ -145,6 +294,9 @@ async function train(threadID, userID, unitName, amount) {
       `Usage: !rpg train <${Object.keys(UNITS).join("|")}> <amount>`
     );
   }
+
+  await tickArmyLogistics(threadID, userID);
+
   const cost = unit.cost * count;
   await db.spendBalance(
     threadID,
@@ -165,6 +317,7 @@ async function train(threadID, userID, unitName, amount) {
   );
   return { unit, count, cost };
 }
+
 async function setFormation(threadID, userID, formationName) {
   const key = normalizeKey(formationName);
   const formation = FORMATIONS[key];
@@ -185,6 +338,7 @@ async function setFormation(threadID, userID, formationName) {
   );
   return { key, ...formation };
 }
+
 async function createRegiment(threadID, userID, name, unitType, amount) {
   const unit = UNITS[normalizeKey(unitType)];
   const count = Math.floor(Number(amount));
@@ -210,6 +364,7 @@ async function createRegiment(threadID, userID, name, unitType, amount) {
   );
   return result.rows[0];
 }
+
 async function getRegiments(threadID, userID) {
   const result = await db.query(
     `
@@ -223,6 +378,7 @@ async function getRegiments(threadID, userID) {
   );
   return result.rows;
 }
+
 function armyPower(army, formationName = "balanced") {
   const formation = FORMATIONS[formationName] || FORMATIONS.balanced;
   let attack = 0;
@@ -239,6 +395,7 @@ function armyPower(army, formationName = "balanced") {
     formation,
   };
 }
+
 module.exports = {
   FORMATIONS,
   UNITS,
@@ -247,6 +404,7 @@ module.exports = {
   getArmy,
   getRegiments,
   setFormation,
+  tickArmyLogistics,
   totalUnits,
   train,
 };
