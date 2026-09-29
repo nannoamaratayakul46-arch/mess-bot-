@@ -1,8 +1,8 @@
 "use strict";
 
-// Loads the new slot engine without touching the large legacy games.js file.
-// index.js still owns game enable/disable checks; this only replaces the
-// !slots / !slot handler before games.js gets the command.
+// Loads the slot engine and the lightweight social-chaos games without
+// replacing the large legacy games.js file. The preload keeps the existing
+// command router intact and only intercepts the new commands first.
 
 const Module = require("module");
 const path = require("path");
@@ -22,28 +22,62 @@ Module._load = function patchedLoad(request, parent, isMain) {
   installed = true;
 
   const slots = require("./slots");
+  const social = require("./social-games");
   const originalHandleGamesCommand = loaded.handleGamesCommand;
 
   return {
     ...loaded,
-    handleGamesCommand: async function handleGamesCommandWithSlots(
+    handleGamesCommand: async function handleGamesCommandWithExtras(
       api,
       event,
       command,
       args
     ) {
-      const normalized = String(command || "").toLowerCase();
+      const normalized = String(command || "").toLowerCase().replace(/^!/, "");
 
       if (normalized === "slots" || normalized === "slot") {
         return slots.handleSlots(api, event, args || []);
       }
 
-      return originalHandleGamesCommand(
+      if (
+        normalized === "rizz" ||
+        normalized === "simp" ||
+        normalized === "clown" ||
+        normalized === "aura" ||
+        normalized === "npc" ||
+        normalized === "delulu" ||
+        normalized === "menace" ||
+        normalized === "grass" ||
+        normalized === "bro" ||
+        normalized === "battle" ||
+        normalized === "vibes" ||
+        normalized === "social" ||
+        normalized === "socialgames"
+      ) {
+        return social.handleSocialGame(api, event, normalized, args || []);
+      }
+
+      const result = await originalHandleGamesCommand(
         api,
         event,
         command,
         args
       );
+
+      // Keep the established game menu and append the new social-chaos
+      // category instead of replacing the existing games system.
+      if (normalized === "games" || normalized === "game") {
+        try {
+          await api.sendMessage(
+            social.getSocialGameMenuLines().join("\n"),
+            event.threadID
+          );
+        } catch (error) {
+          console.error("[social-games] menu:", error);
+        }
+      }
+
+      return result;
     },
   };
 };
