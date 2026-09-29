@@ -34,9 +34,10 @@ Module._load = function patchedLoad(request, parent, isMain) {
       args
     ) {
       const normalized = String(command || "").toLowerCase().replace(/^!/, "");
+      const normalizedArgs = Array.isArray(args) ? args : [];
 
       if (normalized === "slots" || normalized === "slot") {
-        return slots.handleSlots(api, event, args || []);
+        return slots.handleSlots(api, event, normalizedArgs);
       }
 
       if (
@@ -54,7 +55,38 @@ Module._load = function patchedLoad(request, parent, isMain) {
         normalized === "social" ||
         normalized === "socialgames"
       ) {
-        return social.handleSocialGame(api, event, normalized, args || []);
+        const socialText = social.handleSocialGame(normalized, normalizedArgs);
+
+        if (socialText) {
+          await api.sendMessage(socialText, event.threadID);
+        }
+
+        return true;
+      }
+
+      // !games rules / !game rules keeps the established complete rules,
+      // then appends the Social Chaos rules as another game category.
+      if (
+        (normalized === "games" || normalized === "game") &&
+        String(normalizedArgs[0] || "").toLowerCase() === "rules"
+      ) {
+        const result = await originalHandleGamesCommand(
+          api,
+          event,
+          command,
+          normalizedArgs
+        );
+
+        try {
+          await api.sendMessage(
+            social.getSocialGameRules(),
+            event.threadID
+          );
+        } catch (error) {
+          console.error("[social-games] rules:", error);
+        }
+
+        return result;
       }
 
       const result = await originalHandleGamesCommand(
