@@ -380,8 +380,11 @@ async function build(threadID, userID, buildingKey) {
     }
 
     return {
-      definition,
-      level: nextLevel,
+      definition: {
+        ...definition,
+        name: `${definition.name} — construction started`,
+      },
+      level: `${nextLevel} · ${formatBuildTime(durationMs)}`,
       cost: goldCost,
       resources: resourceCost,
       durationMs,
