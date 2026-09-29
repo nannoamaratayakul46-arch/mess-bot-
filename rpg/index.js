@@ -3917,7 +3917,7 @@ async function handleSpecialRpgCommand(api,event,args) {
   if(sub==="summon"&&normalizeKey(args[1])==="boss"){
     if(!root&&!await specialAccess.hasAccess(t,u,"gm"))throw new Error("🔒 GM access required.");
     const r=await worldBoss.summon(t,args[2],u);
-    await send(api,t,"⚠️ WORLD BOSS SUMMONED\\n"+r.boss.name+" ["+r.boss.id+"] · "+Number(r.max_hp).toLocaleString()+" HP\\n⏳ 30 minutes");
+    await send(api,t,"⚠️ WORLD BOSS SUMMONED\n"+r.boss.name+" ["+r.boss.id+"] · "+Number(r.max_hp).toLocaleString()+" HP\n⏳ 30 minutes");
     return;
   }
   if(sub==="bosses"){
@@ -3932,7 +3932,7 @@ async function handleSpecialRpgCommand(api,event,args) {
     if(!e)throw new Error("Unknown world event.");
     await startWorldEvent(t,id);
     const bossLine=(e.bossPool||[]).length?"👹 Event bosses: "+e.bossPool.join(", "):"👹 Event has no boss pool.";
-    await send(api,t,"🌎 WORLD EVENT STARTED\\n"+(e.symbol||"✦")+" "+e.name+"\\n"+e.description+"\\n⏳ "+Math.round(Number(e.durationMs||3600000)/60000)+" minutes\\n"+bossLine);
+    await send(api,t,"🌎 WORLD EVENT STARTED\n"+(e.symbol||"✦")+" "+e.name+"\n"+e.description+"\n⏳ "+Math.round(Number(e.durationMs||3600000)/60000)+" minutes\\n"+bossLine);
     return;
   }
   if(sub==="end"){
