@@ -5,6 +5,7 @@ const companions = require("./rpg/companions");
 const economy = require("./rpg/economy");
 const domainEvents = require("./rpg/domain-events");
 const tradeRoutes = require("./rpg/trade-routes");
+const { HUNT_MILESTONES, getTotalHunts } = require("./rpg/adventure");
 const { reply } = require("./util");
 
 function tokens(value) {
@@ -40,10 +41,7 @@ async function handleEconomyCompatibility(api, event, args) {
     try {
       if (action === "list") {
         const routes = await tradeRoutes.listRoutes(event.threadID, event.senderID);
-        if (!routes.length) {
-          await reply(api, event.threadID, "🛤️ TRADE ROUTES\n\nNo trade routes established yet.\nUse !rpg route establish <origin> <destination>");
-          return true;
-        }
+        if (!routes.length) { await reply(api, event.threadID, "🛤️ TRADE ROUTES\n\nNo trade routes established yet.\nUse !rpg route establish <origin> <destination>"); return true; }
         await reply(api, event.threadID, ["🛤️ TRADE ROUTES", "", ...routes.map(route => `• ${route.origin_location_id} → ${route.destination_location_id} · ${route.successful_runs} successful · ${route.disrupted_runs} disrupted`), "", "Use !rpg route dispatch <origin> <destination>"].join("\n"));
         return true;
       }
@@ -69,10 +67,7 @@ async function handleEconomyCompatibility(api, event, args) {
 
   if (sub === "event" || sub === "events") {
     const action = cleanId(args[1] || "roll");
-    if (action === "list") {
-      await reply(api, event.threadID, ["🌍 DOMAIN EVENTS", "", ...domainEvents.EVENTS.map(item => `${item.title} — ${item.description}`), "", "Events are influenced by domain prosperity.", "Use !rpg event roll to resolve one when available."].join("\n"));
-      return true;
-    }
+    if (action === "list") { await reply(api, event.threadID, ["🌍 DOMAIN EVENTS", "", ...domainEvents.EVENTS.map(item => `${item.title} — ${item.description}`), "", "Events are influenced by domain prosperity.", "Use !rpg event roll to resolve one when available."].join("\n")); return true; }
     try {
       const result = await domainEvents.rollDomainEvent(event.threadID, event.senderID, { force: action === "force" });
       if (!result.triggered) await reply(api, event.threadID, `⏳ No domain event yet. Another event can occur in about ${Math.ceil(result.remainingMs / 60000)} minute(s).`);
@@ -95,8 +90,7 @@ async function handleEconomyCompatibility(api, event, args) {
   if (sub === "tax" || sub === "taxes") {
     const action = cleanId(args[1]);
     if (action === "set") {
-      try { const rate = await economy.setTaxRate(event.threadID, event.senderID, args[2]); await reply(api, event.threadID, `🏛️ Domain tax rate set to ${rate}%. Taxes can be collected once every 24 hours.`); }
-      catch (error) { await reply(api, event.threadID, `❌ ${error.message}`); }
+      try { const rate = await economy.setTaxRate(event.threadID, event.senderID, args[2]); await reply(api, event.threadID, `🏛️ Domain tax rate set to ${rate}%. Taxes can be collected once every 24 hours.`); } catch (error) { await reply(api, event.threadID, `❌ ${error.message}`); }
       return true;
     }
     if (action === "collect" || action === "claim") {
@@ -122,7 +116,34 @@ async function handleRpgCommand(api, event, text, originalText) {
     if (await handleCompanionCompatibility(api, event, args.slice(1))) return true;
   }
   if (await handleEconomyCompatibility(api, event, args)) return true;
-  return original.handleRpgCommand(api, event, text, originalText);
+
+  const isHuntCommand = args[0] === "hunt";
+  let beforeHunts = null;
+  if (isHuntCommand) {
+    try { beforeHunts = await getTotalHunts(event.threadID, event.senderID); } catch (_) {}
+  }
+
+  const result = await original.handleRpgCommand(api, event, text, originalText);
+
+  // The canonical combat/adventure systems grant the reward. This wrapper
+  // only reports the newly crossed milestone; it never grants it twice.
+  if (isHuntCommand && beforeHunts !== null) {
+    try {
+      const afterHunts = await getTotalHunts(event.threadID, event.senderID);
+      if (afterHunts > beforeHunts) {
+        const milestone = HUNT_MILESTONES.find(item => item.hunts === afterHunts);
+        if (milestone) {
+          const lines = [`🎁 HUNT MILESTONE — ${afterHunts} HUNTS`, ""];
+          if (milestone.special) lines.push(`🌟 Special Move: ${milestone.special.replace(/_/g, " ")}`);
+          if (milestone.specialPoints) lines.push(`✨ Special Points: +${milestone.specialPoints}`);
+          lines.push("", "The reward has been permanently added to your RPG profile.");
+          await reply(api, event.threadID, lines.join("\n"));
+        }
+      }
+    } catch (error) { console.error("[RPG] Hunt milestone display failed:", error); }
+  }
+
+  return result;
 }
 
 module.exports = { handleRpgCommand };
