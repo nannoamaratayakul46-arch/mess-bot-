@@ -7,10 +7,9 @@
 const Module = require("module");
 const path = require("path");
 
-// The main command router historically only entered handleGamesCommand when
-// the parsed command was literally `games`. That meant the social commands
-// could exist in the games handler but never reach it. Expand that gate at
-// startup instead of rewriting the large index.js router.
+// The main command router historically entered the game handler only after
+// the command matched a hard-coded !games-style regex. Social commands need
+// to be registered in that parser too; otherwise the handler is never called.
 const originalCompile = Module.prototype._compile;
 let indexRouterPatched = false;
 
@@ -20,6 +19,26 @@ Module.prototype._compile = function patchedCompile(content, filename) {
     path.basename(filename || "") === "index.js" &&
     path.dirname(filename || "") === __dirname
   ) {
+    let patched = false;
+
+    // Register Social Chaos commands in the actual !command parser.
+    // This is the critical path: without it, !rizz / !delulu / etc.
+    // never produce a gameMatch and can never reach handleGamesCommand.
+    const parserNeedle =
+      "|chamber|roulette|lastchamber)(?:\\s+(.*))?$/i";
+    const parserReplacement =
+      "|chamber|roulette|lastchamber|rizz|simp|clown|aura|npc|delulu|menace|grass|bro|battle|vibes|social|socialgames)(?:\\s+(.*))?$/i";
+
+    if (content.includes(parserNeedle)) {
+      content = content.replace(parserNeedle, parserReplacement);
+      patched = true;
+      console.log(
+        "[social-games] Registered Social Chaos commands in the main parser."
+      );
+    }
+
+    // Preserve the existing handler gate while allowing the newly registered
+    // commands to enter handleGamesCommand.
     const socialCommands = [
       "games",
       "game",
@@ -44,10 +63,14 @@ Module.prototype._compile = function patchedCompile(content, filename) {
     if (gate.test(content)) {
       gate.lastIndex = 0;
       content = content.replace(gate, replacement);
-      indexRouterPatched = true;
+      patched = true;
       console.log(
         "[social-games] Expanded game command router for Social Chaos."
       );
+    }
+
+    if (patched) {
+      indexRouterPatched = true;
     }
   }
 
