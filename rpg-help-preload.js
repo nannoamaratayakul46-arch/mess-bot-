@@ -1,295 +1,33 @@
 "use strict";
-
-/*
- * RPG command-surface compatibility shim.
- *
- * The legacy rpg.js compatibility router is intentionally left untouched here.
- * This preload wraps its exported handler so the new hierarchical help tree and
- * the public siege-preparation command can be added without replacing the
- * existing router or risking loss of its accumulated integrations.
- */
 const Module = require("module");
 const path = require("path");
-
 const originalLoad = Module._load;
 let installed = false;
-
-function clean(value) {
-  return String(value || "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "_");
-}
-
-function argsFrom(text) {
-  return String(text || "")
-    .trim()
-    .replace(/^!rpg\b/i, "")
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-}
-
-function helpText(section) {
-  const common = {
-    profile: [
-      "👤 PROFILE COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg profile",
-      "!rpg class",
-      "!rpg skills",
-      "!rpg stats",
-    ],
-    army: [
-      "⚔️ ARMY COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg army",
-      "!rpg army kingdoms",
-      "!rpg army train <type> <amount>",
-      "!rpg army train signature <amount>",
-      "!rpg army train elite <amount>",
-      "!rpg army formation <formation>",
-      "!rpg army history",
-      "!rpg army help",
-    ],
-    kingdom: [
-      "👑 KINGDOM COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg kingdom",
-      "!rpg kingdom help",
-      "!rpg kingdom locations",
-      "!rpg kingdom stability",
-      "!rpg kingdom garrison",
-      "!rpg kingdom diplomacy",
-    ],
-    domain: [
-      "🏰 DOMAIN COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg domain",
-      "!rpg domain buildings",
-      "!rpg domain population",
-      "!rpg domain resources",
-      "!rpg domain events",
-      "!rpg domain help",
-    ],
-    economy: [
-      "💰 ECONOMY COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg economy",
-      "!rpg market buy <resource> <amount>",
-      "!rpg market sell <resource> <amount>",
-      "!rpg tax set <0-25>",
-      "!rpg tax collect",
-      "!rpg prosperity",
-      "!rpg economy help",
-    ],
-    world: [
-      "🌍 WORLD COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg world",
-      "!rpg world locations",
-      "!rpg world regions",
-      "!rpg world scout <location>",
-      "!rpg march <location>",
-      "!rpg march status",
-      "!rpg world help",
-    ],
-    war: [
-      "⚔️ WAR COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg war start <location>",
-      "!rpg war battle",
-      "!rpg war status",
-      "!rpg war list",
-      "!rpg war peace",
-      "!rpg siege prepare [amount]",
-      "!rpg war help",
-    ],
-    trade: [
-      "🛤️ TRADE COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg trade list",
-      "!rpg trade establish <origin> <destination>",
-      "!rpg trade dispatch <origin> <destination>",
-      "!rpg route list",
-      "!rpg route establish <origin> <destination>",
-      "!rpg route dispatch <origin> <destination>",
-      "!rpg trade help",
-    ],
-    hunt: [
-      "🏹 HUNTING COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg hunt",
-      "!rpg hunt start",
-      "!rpg hunt attack",
-      "!rpg hunt defend",
-      "!rpg hunt special",
-      "!rpg hunt help",
-      "",
-      "Hunt milestones can permanently unlock special moves.",
-    ],
-    companion: [
-      "🐾 COMPANION COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg companion",
-      "!rpg companion list",
-      "!rpg companion evolve <id>",
-      "!rpg companion stages",
-      "!rpg companion help",
-    ],
-    magic: [
-      "✨ MAGIC COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg magic",
-      "!rpg magic list",
-      "!rpg magic learn <spell>",
-      "!rpg cast <spell>",
-      "!rpg magic help",
-    ],
-    adventure: [
-      "🗺️ ADVENTURE COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg adventure",
-      "!rpg explore",
-      "!rpg dungeon",
-      "!rpg quest",
-      "!rpg adventure help",
-    ],
-    quest: [
-      "📜 QUEST COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg quest",
-      "!rpg quest list",
-      "!rpg quest claim",
-      "!rpg quest help",
-    ],
-    special: [
-      "🌟 SPECIAL COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg special",
-      "!rpg special list",
-      "!rpg special status",
-      "!rpg special help",
-    ],
-    buildings: [
-      "🏗️ BUILDING COMMANDS",
-      "━━━━━━━━━━━━━━━━━━",
-      "!rpg buildings",
-      "!rpg build <building>",
-      "!rpg improve defense",
-      "!rpg property",
-      "!rpg buildings help",
-    ],
-  };
-
-  if (section && common[section]) return common[section].join("\n");
-
-  return [
-    "🌙 ECLIPSE RPG",
-    "━━━━━━━━━━━━━━━━━━",
-    "Choose a system:",
-    "",
-    "👤 !rpg profile help",
-    "⚔️ !rpg army help",
-    "👑 !rpg kingdom help",
-    "🏰 !rpg domain help",
-    "💰 !rpg economy help",
-    "🌍 !rpg world help",
-    "⚔️ !rpg war help",
-    "🛤️ !rpg trade help",
-    "🏹 !rpg hunt help",
-    "🐾 !rpg companion help",
-    "✨ !rpg magic help",
-    "🗺️ !rpg adventure help",
-    "📜 !rpg quest help",
-    "🌟 !rpg special help",
-    "🏗️ !rpg buildings help",
-    "",
-    "Use a category's help command to see its complete command set.",
-  ].join("\n");
-}
-
-function install(request, parent, exported) {
-  if (installed || request !== "./rpg" || !parent || !parent.filename || !parent.filename.endsWith("index.js")) {
-    return exported;
-  }
-
-  installed = true;
-  const originalHandler = exported.handleRpgCommand;
-  if (typeof originalHandler !== "function") return exported;
-
-  return {
-    ...exported,
-    async handleRpgCommand(api, event, text, originalText) {
-      const args = argsFrom(text);
-      const root = clean(args[0]);
-      const action = clean(args[1]);
-
-      const helpAliases = new Set(["help", "commands", "command"]);
-      const sectionAliases = {
-        soldiers: "army",
-        troops: "army",
-        legion: "army",
-        legions: "army",
-        route: "trade",
-        routes: "trade",
-        campaign: "war",
-        territory: "war",
-        siege: "war",
-        events: "domain",
-        event: "domain",
-        market: "economy",
-        tax: "economy",
-        taxes: "economy",
-        pets: "companion",
-        companions: "companion",
-        spell: "magic",
-        spells: "magic",
-        buildings: "buildings",
-      };
-
-      if (helpAliases.has(root)) {
-        await exported.__rpgReply(api, event, helpText());
-        return true;
-      }
-
-      const section = sectionAliases[root] || root;
-      if (helpAliases.has(action) && helpText(section) !== helpText()) {
-        await exported.__rpgReply(api, event, helpText(section));
-        return true;
-      }
-
-      if ((root === "siege" || root === "war" || root === "campaign") && action === "prepare") {
-        try {
-          const warCampaigns = require(path.join(process.cwd(), "rpg", "war-campaigns.js"));
-          const amount = Math.max(1, Math.min(25, Number(args[2] || 1)));
-          const result = await warCampaigns.prepareSiege(event.threadID, event.senderID, amount);
-          await exported.__rpgReply(
-            api,
-            event,
-            [
-              "🏰 SIEGE PREPARATION",
-              "",
-              `Preparations: ${amount}`,
-              `⚔️ Siege points gained: +${Number(result.siegePoints || result.points || 0).toLocaleString()}`,
-              result.cost ? `💰 Cost: ${Number(result.cost).toLocaleString()} coins` : "",
-              "",
-              "The existing campaign will consume siege points during assaults.",
-            ].filter(Boolean).join("\n")
-          );
-        } catch (error) {
-          await exported.__rpgReply(api, event, `❌ ${error.message}`);
-        }
-        return true;
-      }
-
-      return originalHandler(api, event, text, originalText);
-    },
-  };
-}
-
-Module._load = function patchedLoad(request, parent, isMain) {
-  const exported = originalLoad.apply(this, arguments);
-  if (request === "./rpg" && parent && parent.filename && parent.filename.endsWith(path.sep + "index.js")) {
-    const util = require(path.join(process.cwd(), "util.js"));
-    return install(request, parent, { ...exported, __rpgReply: util.reply });
-  }
-  return exported;
+function clean(value){return String(value||"").trim().toLowerCase().replace(/[^a-z0-9]+/g,"_");}
+function argsFrom(text){return String(text||"").trim().replace(/^!rpg\b/i,"").trim().split(/\s+/).filter(Boolean);}
+const HELP={
+profile:["👤 PROFILE COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg profile","!rpg class","!rpg skills","!rpg stats","!rpg profile help"],
+army:["⚔️ ARMY COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg army","!rpg army kingdoms","!rpg army train <type> <amount>","!rpg army train signature <amount>","!rpg army train elite <amount>","!rpg army formation <formation>","!rpg army history","!rpg army help"],
+kingdom:["👑 KINGDOM COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg kingdom","!rpg kingdom list","!rpg kingdom summary","!rpg kingdom territory","!rpg kingdom pledge <kingdom>","!rpg kingdom relations","!rpg kingdom help"],
+domain:["🏰 DOMAIN COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg domain","!rpg buildings","!rpg build <building>","!rpg improve defense","!rpg property","!rpg economy","!rpg domain events","!rpg domain help"],
+economy:["💰 ECONOMY COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg economy","!rpg market buy <resource> <amount>","!rpg market sell <resource> <amount>","!rpg tax set <0-25>","!rpg tax collect","!rpg prosperity","!rpg economy help"],
+world:["🌍 WORLD COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg world","!rpg world locations","!rpg world regions","!rpg scout <location>","!rpg scout status","!rpg march <location>","!rpg march status","!rpg season","!rpg weather","!rpg world help"],
+war:["⚔️ WAR COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg war start <location>","!rpg war battle","!rpg war status","!rpg war list","!rpg war peace","!rpg siege prepare [amount]","!rpg siege status","!rpg war help"],
+trade:["🛤️ TRADE COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg trade list","!rpg trade establish <origin> <destination>","!rpg trade dispatch <origin> <destination>","!rpg route list","!rpg route establish <origin> <destination>","!rpg route dispatch <origin> <destination>","!rpg trade help"],
+hunt:["🏹 HUNTING COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg hunt","!rpg hunt start","!rpg hunt attack","!rpg hunt defend","!rpg hunt special","!rpg hunt help","","Hunt milestones can permanently unlock special moves."],
+companion:["🐾 COMPANION COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg companion","!rpg companion list","!rpg companion evolve <id>","!rpg companion stages","!rpg companion help"],
+magic:["✨ MAGIC COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg magic","!rpg spells","!rpg spell <name>","!rpg cast <spell>","!rpg magic help"],
+special:["🌟 SPECIAL COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg special","!rpg special list","!rpg special status","!rpg special help"],
+affinity:["🔮 AFFINITY COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg affinity","!rpg affinities","!rpg affinity unlock <id>","!rpg affinity help"],
+adventure:["🗺️ ADVENTURE COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg adventure","!rpg explore","!rpg dungeon","!rpg quest","!rpg adventure help"],
+quest:["📜 QUEST COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg quest","!rpg quest list","!rpg quest claim","!rpg quest help"],
+guild:["🏰 GUILD COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg guild","!rpg guild create <name>","!rpg guild invite <user>","!rpg guild join <id>","!rpg guild leave","!rpg guild members","!rpg guild donate <amount>","!rpg guild upgrade","!rpg guild hall","!rpg guild armory","!rpg guild raid","!rpg guild help"],
+craft:["🔨 CRAFTING COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg craft","!rpg craft list","!rpg craft <recipe>","!rpg craft help"],
+events:["🌌 WORLD EVENT COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg events","!rpg events list","!rpg events status","!rpg events start <event>","!rpg events help"],
+boss:["🐉 WORLD BOSS COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg boss","!rpg boss list","!rpg boss status","!rpg boss attack","!rpg boss help"],
+progression:["📈 PROGRESSION COMMANDS","━━━━━━━━━━━━━━━━━━","!rpg progression","!rpg reputation","!rpg affinity","!rpg spells","!rpg specials","!rpg progression help"]
 };
+const ALIASES={soldiers:"army",troops:"army",legion:"army",legions:"army",route:"trade",routes:"trade",campaign:"war",territory:"war",siege:"war",event:"events",market:"economy",tax:"economy",taxes:"economy",pets:"companion",companions:"companion",spell:"magic",spells:"magic",specials:"special",guilds:"guild",crafting:"craft",bosses:"boss",worldboss:"boss"};
+function helpText(section){if(section&&HELP[section])return HELP[section].join("\n");return ["🌙 ECLIPSE RPG","━━━━━━━━━━━━━━━━━━","Choose a system:","","👤 !rpg profile help","⚔️ !rpg army help","👑 !rpg kingdom help","🏰 !rpg domain help","💰 !rpg economy help","🌍 !rpg world help","⚔️ !rpg war help","🛤️ !rpg trade help","🏹 !rpg hunt help","🐾 !rpg companion help","✨ !rpg magic help","🌟 !rpg special help","🔮 !rpg affinity help","🗺️ !rpg adventure help","📜 !rpg quest help","🏰 !rpg guild help","🔨 !rpg craft help","🌌 !rpg events help","🐉 !rpg boss help","📈 !rpg progression help","","Use a category's help command to see its commands."].join("\n");}
+function install(request,parent,exported){if(installed||request!=="./rpg"||!parent||!parent.filename||!parent.filename.endsWith("index.js"))return exported;installed=true;const originalHandler=exported.handleRpgCommand;if(typeof originalHandler!=="function")return exported;return {...exported,async handleRpgCommand(api,event,text,originalText){const args=argsFrom(text);const root=clean(args[0]);const action=clean(args[1]);const helpAliases=new Set(["help","commands","command"]);if(helpAliases.has(root)){await exported.__rpgReply(api,event,helpText());return true;}const section=ALIASES[root]||root;if(helpAliases.has(action)&&HELP[section]){await exported.__rpgReply(api,event,helpText(section));return true;}if((root==="siege"||root==="war"||root==="campaign")&&action==="prepare"){try{const warCampaigns=require(path.join(process.cwd(),"rpg","war-campaigns.js"));const amount=Math.max(1,Math.min(25,Number(args[2]||1)));const result=await warCampaigns.prepareSiege(event.threadID,event.senderID,amount);await exported.__rpgReply(api,event,["🏰 SIEGE PREPARATION","",`Preparations: ${amount}`,`⚔️ Siege points gained: +${Number(result.siegePoints||result.points||0).toLocaleString()}`,result.cost?`💰 Cost: ${Number(result.cost).toLocaleString()} coins`:"","","The existing campaign will consume siege points during assaults."].filter(Boolean).join("\n"));}catch(error){await exported.__rpgReply(api,event,`❌ ${error.message}`);}return true;}return originalHandler(api,event,text,originalText);}};}
+Module._load=function patchedLoad(request,parent,isMain){const exported=originalLoad.apply(this,arguments);if(request==="./rpg"&&parent&&parent.filename&&parent.filename.endsWith(path.sep+"index.js")){const util=require(path.join(process.cwd(),"util.js"));return install(request,parent,{...exported,__rpgReply:util.reply});}return exported;};
