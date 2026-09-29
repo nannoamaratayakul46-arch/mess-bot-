@@ -4,12 +4,10 @@ const db = require("../db");
 const { applyResourceProduction } = require("./properties");
 
 /*
- * Domain population is deliberately small and predictable.
+ * Domain population simulation.
  * 5 real seconds = 20 in-game minutes.
- * Population consumes food once per in-game hour.
- *
- * Population ticks collect passive domain production first, so farms can
- * actually feed the settlement before starvation is evaluated.
+ * 15 real seconds = 1 in-game hour.
+ * 6 real minutes = 1 in-game day.
  */
 const REAL_MS_PER_GAME_HOUR = 15_000;
 const BASE_POPULATION = 25;
@@ -18,6 +16,7 @@ const FARM_CAPACITY = 20;
 const PROPERTY_CAPACITY = [0, 40, 100, 220, 500, 1_000, 2_500, 6_000, 15_000];
 const FOOD_PER_5_POP_PER_HOUR = 1;
 const GROWTH_INTERVAL_HOURS = 24;
+const MAX_PROCESSED_HOURS = 24 * 30;
 
 let schemaReady;
 
@@ -58,10 +57,15 @@ async function getBuildings(threadID, userID) {
 }
 
 function capacityFor(propertyTier, buildings) {
-  const tier = Math.max(0, Math.min(PROPERTY_CAPACITY.length - 1, Number(propertyTier || 0)));
+  const tier = Math.max(
+    0,
+    Math.min(PROPERTY_CAPACITY.length - 1, Number(propertyTier || 0))
+  );
+
   const farmLevels = buildings
-    .filter(row => row.building_key === "farm")
-    .reduce((sum, row) => sum + Number(row.level || 0), 0);
+    .filter((row) => row.building_key === "farm")
+    .reduce((sum, row) => sum + Math.max(0, Number(row.level || 0)), 0);
+
   return Math.max(
     BASE_CAPACITY,
     (PROPERTY_CAPACITY[tier] || BASE_CAPACITY) + farmLevels * FARM_CAPACITY
@@ -69,14 +73,16 @@ function capacityFor(propertyTier, buildings) {
 }
 
 function hourlyFoodNeed(population) {
-  return Math.max(1, Math.ceil(Number(population || 0) / 5) * FOOD_PER_5_POP_PER_HOUR);
+  return Math.max(
+    1,
+    Math.ceil(Math.max(1, Number(population || 0)) / 5) * FOOD_PER_5_POP_PER_HOUR
+  );
 }
 
 async function tickPopulation(threadID, userID) {
   await ensurePopulation(threadID, userID);
 
-  // Production is passive, but it must be materialized before food consumption.
-  // This keeps farm output and population upkeep on the same simulation timeline.
+  // Materialize passive production before consumption so farms can feed the domain.
   const produced = await applyResourceProduction(threadID, userID);
 
   const [popResult, propertyResult, resourceResult, buildings] = await Promise.all([
@@ -107,7 +113,9 @@ async function tickPopulation(threadID, userID) {
   const capacity = capacityFor(tier, buildings);
 
   const elapsed = Math.max(0, Date.now() - lastTick);
-  const hours = Math.floor(elapsed / REAL_MS_PER_GAME_HOUR);
+  const rawHours = Math.floor(elapsed / REAL_MS_PER_GAME_HOUR);
+  const hours = Math.min(MAX_PROCESSED_HOURS, rawHours);
+
   if (hours <= 0) {
     return {
       population,
@@ -128,30 +136,30 @@ async function tickPopulation(threadID, userID) {
 
   for (let hour = 0; hour < hours; hour += 1) {
     const need = hourlyFoodNeed(population);
+
     if (food >= need) {
       food -= need;
       consumed += need;
-    } else {
-      shortage = true;
-      // Starvation is gradual: only 1% of the population can be lost per processed hour.
-      const loss = Math.max(1, Math.floor(population * 0.01));
-      population = Math.max(1, population - loss);
-      food = 0;
+      continue;
     }
+
+    shortage = true;
+    food = 0;
+
+    // Starvation is gradual rather than an instant wipe.
+    const loss = Math.max(1, Math.floor(population * 0.01));
+    population = Math.max(1, population - loss);
   }
 
-  // Population growth is checked once per in-game day represented by the elapsed window.
   const days = Math.floor(hours / GROWTH_INTERVAL_HOURS);
   if (!shortage && days > 0 && population < capacity) {
-    growth = Math.min(
-      capacity - population,
-      Math.max(1, Math.floor(population * 0.02) * days)
-    );
+    const dailyGrowth = Math.max(1, Math.floor(population * 0.02));
+    growth = Math.min(capacity - population, dailyGrowth * days);
     population += growth;
   }
 
-  const consumedMs = hours * REAL_MS_PER_GAME_HOUR;
-  lastTick += consumedMs;
+  // Keep any unprocessed time for the next visit when the 30-day safety cap applies.
+  lastTick += hours * REAL_MS_PER_GAME_HOUR;
 
   await db.query(
     `
