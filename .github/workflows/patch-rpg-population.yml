@@ -1,0 +1,74 @@
+name: Wire RPG population system
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  wire:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Patch RPG property resource view
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path('rpg/properties.js')
+          s = p.read_text()
+
+          marker = 'const { formatNumber } = require("./utils");'
+          require_line = 'const { getPopulation } = require("./population");'
+          if require_line not in s:
+              s = s.replace(marker, marker + '\n' + require_line, 1)
+
+          old = '''async function getResourceState(threadID, userID) {
+  await ensureProperty(threadID, userID);
+  const result = await db.query(
+    `SELECT food, wood, stone, iron FROM rpg_domain_resources WHERE thread_id = $1 AND user_id = $2 LIMIT 1`,
+    [String(threadID), String(userID)]
+  );'''
+          new = '''async function getResourceState(threadID, userID) {
+  await ensureProperty(threadID, userID);
+  const population = await getPopulation(threadID, userID);
+  const result = await db.query(
+    `SELECT food, wood, stone, iron FROM rpg_domain_resources WHERE thread_id = $1 AND user_id = $2 LIMIT 1`,
+    [String(threadID), String(userID)]
+  );'''
+          if old not in s:
+              raise SystemExit('getResourceState anchor not found')
+          s = s.replace(old, new, 1)
+
+          old_return = '  return { ...(result.rows[0] || { food: 0, wood: 0, stone: 0, iron: 0 }), capacity };'
+          new_return = '  return { ...(result.rows[0] || { food: 0, wood: 0, stone: 0, iron: 0 }), capacity, population: population.population, populationCapacity: population.capacity, foodNeedPerHour: population.foodNeedPerHour, populationGrowth: population.growth, populationShortage: population.shortage };'
+          if old_return not in s:
+              raise SystemExit('resource return anchor not found')
+          s = s.replace(old_return, new_return, 1)
+
+          old_stock = '    level: `🍎 ${resourceState.food} · 🪵 ${resourceState.wood} · 🪨 ${resourceState.stone} · ⛓️ ${resourceState.iron} / ${resourceState.capacity}`, '
+          new_stock = '    level: `👥 ${resourceState.population}/${resourceState.populationCapacity} · 🍎 ${resourceState.food} · 🪵 ${resourceState.wood} · 🪨 ${resourceState.stone} · ⛓️ ${resourceState.iron} / ${resourceState.capacity}`,'
+          if old_stock not in s:
+              raise SystemExit('stock display anchor not found')
+          s = s.replace(old_stock, new_stock, 1)
+
+          p.write_text(s)
+          PY
+
+      - name: Validate JavaScript syntax
+        run: |
+          node --check rpg/population.js
+          node --check rpg/properties.js
+
+      - name: Commit wiring and remove patch workflow
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git rm .github/workflows/patch-rpg-population.yml
+          git add rpg/properties.js rpg/population.js
+          git commit -m 'feat(rpg): wire population and food consumption'
+          git push
