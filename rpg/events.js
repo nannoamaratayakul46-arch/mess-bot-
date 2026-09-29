@@ -581,7 +581,7 @@ async function getActiveWorldEvent(threadID, eventID) {
         AND active = TRUE
         AND (
           expires_at IS NULL
-          OR expires_at > $2
+          OR expires_at > $3
         )
       ORDER BY started_at DESC
       LIMIT 1
@@ -781,10 +781,16 @@ async function expireWorldEvents(threadID) {
 
   const expired = result.rows || [];
 
-  for (const row of expired) {
+  if (expired.length) {
+    const earliest = [...expired].sort(
+      (a, b) => Number(a.started_at || 0) - Number(b.started_at || 0)
+    )[0];
+
     await restoreWorldConditions(
       threadID,
-      typeof row.metadata === "string" ? JSON.parse(row.metadata) : (row.metadata || {})
+      typeof earliest.metadata === "string"
+        ? JSON.parse(earliest.metadata)
+        : (earliest.metadata || {})
     );
   }
 
