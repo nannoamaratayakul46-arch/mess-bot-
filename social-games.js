@@ -28,12 +28,29 @@ function stableScore(type, target) {
 function renderGrass(target) {
   const score = stableScore("grass", target);
   const days = Math.max(1, Math.ceil(score / 18));
-  return ["🌱 TOUCH GRASS", "━━━━━━━━━━━━━━━━━━", "", `Target: ${target}`, `Grass proximity: ${100 - score}%`, `Recommended exposure: ${days} day${days === 1 ? "" : "s"}`, "", score >= 70 ? "please go outside. respectfully." : "grass contact is currently acceptable."].join("\n");
+  return [
+    "🌱 TOUCH GRASS",
+    "━━━━━━━━━━━━━━━━━━",
+    "",
+    `Target: ${target}`,
+    `Grass proximity: ${100 - score}%`,
+    `Recommended exposure: ${days} day${days === 1 ? "" : "s"}`,
+    "",
+    score >= 70 ? "please go outside. respectfully." : "grass contact is currently acceptable.",
+  ].join("\n");
 }
 
 function renderBro(target) {
   const score = stableScore("bro", target);
-  return ["🗿 BRO CHECK", "━━━━━━━━━━━━━━━━━━", "", `Target: ${target}`, `Bro rating: ${score}%`, "", BRO_RESULTS[score % BRO_RESULTS.length]].join("\n");
+  return [
+    "🗿 BRO CHECK",
+    "━━━━━━━━━━━━━━━━━━",
+    "",
+    `Target: ${target}`,
+    `Bro rating: ${score}%`,
+    "",
+    BRO_RESULTS[score % BRO_RESULTS.length],
+  ].join("\n");
 }
 
 function renderBattle(a, b) {
@@ -46,6 +63,7 @@ function renderBattle(a, b) {
   const totalA = auraA + rizzA * 8 - clownA * 4;
   const totalB = auraB + rizzB * 8 - clownB * 4;
   const winner = totalA >= totalB ? a : b;
+
   return [
     "⚔️ SOCIAL BATTLE",
     "━━━━━━━━━━━━━━━━━━",
@@ -86,6 +104,8 @@ function socialMenu() {
     "🌱 !grass [user] — touch grass check",
     "🗿 !bro [user] — bro check",
     "⚔️ !battle [user1] [user2] — social battle",
+    "",
+    "♡ !vibes — open this menu",
   ].join("\n");
 }
 
@@ -115,6 +135,7 @@ function handleSocialGame(command, args = []) {
     case "battle": return renderBattle(args[0] || "Player 1", args[1] || "Player 2");
     case "vibes":
     case "social":
+    case "socialgames":
       return socialMenu();
     default:
       return null;
@@ -124,4 +145,19 @@ function handleSocialGame(command, args = []) {
 module.exports = {
   handleSocialGame,
   socialMenu,
+  getSocialGameMenuLines: () => [
+    "",
+    "♡ SOCIAL CHAOS",
+    "   ┊ !rizz       · measure fictional rizz",
+    "   ┊ !simp       · run the simp check",
+    "   ┊ !clown      · measure clownery",
+    "   ┊ !aura       · calculate aura",
+    "   ┊ !npc        · NPC assessment",
+    "   ┊ !delulu     · delulu meter",
+    "   ┊ !menace     · menace check",
+    "   ┊ !grass      · touch grass check",
+    "   ┊ !bro        · bro check",
+    "   ┊ !battle     · social battle",
+    "   ┊ !vibes      · open social chaos",
+  ],
 };
