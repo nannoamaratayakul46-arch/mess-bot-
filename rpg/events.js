@@ -559,7 +559,7 @@ async function getActiveWorldEvents(threadID) {
         AND active = TRUE
         AND (
           expires_at IS NULL
-          OR expires_at > $3
+          OR expires_at > $2
         )
       ORDER BY started_at DESC
     `,
@@ -650,7 +650,12 @@ async function startWorldEvent(threadID, eventID, options = {}) {
     );
   }
 
+  const previousSeason = await getWorldSeason(threadID);
+  const previousWeather = await getWorldWeather(threadID);
+
   const metadata = {
+    previousSeason,
+    previousWeather,
     affinityModifiers: event.affinityModifiers || {},
     regionModifiers: event.regionModifiers || {},
     monsterModifiers: event.monsterModifiers || {},
@@ -699,6 +704,27 @@ async function startWorldEvent(threadID, eventID, options = {}) {
 }
 
 
+async function restoreWorldConditions(threadID, fallbackMetadata = {}) {
+  const activeRows = await getActiveWorldEvents(threadID);
+
+  let season = fallbackMetadata.previousSeason || null;
+  let weather = fallbackMetadata.previousWeather || null;
+
+  for (const row of activeRows) {
+    const definition = getEvent(row.event_id);
+    if (!definition) continue;
+    if (definition.seasonOverride) season = definition.seasonOverride;
+    if (definition.weatherOverride) weather = definition.weatherOverride;
+  }
+
+  if (season) {
+    await setWorldSeason(threadID, season, { reason: "world_event_restore" });
+  }
+
+  if (weather) {
+    await setWorldWeather(threadID, weather, { reason: "world_event_restore" });
+  }
+}
 // ============================================================
 // END EVENT
 // ============================================================
@@ -720,7 +746,16 @@ async function endWorldEvent(threadID, eventID) {
     [String(threadID), id, Date.now()]
   );
 
-  return result.rows[0] || null;
+  const ended = result.rows[0] || null;
+
+  if (ended) {
+    await restoreWorldConditions(
+      threadID,
+      typeof ended.metadata === "string" ? JSON.parse(ended.metadata) : (ended.metadata || {})
+    );
+  }
+
+  return ended;
 }
 
 
@@ -744,7 +779,16 @@ async function expireWorldEvents(threadID) {
     [String(threadID), Date.now()]
   );
 
-  return result.rows || [];
+  const expired = result.rows || [];
+
+  for (const row of expired) {
+    await restoreWorldConditions(
+      threadID,
+      typeof row.metadata === "string" ? JSON.parse(row.metadata) : (row.metadata || {})
+    );
+  }
+
+  return expired;
 }
 
 
