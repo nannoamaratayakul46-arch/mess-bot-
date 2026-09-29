@@ -6,7 +6,8 @@ const { resolveLocation } = require("./world");
 const { getKingdom, getLocationOwner } = require("./kingdoms");
 const { getRelation, declareWar, offerPeace } = require("./diplomacy");
 
-const schemaPromise = db.query(`CREATE TABLE IF NOT EXISTS rpg_war_campaigns (
+let schemaPromise = null;
+const SCHEMA_SQL = `CREATE TABLE IF NOT EXISTS rpg_war_campaigns (
   id BIGSERIAL PRIMARY KEY, thread_id TEXT NOT NULL, attacker_kingdom_id TEXT NOT NULL,
   defender_kingdom_id TEXT NOT NULL, target_location_id TEXT NOT NULL, commander_user_id TEXT NOT NULL,
   status TEXT NOT NULL DEFAULT 'active', battles INTEGER NOT NULL DEFAULT 0,
@@ -17,9 +18,17 @@ const schemaPromise = db.query(`CREATE TABLE IF NOT EXISTS rpg_war_campaigns (
   created_at BIGINT NOT NULL, updated_at BIGINT NOT NULL
 );
 ALTER TABLE rpg_war_campaigns ADD COLUMN IF NOT EXISTS siege_points INTEGER NOT NULL DEFAULT 0;
-ALTER TABLE rpg_war_campaigns ADD COLUMN IF NOT EXISTS siege_preparations INTEGER NOT NULL DEFAULT 0;`);
+ALTER TABLE rpg_war_campaigns ADD COLUMN IF NOT EXISTS siege_preparations INTEGER NOT NULL DEFAULT 0;`;
 
-async function ensureSchema(){await schemaPromise;}
+async function ensureSchema(){
+  if (!schemaPromise) {
+    schemaPromise = db.query(SCHEMA_SQL).catch((err) => {
+      schemaPromise = null;
+      throw err;
+    });
+  }
+  await schemaPromise;
+}
 function clamp(n,min,max){return Math.max(min,Math.min(max,Number(n)||0));}
 async function playerKingdom(threadID,userID){const r=await db.query(`SELECT kingdom_id FROM rpg_players WHERE thread_id=$1 AND user_id=$2 LIMIT 1`,[String(threadID),String(userID)]);const id=r.rows[0]?.kingdom_id;if(!id)throw new Error("You must pledge to a kingdom before commanding a campaign.");return getKingdom(threadID,id);}
 async function startCampaign(threadID,userID,target){await ensureSchema();const attacker=await playerKingdom(threadID,userID);const location=resolveLocation(target);if(!location)throw new Error("Unknown target location.");const defenderId=await getLocationOwner(threadID,location.id);if(!defenderId)throw new Error("That location has no kingdom owner and cannot be attacked as a kingdom campaign.");if(defenderId===attacker.kingdom_id)throw new Error("You cannot campaign against your own kingdom.");const defender=await getKingdom(threadID,defenderId);const relation=await getRelation(threadID,attacker.kingdom_id,defenderId);if(relation!=="at_war")await declareWar(threadID,attacker.kingdom_id,defenderId);const active=await db.query(`SELECT id FROM rpg_war_campaigns WHERE thread_id=$1 AND commander_user_id=$2 AND status='active' LIMIT 1`,[String(threadID),String(userID)]);if(active.rows.length)throw new Error("You already command an active campaign.");const state=await db.query(`SELECT garrison,defense,prosperity FROM rpg_location_states WHERE thread_id=$1 AND location_id=$2 LIMIT 1`,[String(threadID),location.id]);const s=state.rows[0]||{},now=Date.now();const result=await db.query(`INSERT INTO rpg_war_campaigns(thread_id,attacker_kingdom_id,defender_kingdom_id,target_location_id,commander_user_id,created_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$6) RETURNING *`,[String(threadID),attacker.kingdom_id,defender.kingdom_id,location.id,String(userID),now]);return{campaign:result.rows[0],attacker,defender,location,garrison:Number(s.garrison||0),defense:Number(s.defense||0),prosperity:Number(s.prosperity||100)};}
