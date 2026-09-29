@@ -62,7 +62,7 @@ function routeSafety(info) {
   if (info.relation === "hostile") return 0.55;
   if (info.relation === "neutral") return 0.82;
   if (info.relation === "friendly") return 0.95;
-  if (info.relation === "allied") return 1.08;
+  if (info.relation === "allied") return 1;
   return 1;
 }
 
@@ -73,21 +73,26 @@ async function establishRoute(threadID, userID, originId, destinationId) {
     throw new Error("Those locations are controlled by kingdoms at war. The route cannot be established.");
   }
 
-  await db.addBalance(threadID, userID, -ROUTE_COST, "RPG trade route establishment").catch(() => {
-    throw new Error(`Establishing a trade route costs ${ROUTE_COST.toLocaleString()} coins.`);
-  });
+  const existing = await db.query(
+    `SELECT 1 FROM rpg_trade_routes
+     WHERE thread_id = $1 AND user_id = $2
+       AND origin_location_id = $3 AND destination_location_id = $4
+     LIMIT 1`,
+    [String(threadID), String(userID), info.origin.id, info.destination.id]
+  );
+  if (existing.rows.length) return { ...info, alreadyExists: true, cost: 0 };
+
+  await db.spendBalance(threadID, userID, ROUTE_COST, "RPG trade route establishment");
 
   const now = Date.now();
   await db.query(
     `INSERT INTO rpg_trade_routes
       (thread_id, user_id, origin_location_id, destination_location_id, established_at, last_dispatch_at)
-     VALUES ($1, $2, $3, $4, $5, 0)
-     ON CONFLICT (thread_id, user_id, origin_location_id, destination_location_id)
-     DO NOTHING`,
+     VALUES ($1, $2, $3, $4, $5, 0)`,
     [String(threadID), String(userID), info.origin.id, info.destination.id, now]
   );
 
-  return { ...info, cost: ROUTE_COST };
+  return { ...info, alreadyExists: false, cost: ROUTE_COST };
 }
 
 async function dispatchRoute(threadID, userID, originId, destinationId) {
@@ -108,11 +113,8 @@ async function dispatchRoute(threadID, userID, originId, destinationId) {
   if (remaining > 0) return { dispatched: false, remainingMs: remaining };
 
   const safety = routeSafety(info);
-  const success = Math.random() < Math.min(1, safety);
-  const revenue = Math.max(
-    50,
-    Math.floor((BASE_REVENUE + info.distance * 75) * safety)
-  );
+  const success = Math.random() < safety;
+  const revenue = Math.max(50, Math.floor((BASE_REVENUE + info.distance * 75) * safety));
 
   if (success) {
     await db.addBalance(threadID, userID, revenue, `RPG trade route: ${info.origin.id} -> ${info.destination.id}`);
