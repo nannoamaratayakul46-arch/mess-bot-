@@ -50,6 +50,16 @@ const BUILDINGS = {
   },
 };
 
+const RESOURCE_PRODUCTION = {
+  // Production is measured per in-game hour. 5 real seconds = 20 in-game minutes.
+  farm:   { food: 12 },
+  lumber: { wood: 8 },
+  mine:   { stone: 6, iron: 2 },
+};
+
+const PRODUCTION_GAME_MINUTES_PER_TICK = 60;
+const REAL_MS_PER_GAME_MINUTE = 5000 / 20;
+
 const DEFENSE_PARTS = {
   walls: { emoji: "🧱", name: "Walls", max: 100 },
   towers: { emoji: "🗼", name: "Towers", max: 100 },
@@ -73,6 +83,13 @@ async function ensureConstructionSchema() {
         stone INTEGER NOT NULL DEFAULT 100,
         iron INTEGER NOT NULL DEFAULT 50,
         updated_at BIGINT NOT NULL,
+        PRIMARY KEY(thread_id, user_id)
+      );
+
+      CREATE TABLE IF NOT EXISTS rpg_resource_production (
+        thread_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
+        last_collected_at BIGINT NOT NULL,
         PRIMARY KEY(thread_id, user_id)
       );
 
@@ -172,8 +189,97 @@ async function getProperty(threadID, userID) {
   return result.rows[0];
 }
 
+async function applyResourceProduction(threadID, userID) {
+  await ensureProperty(threadID, userID);
+
+  const now = Date.now();
+  const state = await db.query(
+    `SELECT last_collected_at FROM rpg_resource_production WHERE thread_id = $1 AND user_id = $2 LIMIT 1`,
+    [String(threadID), String(userID)]
+  );
+
+  let last = Number(state.rows[0]?.last_collected_at || now);
+  if (!state.rows[0]) {
+    await db.query(
+      `INSERT INTO rpg_resource_production (thread_id, user_id, last_collected_at) VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+      [String(threadID), String(userID), now]
+    );
+    last = now;
+  }
+
+  const elapsed = Math.max(0, now - last);
+  const gameMinutes = elapsed / REAL_MS_PER_GAME_MINUTE;
+  const ticks = Math.floor(gameMinutes / PRODUCTION_GAME_MINUTES_PER_TICK);
+  if (ticks <= 0) return getResourceState(threadID, userID);
+
+  const buildings = await db.query(
+    `SELECT building_key, level FROM rpg_buildings WHERE thread_id = $1 AND user_id = $2`,
+    [String(threadID), String(userID)]
+  );
+
+  const gained = { food: 0, wood: 0, stone: 0, iron: 0 };
+  for (const row of buildings.rows) {
+    const rates = RESOURCE_PRODUCTION[row.building_key];
+    const level = Math.max(0, Number(row.level || 0));
+    if (!rates || level <= 0) continue;
+    for (const [resource, amount] of Object.entries(rates)) {
+      gained[resource] += amount * level * ticks;
+    }
+  }
+
+  // Storage grows with the domain and market infrastructure.
+  const property = await db.query(
+    `SELECT tier FROM rpg_properties WHERE thread_id = $1 AND user_id = $2 LIMIT 1`,
+    [String(threadID), String(userID)]
+  );
+  const tier = Math.max(0, Number(property.rows[0]?.tier || 0));
+  const market = buildings.rows.find((row) => row.building_key === 'market');
+  const capacity = 500 + tier * 250 + Math.max(0, Number(market?.level || 0)) * 100;
+
+  const current = await getResourceState(threadID, userID);
+  const next = {};
+  for (const resource of ['food', 'wood', 'stone', 'iron']) {
+    next[resource] = Math.min(capacity, Number(current[resource] || 0) + gained[resource]);
+  }
+
+  const consumedMs = ticks * PRODUCTION_GAME_MINUTES_PER_TICK * REAL_MS_PER_GAME_MINUTE;
+  const newLast = last + consumedMs;
+  await db.query(
+    `UPDATE rpg_domain_resources
+     SET food = $3, wood = $4, stone = $5, iron = $6, updated_at = $7
+     WHERE thread_id = $1 AND user_id = $2`,
+    [String(threadID), String(userID), next.food, next.wood, next.stone, next.iron, now]
+  );
+  await db.query(
+    `UPDATE rpg_resource_production SET last_collected_at = $3 WHERE thread_id = $1 AND user_id = $2`,
+    [String(threadID), String(userID), newLast]
+  );
+
+  return { ...next, capacity, gained };
+}
+
+async function getResourceState(threadID, userID) {
+  await ensureProperty(threadID, userID);
+  const result = await db.query(
+    `SELECT food, wood, stone, iron FROM rpg_domain_resources WHERE thread_id = $1 AND user_id = $2 LIMIT 1`,
+    [String(threadID), String(userID)]
+  );
+  const property = await db.query(
+    `SELECT tier FROM rpg_properties WHERE thread_id = $1 AND user_id = $2 LIMIT 1`,
+    [String(threadID), String(userID)]
+  );
+  const buildings = await db.query(
+    `SELECT building_key, level FROM rpg_buildings WHERE thread_id = $1 AND user_id = $2`,
+    [String(threadID), String(userID)]
+  );
+  const market = buildings.rows.find((row) => row.building_key === 'market');
+  const capacity = 500 + Math.max(0, Number(property.rows[0]?.tier || 0)) * 250 + Math.max(0, Number(market?.level || 0)) * 100;
+  return { ...(result.rows[0] || { food: 0, wood: 0, stone: 0, iron: 0 }), capacity };
+}
+
 async function getBuildings(threadID, userID) {
   await ensureProperty(threadID, userID);
+  const resourceState = await applyResourceProduction(threadID, userID);
   await completeConstruction(threadID, userID);
 
   const result = await db.query(
@@ -196,9 +302,14 @@ async function getBuildings(threadID, userID) {
     [String(threadID), String(userID)]
   );
   const row = pending.rows[0];
-  if (!row) return result.rows;
+  const stockEntry = {
+    building_key: '📦 Resources',
+    level: `🍎 ${resourceState.food} · 🪵 ${resourceState.wood} · 🪨 ${resourceState.stone} · ⛓️ ${resourceState.iron} / ${resourceState.capacity}`,
+  };
 
-  return result.rows.concat({
+  if (!row) return result.rows.concat(stockEntry);
+
+  return result.rows.concat(stockEntry, {
     building_key: `${row.building_key} ⏳`,
     level: `${row.target_level} · ${formatBuildTime(Number(row.completes_at) - Date.now())}`,
   });
@@ -265,6 +376,7 @@ async function buyProperty(threadID, userID, requestedKey) {
 }
 
 async function build(threadID, userID, buildingKey) {
+  await applyResourceProduction(threadID, userID);
   const property = await getProperty(threadID, userID);
   const key = String(buildingKey || "").toLowerCase();
   const definition = BUILDINGS[key];
@@ -447,6 +559,8 @@ module.exports = {
   buyProperty,
   getBuildings,
   getConstructionStatus,
+  getResourceState,
+  applyResourceProduction,
   getProperty,
   improveDefense,
   propertySummary,
