@@ -3,6 +3,7 @@
 const original = require("./rpg/index.js");
 const companions = require("./rpg/companions");
 const economy = require("./rpg/economy");
+const domainEvents = require("./rpg/domain-events");
 const { reply } = require("./util");
 
 function tokens(value) {
@@ -31,7 +32,21 @@ async function handleCompanionCompatibility(api, event, args) {
 
 async function handleEconomyCompatibility(api, event, args) {
   const sub = cleanId(args[0] || "status");
-  if (!["economy", "domain", "prosperity", "market", "tax", "taxes"].includes(sub)) return false;
+  if (!["economy", "domain", "prosperity", "market", "tax", "taxes", "event", "events"].includes(sub)) return false;
+
+  if (sub === "event" || sub === "events") {
+    const action = cleanId(args[1] || "roll");
+    if (action === "list") {
+      await reply(api, event.threadID, ["🌍 DOMAIN EVENTS", "", ...domainEvents.EVENTS.map(item => `${item.title} — ${item.description}`), "", "Events are influenced by domain prosperity.", "Use !rpg event roll to resolve one when available."].join("\n"));
+      return true;
+    }
+    try {
+      const result = await domainEvents.rollDomainEvent(event.threadID, event.senderID, { force: action === "force" });
+      if (!result.triggered) await reply(api, event.threadID, `⏳ No domain event yet. Another event can occur in about ${Math.ceil(result.remainingMs / 60000)} minute(s).`);
+      else await reply(api, event.threadID, [`🌍 ${result.event.title}`, "", result.event.description, "", "Effects:", ...Object.entries(result.event.effects || {}).map(([key, value]) => `${value >= 0 ? "✦" : "✧"} ${key}: ${value >= 0 ? "+" : ""}${value}`)].join("\n"));
+    } catch (error) { await reply(api, event.threadID, `❌ ${error.message}`); }
+    return true;
+  }
 
   if (sub === "market") {
     const action = cleanId(args[1]);
@@ -63,7 +78,7 @@ async function handleEconomyCompatibility(api, event, args) {
 
   try {
     const state = await economy.getEconomy(event.threadID, event.senderID);
-    await reply(api, event.threadID, ["🏰 DOMAIN ECONOMY", "", `🌟 Prosperity: ${state.prosperity}/100 · ${state.prosperityName}`, `👥 Population: ${state.population.population.toLocaleString()} / ${state.population.capacity.toLocaleString()}`, `⚔️ Army: ${state.armyUnits.toLocaleString()} soldiers`, `🏪 Market: Level ${state.marketLevel}`, `📜 Tax rate: ${state.tax_rate}%`, "", `🌾 Food: ${Number(state.stock.food).toLocaleString()}`, `🪵 Wood: ${Number(state.stock.wood).toLocaleString()}`, `🪨 Stone: ${Number(state.stock.stone).toLocaleString()}`, `⛓️ Iron: ${Number(state.stock.iron).toLocaleString()}`, `📦 Storage: ${state.stock.capacity.toLocaleString()}`, "", "Commands:", "!rpg market buy <resource> <amount>", "!rpg market sell <resource> <amount>", "!rpg tax set <0-25>", "!rpg tax collect"].join("\n"));
+    await reply(api, event.threadID, ["🏰 DOMAIN ECONOMY", "", `🌟 Prosperity: ${state.prosperity}/100 · ${state.prosperityName}`, `👥 Population: ${state.population.population.toLocaleString()} / ${state.population.capacity.toLocaleString()}`, `⚔️ Army: ${state.armyUnits.toLocaleString()} soldiers`, `🏪 Market: Level ${state.marketLevel}`, `📜 Tax rate: ${state.tax_rate}%`, "", `🌾 Food: ${Number(state.stock.food).toLocaleString()}`, `🪵 Wood: ${Number(state.stock.wood).toLocaleString()}`, `🪨 Stone: ${Number(state.stock.stone).toLocaleString()}`, `⛓️ Iron: ${Number(state.stock.iron).toLocaleString()}`, `📦 Storage: ${state.stock.capacity.toLocaleString()}`, "", "Commands:", "!rpg market buy <resource> <amount>", "!rpg market sell <resource> <amount>", "!rpg tax set <0-25>", "!rpg tax collect", "!rpg event roll", "!rpg event list"].join("\n"));
   } catch (error) { await reply(api, event.threadID, `❌ ${error.message}`); }
   return true;
 }
