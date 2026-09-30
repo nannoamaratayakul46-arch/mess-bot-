@@ -76,7 +76,20 @@ async function registerHuntProgress(threadID, userID) {
 async function claimQuest(threadID, userID) {
   const quest = await getQuest(threadID, userID);
   if (Number(quest.progress) < Number(quest.target)) throw new Error(`Progress: ${quest.progress}/${quest.target}. Hunt more creatures first.`);
-  await db.query(`UPDATE rpg_quests SET status = 'claimed', updated_at = $3 WHERE id = $1 AND thread_id = $2 AND status = 'active'`, [quest.id, String(threadID), Date.now()]);
+  const claimed = await db.query(
+    `UPDATE rpg_quests
+     SET status = 'claimed', updated_at = $3
+     WHERE id = $1
+       AND thread_id = $2
+       AND status = 'active'
+       AND progress >= target`,
+    [quest.id, String(threadID), Date.now()]
+  );
+
+  if (claimed.rowCount !== 1) {
+    throw new Error("This quest has already been claimed.");
+  }
+
   await addBalance(threadID, userID, quest.reward_gold);
   await addXp(threadID, userID, quest.reward_xp);
   return quest;
