@@ -1968,7 +1968,7 @@ async function unlockSpecial(
 
         $4,
 
-        NOW()
+        $5
 
       )
 
@@ -1995,6 +1995,7 @@ async function unlockSpecial(
       special.id,
 
       String(source),
+      Date.now(),
 
     ]
 
