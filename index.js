@@ -5482,9 +5482,7 @@ async function handleMessage(
   // ==========================================================
 
   if (
-    text.startsWith(
-      "!broadcast "
-    )
+    /^!broadcast(?:\\s|$)/i.test(originalText)
   ) {
     if (!isAdmin) {
       sendReplyWithTyping(
@@ -5506,8 +5504,9 @@ async function handleMessage(
 
     const message =
       originalText
-        .slice(
-          "!broadcast ".length
+        .replace(
+          /^!broadcast\\s*/i,
+          ""
         )
         .trim();
 
@@ -5519,6 +5518,10 @@ async function handleMessage(
           "",
           "୨୧ usage",
           "    ♡ !broadcast <message>",
+          "    ♡ Attach a picture to include it.",
+          "",
+          "No confirmation step — sending the command",
+          "starts the broadcast immediately.",
           "",
           "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
         ].join("\n"),
@@ -5528,13 +5531,102 @@ async function handleMessage(
       return;
     }
 
-    const targetCount =
-      activeThreads.size;
+    cleanupBroadcastFingerprintMap();
 
-    broadcastToAllThreads(
-      api,
-      message
+    const imageAttachment =
+      getBroadcastImageAttachment(event);
+
+    const fingerprint =
+      broadcastFingerprint(
+        message,
+        imageAttachment
+      );
+
+    const previousBroadcastAt =
+      recentBroadcastFingerprints.get(
+        fingerprint
+      ) || 0;
+
+    if (
+      previousBroadcastAt &&
+      Date.now() - previousBroadcastAt <
+        BROADCAST_DUPLICATE_WINDOW_MS
+    ) {
+      sendReplyWithTyping(
+        api,
+        [
+          "╭────── 🎀  BROADCAST  🎀 ──────╮",
+          "",
+          "🛑 DUPLICATE BROADCAST BLOCKED",
+          "",
+          "The same broadcast was already",
+          "sent recently.",
+          "",
+          "Please wait before sending it again.",
+          "",
+          "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+        ].join("\n"),
+        threadID
+      );
+
+      return;
+    }
+
+    recentBroadcastFingerprints.set(
+      fingerprint,
+      Date.now()
     );
+
+    let imagePath = null;
+
+    if (imageAttachment) {
+      try {
+        imagePath =
+          await stageBroadcastImage(
+            imageAttachment
+          );
+      } catch (error) {
+        recentBroadcastFingerprints.delete(
+          fingerprint
+        );
+
+        console.error(
+          "[Broadcast] Failed to stage image:",
+          error
+        );
+
+        sendReplyWithTyping(
+          api,
+          [
+            "╭────── 🎀  BROADCAST  🎀 ──────╮",
+            "",
+            "❌ IMAGE COULD NOT BE PREPARED",
+            "",
+            "The broadcast was not sent.",
+            "Please attach the picture again",
+            "and retry.",
+            "",
+            "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+          ].join("\n"),
+          threadID
+        );
+
+        return;
+      }
+    }
+
+    const result =
+      broadcastToAllThreads(
+        api,
+        message,
+        imagePath
+      );
+
+    if (!result.queued) {
+      recentBroadcastFingerprints.delete(
+        fingerprint
+      );
+    }
 
     sendReplyWithTyping(
       api,
@@ -5544,7 +5636,8 @@ async function handleMessage(
         "📢 BROADCAST QUEUED",
         "",
         "୨୧ active threads",
-        `    ♡ ${targetCount}`,
+        `    ♡ ${result.targetCount}`,
+        `    ♡ image: ${result.hasImage ? "YES 🖼️" : "NO"}`,
         "",
         "୨୧ status",
         "    ♡ 🟢 queued",
@@ -6376,9 +6469,125 @@ function canRandomRoastThread(
 
 const pendingBroadcastTimers = new Set();
 
+const BROADCAST_DUPLICATE_WINDOW_MS = 60_000;
+const recentBroadcastFingerprints = new Map();
+
+function getBroadcastImageAttachment(event) {
+  const attachments = Array.isArray(event?.attachments)
+    ? event.attachments
+    : [];
+
+  return (
+    attachments.find((attachment) => {
+      const type = String(attachment?.type || "").toLowerCase();
+      return (
+        type === "photo" ||
+        type === "image" ||
+        type === "animated_image"
+      );
+    }) || null
+  );
+}
+
+async function stageBroadcastImage(attachment) {
+  const imageUrl = String(
+    attachment?.url ||
+      attachment?.payload?.url ||
+      ""
+  ).trim();
+
+  if (!imageUrl) {
+    return null;
+  }
+
+  const response = await fetch(imageUrl);
+
+  if (!response.ok) {
+    throw new Error(
+      `image download returned HTTP ${response.status}`
+    );
+  }
+
+  const contentType = String(
+    response.headers.get("content-type") || ""
+  ).toLowerCase();
+
+  if (
+    !contentType.startsWith("image/")
+  ) {
+    throw new Error(
+      `attachment is not an image (${contentType || "unknown content type"})`
+    );
+  }
+
+  const buffer = Buffer.from(
+    await response.arrayBuffer()
+  );
+
+  if (!buffer.length) {
+    throw new Error("image attachment was empty");
+  }
+
+  const extensionMap = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/png": ".png",
+    "image/gif": ".gif",
+    "image/webp": ".webp",
+  };
+
+  const extension =
+    extensionMap[contentType] || ".jpg";
+
+  const tempPath = path.join(
+    os.tmpdir(),
+    `eclipse-broadcast-${Date.now()}-${crypto.randomBytes(6).toString("hex")}${extension}`
+  );
+
+  await fsp.writeFile(
+    tempPath,
+    buffer
+  );
+
+  return tempPath;
+}
+
+function broadcastFingerprint(message, attachment) {
+  const attachmentUrl = String(
+    attachment?.url ||
+      attachment?.payload?.url ||
+      ""
+  ).trim();
+
+  return crypto
+    .createHash("sha1")
+    .update(
+      `${String(message || "").trim()}\n${attachmentUrl}`
+    )
+    .digest("hex");
+}
+
+function cleanupBroadcastFingerprintMap() {
+  const now = Date.now();
+
+  for (
+    const [fingerprint, timestamp] of recentBroadcastFingerprints.entries()
+  ) {
+    if (
+      now - timestamp >=
+      BROADCAST_DUPLICATE_WINDOW_MS
+    ) {
+      recentBroadcastFingerprints.delete(
+        fingerprint
+      );
+    }
+  }
+}
+
 function broadcastToAllThreads(
   api,
-  message
+  message,
+  imagePath = null
 ) {
   if (
     !message ||
@@ -6388,7 +6597,10 @@ function broadcastToAllThreads(
       "[Broadcast] No message."
     );
 
-    return;
+    return {
+      queued: false,
+      targetCount: 0,
+    };
   }
 
   registerActiveThreadCleanup();
@@ -6405,11 +6617,19 @@ function broadcastToAllThreads(
       "[Broadcast] No active threads."
     );
 
-    return;
+    if (imagePath) {
+      void fsp.unlink(imagePath).catch(() => {});
+    }
+
+    return {
+      queued: false,
+      targetCount: 0,
+    };
   }
 
   console.log(
-    `[Broadcast] Broadcasting to ${threads.length} threads.`
+    `[Broadcast] Broadcasting to ${threads.length} threads` +
+      (imagePath ? " with image." : ".")
   );
 
   const broadcastMessage =
@@ -6423,6 +6643,19 @@ function broadcastToAllThreads(
       "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
     ].join("\n");
 
+  let remainingSends = threads.length;
+
+  const cleanupImageWhenDone = () => {
+    remainingSends--;
+
+    if (
+      remainingSends <= 0 &&
+      imagePath
+    ) {
+      void fsp.unlink(imagePath).catch(() => {});
+    }
+  };
+
   threads.forEach(
     (
       threadID,
@@ -6432,8 +6665,17 @@ function broadcastToAllThreads(
         () => {
           pendingBroadcastTimers.delete(timer);
 
-          trafficSendMessage(api, 
-            broadcastMessage,
+          const outgoingMessage = imagePath
+            ? {
+                body: broadcastMessage,
+                attachment:
+                  fs.createReadStream(imagePath),
+              }
+            : broadcastMessage;
+
+          trafficSendMessage(
+            api,
+            outgoingMessage,
             threadID,
             (sendError) => {
               if (
@@ -6445,9 +6687,12 @@ function broadcastToAllThreads(
                 );
               } else {
                 console.log(
-                  `[Broadcast] Sent to ${threadID}`
+                  `[Broadcast] Sent to ${threadID}` +
+                    (imagePath ? " with image" : "")
                 );
               }
+
+              cleanupImageWhenDone();
             }
           );
         },
@@ -6457,6 +6702,12 @@ function broadcastToAllThreads(
       pendingBroadcastTimers.add(timer);
     }
   );
+
+  return {
+    queued: true,
+    targetCount: threads.length,
+    hasImage: Boolean(imagePath),
+  };
 }
 
 // ============================================================
