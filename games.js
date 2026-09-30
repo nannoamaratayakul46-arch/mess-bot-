@@ -1292,8 +1292,9 @@ async function handleRPS(api, event, args) {
             : `-${formatNumber(xpAmount)}`
       }`,
       `♡ Coins    ${
-        coinsAmount > 0 ? `+${formatNumber(coinsAmount)}` : "0"
+        coinsAmount > 0 ? `+${formatNumber(payoutInfo.net)}` : "0"
       }`,
+      winningTaxLine(payoutInfo.tax),
       "",
       balanceText,
     ].join("\n");
