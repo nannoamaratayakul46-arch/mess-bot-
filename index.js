@@ -6425,7 +6425,7 @@ async function handleMessage(
 
     const investigationMatch =
       text.match(
-        new RegExp("^!(" + gameRegistry.COMMAND_PATTERN_SOURCE + "|hit|stand|double|split|surrender|games)(?:\\s+(.*))?$", "i")
+        new RegExp("^!(" + gameRegistry.COMMANDS.join("|") + "|hit|stand|double|split|surrender|games)(?:\\s+(.*))?$", "i")
       );
 
     if (investigationMatch) {
