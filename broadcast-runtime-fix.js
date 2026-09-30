@@ -10,6 +10,9 @@ function installBroadcastFix(source) {
     return source;
   }
 
+  // Preserve the original helpers, then place hardened replacements
+  // before the original declarations. Function declarations are hoisted,
+  // so the replacement wins without modifying the large index.js file.
   patched = patched.replace(
     "function getBroadcastImageAttachment(event) {",
     "function getBroadcastImageAttachmentOriginal(event) {"
@@ -20,12 +23,14 @@ function installBroadcastFix(source) {
     "async function stageBroadcastImageOriginal(attachment) {"
   );
 
-  const marker = "\nasync function stageBroadcastImageOriginal(attachment) {";
-  if (!patched.includes(marker)) {
+  const getMarker = "\nfunction getBroadcastImageAttachmentOriginal(event) {";
+  const stageMarker = "\nasync function stageBroadcastImageOriginal(attachment) {";
+
+  if (!patched.includes(getMarker) || !patched.includes(stageMarker)) {
     return source;
   }
 
-  const replacement = `
+  const getReplacement = `
 function getBroadcastImageAttachment(event) {
   const candidates = [];
 
@@ -53,7 +58,26 @@ function getBroadcastImageAttachment(event) {
   pushCandidate(event?.message?.attachment);
   pushCandidate(event?.messageReply?.attachment);
 
+  const hasUsableUrl = (attachment) => [
+    attachment?.url,
+    attachment?.payload?.url,
+    attachment?.payload?.source,
+    attachment?.source,
+    attachment?.href,
+    attachment?.downloadUrl,
+    attachment?.download_url,
+    attachment?.imageUrl,
+    attachment?.image_url,
+    attachment?.metadata?.url,
+    attachment?.metadata?.source,
+  ]
+    .some((value) => typeof value === "string" && /^https?:\\/\\//i.test(value.trim()));
+
   const isImage = (attachment) => {
+    if (!hasUsableUrl(attachment)) {
+      return false;
+    }
+
     const type = String(
       attachment?.type ||
       attachment?.mimeType ||
@@ -62,35 +86,20 @@ function getBroadcastImageAttachment(event) {
       ""
     ).toLowerCase();
 
-    const url = [
-      attachment?.url,
-      attachment?.payload?.url,
-      attachment?.payload?.source,
-      attachment?.source,
-      attachment?.href,
-      attachment?.downloadUrl,
-      attachment?.download_url,
-      attachment?.imageUrl,
-      attachment?.image_url,
-      attachment?.metadata?.url,
-      attachment?.metadata?.source,
-    ]
-      .map((value) => typeof value === "string" ? value.trim() : "")
-      .find((value) => /^https?:\\/\\//i.test(value));
-
-    return Boolean(
-      url &&
-      (type === "photo" ||
-       type === "image" ||
-       type === "picture" ||
-       type === "animated_image" ||
-       !type)
+    return (
+      !type ||
+      type === "photo" ||
+      type === "image" ||
+      type === "picture" ||
+      type === "animated_image"
     );
   };
 
   return candidates.find(isImage) || null;
 }
+`;
 
+  const stageReplacement = `
 async function stageBroadcastImage(attachment) {
   const candidates = [
     attachment?.url,
@@ -166,7 +175,9 @@ async function stageBroadcastImage(attachment) {
 }
 `;
 
-  patched = patched.replace(marker, `\n${replacement}`);
+  patched = patched.replace(getMarker, `\n${getReplacement}${getMarker}`);
+  patched = patched.replace(stageMarker, `\n${stageReplacement}${stageMarker}`);
+
   return patched;
 }
 
