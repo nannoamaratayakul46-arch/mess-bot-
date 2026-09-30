@@ -430,6 +430,7 @@ function runWatchdogCheck() {
     WATCHDOG_EVENT_LOOP_TIMEOUT_MS;
 
   const messengerConnectionHealthy =
+    !watchdogMessengerEverConnected ||
     watchdogMessengerConnected ||
     (
       !watchdogMessengerDisconnectedAt ||
@@ -6998,11 +6999,3 @@ function broadcastToAllThreads(
   );
 
   const broadcastMessage =
-    [
-      "╭─────── ୨୧ ♡ ୨୧ ───────╮",
-      "        🎀 ANNOUNCEMENT",
-      "╰─────── ୨୧ ♡ ୨୧ ───────╯",
-      "",
-      message.trim(),
-      "",
-      "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
