@@ -162,12 +162,16 @@ function rewardLine(reward, balanceText, won = true) {
   const coinText = won && coinValue > 0
     ? `+${formatNumber(coinValue)}`
     : "0";
+  const taxText = won && Number(reward?.tax || 0) > 0
+    ? `♡ Tax       -${formatNumber(reward.tax)}`
+    : "";
 
   return [
     divider(),
     `♡ XP       ${xpSign}${formatNumber(xpValue)}`,
     `♡ Coins    ${coinText}`,
-    "",
+    taxText,
+    taxText ? "" : null,
     balanceText,
   ].join("\n");
 }
@@ -180,6 +184,36 @@ function challengeBusyText() {
     "",
     "finish that one first, sweetheart ♡",
   ].join("\n");
+}
+
+
+// ============================================================
+// WINNING TAX
+// ============================================================
+//
+// Every game win is taxed at 10%, capped at 1,000,000 coins.
+// Tax is applied only when a winning payout is actually credited.
+// Wagers/refunds, losses, daily rewards, and work earnings are untouched.
+// ============================================================
+
+const WIN_TAX_RATE = 0.10;
+const MAX_WIN_TAX = 1_000_000;
+
+async function creditGameWinnings(threadID, userID, grossAmount) {
+  const gross = Math.max(0, Math.floor(Number(grossAmount) || 0));
+  const tax = Math.min(Math.floor(gross * WIN_TAX_RATE), MAX_WIN_TAX);
+  const net = Math.max(0, gross - tax);
+
+  if (net > 0) {
+    await db.addBalance(threadID, userID, net);
+  }
+
+  return { gross, tax, net };
+}
+
+function winningTaxLine(tax) {
+  const amount = Math.max(0, Math.floor(Number(tax) || 0));
+  return amount > 0 ? `♡ tax       -${formatNumber(amount)}` : "";
 }
 
 // ============================================================
@@ -229,13 +263,17 @@ async function awardPlayer(threadID, userID, gameType, won = false) {
 
   await db.addXP(threadID, userID, won ? xpAmount : -xpAmount);
 
+  let payout = { gross: 0, tax: 0, net: 0 };
+
   if (won) {
-    await db.addBalance(threadID, userID, baseCoins);
+    payout = await creditGameWinnings(threadID, userID, baseCoins);
   }
 
   return {
     xp: xpAmount,
-    coins: won ? baseCoins : 0,
+    coins: won ? payout.net : 0,
+    grossCoins: won ? payout.gross : 0,
+    tax: won ? payout.tax : 0,
     won,
   };
 }
@@ -248,13 +286,17 @@ async function awardBetPlayer(threadID, userID, gameType, won, coinsAmount) {
 
   const coins = Math.max(0, Math.floor(coinsAmount || 0));
 
+  let payout = { gross: 0, tax: 0, net: 0 };
+
   if (won && coins > 0) {
-    await db.addBalance(threadID, userID, coins);
+    payout = await creditGameWinnings(threadID, userID, coins);
   }
 
   return {
     xp: xpAmount,
-    coins: won ? coins : 0,
+    coins: won ? payout.net : 0,
+    grossCoins: won ? payout.gross : 0,
+    tax: won ? payout.tax : 0,
     won,
   };
 }
@@ -834,8 +876,10 @@ async function resolveClaimGamble(api, event, actionText) {
 
   const payout = won ? session.amount * 2 : 0;
 
+  let payoutInfo = { gross: 0, tax: 0, net: 0 };
+
   if (won) {
-    await db.addBalance(threadID, userID, payout);
+    payoutInfo = await creditGameWinnings(threadID, userID, payout);
   }
 
   const balanceText = await getFinalBalanceText(threadID, userID);
@@ -846,7 +890,10 @@ async function resolveClaimGamble(api, event, actionText) {
     won ? "♡ YOU GOT IT ♡" : "୨୧ OH... NOT THIS TIME",
     "",
     won
-      ? `♡ payout   +${formatNumber(payout)} coins`
+      ? [
+          `♡ payout   +${formatNumber(payoutInfo.net)} coins`,
+          winningTaxLine(payoutInfo.tax),
+        ].filter(Boolean).join("\n")
       : `♡ lost     -${formatNumber(session.amount)} coins`,
     "",
     won ? "that was a little lucky." : "don't look so sad ♡",
@@ -1198,8 +1245,10 @@ async function handleRPS(api, event, args) {
       await db.addXP(threadID, userID, matchWin ? xpAmount : -xpAmount);
     }
 
+    let payoutInfo = { gross: 0, tax: 0, net: 0 };
+
     if (coinsAmount > 0) {
-      await db.addBalance(threadID, userID, coinsAmount);
+      payoutInfo = await creditGameWinnings(threadID, userID, coinsAmount);
     }
 
     await db.updateUser(threadID, userID, {
@@ -1608,7 +1657,11 @@ async function resolveRollLadder(api, event, actionText) {
   if (/^(cashout|cash|bank|keep|stop)$/.test(word)) {
     clearSession(threadID, userID);
 
-    await db.addBalance(threadID, userID, session.pendingPayout);
+    const payoutInfo = await creditGameWinnings(
+      threadID,
+      userID,
+      session.pendingPayout
+    );
 
     await db.addXP(threadID, userID, xpForGame("roll"));
 
@@ -1619,7 +1672,8 @@ async function resolveRollLadder(api, event, actionText) {
       "",
       "♡ BANKED ♡",
       "",
-      `+${formatNumber(session.pendingPayout)} coins secured.`,
+      `+${formatNumber(payoutInfo.net)} coins secured.`,
+      winningTaxLine(payoutInfo.tax),
       `+${formatNumber(xpForGame("roll"))} XP`,
       "",
       "you knew when to stop ♡",
@@ -2275,7 +2329,11 @@ async function resolveCoinflipLadder(api, event, actionText) {
   if (/^(cashout|cash|bank|keep|stop)$/.test(word)) {
     clearSession(threadID, userID);
 
-    await db.addBalance(threadID, userID, session.pendingPayout);
+    const payoutInfo = await creditGameWinnings(
+      threadID,
+      userID,
+      session.pendingPayout
+    );
 
     await db.addXP(threadID, userID, xpForGame("coinflip"));
 
@@ -2286,7 +2344,8 @@ async function resolveCoinflipLadder(api, event, actionText) {
       "",
       "♡ BANKED ♡",
       "",
-      `+${formatNumber(session.pendingPayout)} coins secured.`,
+      `+${formatNumber(payoutInfo.net)} coins secured.`,
+      winningTaxLine(payoutInfo.tax),
       `+${xpForGame("coinflip")} XP`,
       "",
       "you knew when to stop ♡",
@@ -2590,8 +2649,11 @@ async function handleBlackjack(api, event, args) {
         ].join("\n");
       } else {
         const payout = Math.floor(bet * 2.5);
-
-        await db.addBalance(threadID, userID, payout);
+        const payoutInfo = await creditGameWinnings(
+          threadID,
+          userID,
+          payout
+        );
 
         await db.addXP(threadID, userID, xpForGame("blackjack"));
 
@@ -2605,7 +2667,8 @@ async function handleBlackjack(api, event, args) {
           `you     ${playerHand.join("  ")}`,
           `dealer  ${botHand.join("  ")}`,
           "",
-          `♡ payout · +${formatNumber(payout)} coins`,
+          `♡ payout · +${formatNumber(payoutInfo.net)} coins`,
+          winningTaxLine(payoutInfo.tax),
           `✧ XP · +${xpForGame("blackjack")}`,
           "",
           balanceText,
@@ -2699,7 +2762,11 @@ async function settleBlackjack(api, event, session) {
   if (result === "draw") {
     await db.addBalance(threadID, userID, session.bet);
   } else if (result === "win") {
-    await db.addBalance(threadID, userID, session.bet * 2);
+    const payoutInfo = await creditGameWinnings(
+      threadID,
+      userID,
+      session.bet * 2
+    );
 
     await db.addXP(threadID, userID, xpForGame("blackjack"));
   } else {
@@ -2716,7 +2783,9 @@ async function settleBlackjack(api, event, session) {
     result === "draw"
       ? `♡ wager refunded · ${formatNumber(session.bet)} coins`
       : result === "win"
-        ? `♡ payout · +${formatNumber(session.bet * 2)} coins\n✧ XP · +${xpForGame("blackjack")}`
+        ? `♡ payout · +${formatNumber(payoutInfo.net)} coins`,
+          winningTaxLine(payoutInfo.tax),
+          `✧ XP · +${xpForGame("blackjack")}`
         : `୨୧ lost · -${formatNumber(session.bet)} coins\n✧ XP · -${Math.floor(xpForGame("blackjack") * 0.5)}`;
 
   const finalText = [
@@ -3087,7 +3156,11 @@ async function handleSlots(api, event, args) {
       const payout = bet * multiplier;
       const net = payout - bet;
 
-      await db.addBalance(threadID, userID, payout);
+      const payoutInfo = await creditGameWinnings(
+        threadID,
+        userID,
+        payout
+      );
 
       // Payout credited: the wager is resolved, never refund it.
       settled = true;
