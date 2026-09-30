@@ -5481,6 +5481,151 @@ async function handleMessage(
   // BROADCAST
   // ==========================================================
 
+  // ----------------------------------------------------------
+  // BROADCAST IMAGE FOLLOW-UP
+  // Messenger cannot send the command text and a separate image
+  // as one user message from the mobile composer. If an admin
+  // starts !broadcast without an image, keep the message pending
+  // and consume the next image they send.
+  // ----------------------------------------------------------
+  if (
+    isAdmin &&
+    !/^!broadcast(?:\\s|$)/i.test(originalText)
+  ) {
+    const pendingBroadcast =
+      pendingBroadcastComposers.get(String(senderId));
+
+    if (pendingBroadcast) {
+      if (
+        Date.now() - pendingBroadcast.createdAt >
+        BROADCAST_COMPOSER_TIMEOUT_MS
+      ) {
+        pendingBroadcastComposers.delete(
+          String(senderId)
+        );
+      } else {
+        const pendingImage =
+          getBroadcastImageAttachment(event);
+
+        if (pendingImage) {
+          pendingBroadcastComposers.delete(
+            String(senderId)
+          );
+
+          cleanupBroadcastFingerprintMap();
+
+          const fingerprint =
+            broadcastFingerprint(
+              pendingBroadcast.message,
+              pendingImage
+            );
+
+          const previousBroadcastAt =
+            recentBroadcastFingerprints.get(
+              fingerprint
+            ) || 0;
+
+          if (
+            previousBroadcastAt &&
+            Date.now() - previousBroadcastAt <
+              BROADCAST_DUPLICATE_WINDOW_MS
+          ) {
+            sendReplyWithTyping(
+              api,
+              [
+                "╭────── 🎀  BROADCAST  🎀 ──────╮",
+                "",
+                "🛑 DUPLICATE BROADCAST BLOCKED",
+                "",
+                "The same broadcast was already",
+                "sent recently.",
+                "",
+                "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+              ].join("\n"),
+              threadID
+            );
+
+            return;
+          }
+
+          recentBroadcastFingerprints.set(
+            fingerprint,
+            Date.now()
+          );
+
+          let imagePath = null;
+
+          try {
+            imagePath =
+              await stageBroadcastImage(
+                pendingImage
+              );
+          } catch (error) {
+            recentBroadcastFingerprints.delete(
+              fingerprint
+            );
+
+            console.error(
+              "[Broadcast] Failed to stage follow-up image:",
+              error
+            );
+
+            sendReplyWithTyping(
+              api,
+              [
+                "╭────── 🎀  BROADCAST  🎀 ──────╮",
+                "",
+                "❌ IMAGE COULD NOT BE PREPARED",
+                "",
+                "The pending broadcast was not sent.",
+                "Please run !broadcast again.",
+                "",
+                "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+              ].join("\n"),
+              threadID
+            );
+
+            return;
+          }
+
+          const result =
+            broadcastToAllThreads(
+              api,
+              pendingBroadcast.message,
+              imagePath
+            );
+
+          if (!result.queued) {
+            recentBroadcastFingerprints.delete(
+              fingerprint
+            );
+          }
+
+          sendReplyWithTyping(
+            api,
+            [
+              "╭────── 🎀  BROADCAST  🎀 ──────╮",
+              "",
+              "📢 BROADCAST QUEUED",
+              "",
+              "୨୧ active threads",
+              `    ♡ ${result.targetCount}`,
+              "    ♡ image: YES 🖼️",
+              "",
+              "୨୧ status",
+              "    ♡ 🟢 queued",
+              "",
+              "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+            ].join("\n"),
+            threadID
+          );
+
+          return;
+        }
+      }
+    }
+  }
+
   if (
     /^!broadcast(?:\\s|$)/i.test(originalText)
   ) {
@@ -5518,10 +5663,10 @@ async function handleMessage(
           "",
           "୨୧ usage",
           "    ♡ !broadcast <message>",
-          "    ♡ Attach a picture to include it.",
+          "    ♡ Or send !broadcast <message>",
+          "      then attach the picture in your next message.",
           "",
-          "No confirmation step — sending the command",
-          "starts the broadcast immediately.",
+          "No confirmation step.",
           "",
           "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
         ].join("\n"),
@@ -5563,6 +5708,67 @@ async function handleMessage(
           "sent recently.",
           "",
           "Please wait before sending it again.",
+          "",
+          "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+        ].join("\n"),
+        threadID
+      );
+
+      return;
+    }
+
+    // If the image is sent in the same Messenger message,
+    // broadcast immediately. Otherwise, keep the message pending
+    // and consume the admin's next image message.
+    if (!imageAttachment) {
+      const adminKey = String(senderId);
+
+      if (
+        pendingBroadcastComposers.has(
+          adminKey
+        )
+      ) {
+        sendReplyWithTyping(
+          api,
+          [
+            "╭────── 🎀  BROADCAST  🎀 ──────╮",
+            "",
+            "🛑 BROADCAST ALREADY WAITING",
+            "",
+            "Send the picture for the pending",
+            "broadcast, or wait for it to expire.",
+            "",
+            "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+          ].join("\n"),
+          threadID
+        );
+
+        return;
+      }
+
+      pendingBroadcastComposers.set(
+        adminKey,
+        {
+          message,
+          threadID,
+          createdAt: Date.now(),
+        }
+      );
+
+      sendReplyWithTyping(
+        api,
+        [
+          "╭────── 🎀  BROADCAST  🎀 ──────╮",
+          "",
+          "📢 BROADCAST READY",
+          "",
+          "Your message is saved.",
+          "🖼️ Send the picture in your next message.",
+          "",
+          "No confirmation needed — the image",
+          "will start the broadcast automatically.",
+          "",
+          "⏳ Waiting for image for 2 minutes.",
           "",
           "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
         ].join("\n"),
@@ -6471,6 +6677,8 @@ const pendingBroadcastTimers = new Set();
 
 const BROADCAST_DUPLICATE_WINDOW_MS = 60_000;
 const recentBroadcastFingerprints = new Map();
+const pendingBroadcastComposers = new Map();
+const BROADCAST_COMPOSER_TIMEOUT_MS = 2 * 60_000;
 
 function getBroadcastImageAttachment(event) {
   const attachments = Array.isArray(event?.attachments)
