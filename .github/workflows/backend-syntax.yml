@@ -15,5 +15,13 @@ jobs:
         with:
           node-version: 20
       - run: npm install
-      - run: node --check index.js
-      - run: node --check db.js
+      - name: Syntax-check every JavaScript file
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            echo "Checking $file"
+            node --check "$file"
+          done < <(find . -type f -name '*.js' \
+            -not -path './node_modules/*' \
+            -not -path './.git/*' -print0)
