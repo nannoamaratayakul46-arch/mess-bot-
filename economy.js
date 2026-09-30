@@ -703,6 +703,8 @@ async function handleWithdraw(
     senderID
   } = event;
 
+  await db.applyBankInterest(threadID, senderID).catch(() => {});
+
   const user =
     await db.getUser(
       threadID,
