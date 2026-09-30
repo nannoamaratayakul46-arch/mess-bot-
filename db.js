@@ -80,7 +80,7 @@ async function connect() {
     CREATE TABLE IF NOT EXISTS users (
       thread_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
-      balance INTEGER NOT NULL DEFAULT ${STARTING_BALANCE},
+      balance BIGINT NOT NULL DEFAULT ${STARTING_BALANCE},
       last_daily BIGINT,
       last_work BIGINT,
       daily_streak INTEGER NOT NULL DEFAULT 0,
@@ -92,12 +92,12 @@ async function connect() {
 
   await pool.query(`
     ALTER TABLE users
-      ADD COLUMN IF NOT EXISTS bank_balance INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS bank_balance BIGINT NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS xp INTEGER NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS level INTEGER NOT NULL DEFAULT 1,
       ADD COLUMN IF NOT EXISTS credit_score INTEGER NOT NULL DEFAULT ${STARTING_CREDIT_SCORE},
-      ADD COLUMN IF NOT EXISTS loan_principal INTEGER NOT NULL DEFAULT 0,
-      ADD COLUMN IF NOT EXISTS loan_remaining INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS loan_principal BIGINT NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS loan_remaining BIGINT NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS loan_due BIGINT,
       ADD COLUMN IF NOT EXISTS last_interest_paid BIGINT,
       ADD COLUMN IF NOT EXISTS display_name TEXT;
@@ -267,7 +267,7 @@ async function connect() {
       thread_id TEXT NOT NULL,
       user_id TEXT NOT NULL,
       type TEXT NOT NULL,
-      amount INTEGER NOT NULL,
+      amount BIGINT NOT NULL,
       description TEXT,
       created_at BIGINT NOT NULL
     );
