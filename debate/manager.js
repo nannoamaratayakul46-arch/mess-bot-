@@ -1075,12 +1075,53 @@ async function initDebate(api) {
     parsed = JSON.parse(raw);
   } catch (error) {
     console.error("[debate] state parse:", error);
+
+    // A malformed persisted state must never prevent the bot from starting.
+    // Preserve the bad file for inspection, then reset the live debate state.
+    try {
+      const backup = `${STATE_FILE}.corrupt-${Date.now()}`;
+      await fsp.rename(STATE_FILE, backup);
+      console.error("[debate] malformed state moved to:", backup);
+    } catch (backupError) {
+      console.error("[debate] could not preserve malformed state:", backupError);
+    }
+
+    try {
+      await fsp.mkdir(path.dirname(STATE_FILE), { recursive: true });
+      await fsp.writeFile(STATE_FILE, "{}\\n", "utf8");
+      console.log("[debate] state reset to an empty object.");
+    } catch (resetError) {
+      console.error("[debate] state reset failed:", resetError);
+    }
+
+    return;
+  }
+
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+    console.error("[debate] state root is invalid; resetting it.");
+
+    try {
+      const backup = `${STATE_FILE}.invalid-${Date.now()}`;
+      await fsp.rename(STATE_FILE, backup);
+      console.error("[debate] invalid state moved to:", backup);
+    } catch (backupError) {
+      console.error("[debate] could not preserve invalid state:", backupError);
+    }
+
+    try {
+      await fsp.mkdir(path.dirname(STATE_FILE), { recursive: true });
+      await fsp.writeFile(STATE_FILE, "{}\\n", "utf8");
+      console.log("[debate] state reset to an empty object.");
+    } catch (resetError) {
+      console.error("[debate] state reset failed:", resetError);
+    }
+
     return;
   }
 
   let restored = 0;
 
-  for (const [id, data] of Object.entries(parsed || {})) {
+  for (const [id, data] of Object.entries(parsed)) {
     const session = normalizeRestoredSession(data);
 
     sessions.set(id, session);
