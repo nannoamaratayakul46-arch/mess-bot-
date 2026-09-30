@@ -6336,6 +6336,19 @@ async function handleChamber(api, event, args) {
   return true;
 }
 
+
+function shutdownGames() {
+  for (const timer of sessionTimers.values()) {
+    try { clearTimeout(timer); } catch {}
+  }
+
+  sessionTimers.clear();
+  sessions.clear();
+  activeGames.clear();
+
+  console.log("[GAMES] In-memory game sessions cleared for shutdown.");
+}
+
 // ============================================================
 // EXPORTS
 // ============================================================
@@ -6367,4 +6380,5 @@ module.exports = {
 
   lockGame,
   unlockGame,
+  shutdownGames,
 };
