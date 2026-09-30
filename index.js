@@ -5501,7 +5501,7 @@ async function handleMessage(
   // ----------------------------------------------------------
   if (
     isAdmin &&
-    !/^!broadcast(?:\\s|$)/i.test(originalText)
+    !/^!broadcast(?:\s|$)/i.test(originalText)
   ) {
     const pendingBroadcast =
       pendingBroadcastComposers.get(String(senderId));
@@ -5638,7 +5638,7 @@ async function handleMessage(
   }
 
   if (
-    /^!broadcast(?:\\s|$)/i.test(originalText)
+    /^!broadcast(?:\s|$)/i.test(originalText)
   ) {
     if (!isAdmin) {
       sendReplyWithTyping(
@@ -5661,7 +5661,7 @@ async function handleMessage(
     const message =
       originalText
         .replace(
-          /^!broadcast\\s*/i,
+          /^!broadcast\s*/i,
           ""
         )
         .trim();
