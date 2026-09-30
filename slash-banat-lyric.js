@@ -1,1 +1,0 @@
-module.exports = "Oh akala ko ba 'di ka pumapatol sa 'di gumagastos'\nDi mo kaya pagka bastos ko\nKahit 'di mo na sabihin alam ko ang gusto\nPanatilihin nating lihim\nKahit 'di na kahit pa ma-t
