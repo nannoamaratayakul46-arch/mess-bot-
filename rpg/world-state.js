@@ -473,10 +473,10 @@ async function syncWorldState(threadID) {
   await db.query(
     `
       UPDATE rpg_world_state
-      SET updated_at = NOW()
+      SET updated_at = $2
       WHERE thread_id = $1
     `,
-    [String(threadID)]
+    [String(threadID), Date.now()]
   );
 
   return state;
