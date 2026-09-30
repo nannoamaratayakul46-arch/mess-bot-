@@ -3508,23 +3508,6 @@ async function handleGameCommand(api, event, command, args) {
     return true;
   }
 
-  // External engines are registered here instead of being injected by a
-  // Node module-loader preload. This keeps command routing explicit.
-  const registeredGame = gameRegistry.getGame(cmd);
-
-  if (registeredGame?.command === "slots") {
-    await handleExternalSlots(api, event, normalizedArgs);
-    return true;
-  }
-
-  if (registeredGame?.category === "SOCIAL CHAOS") {
-    const socialText = socialGames.handleSocialGame(cmd, normalizedArgs);
-    if (socialText) {
-      await sendMessageAsync(api, String(event.threadID), socialText);
-    }
-    return true;
-  }
-
   // Action words typed like commands (the prompts show "!hit", "!stand"...)
   // are routed to the open game, but only when that game accepts them.
   if (cmd === "answer") {
