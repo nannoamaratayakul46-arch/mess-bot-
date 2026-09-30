@@ -3434,15 +3434,53 @@ async function handleGameStatus(api, event) {
 // GAME RULES
 // ============================================================
 
+const GAME_PANEL_MAX_CHARS = 1800;
+
+async function sendGamePanel(api, threadID, text) {
+  const lines = String(text || "").split("\n");
+  const chunks = [];
+  let current = "";
+
+  for (const line of lines) {
+    // Keep each Messenger payload safely below the platform's message limit.
+    if (line.length > GAME_PANEL_MAX_CHARS) {
+      if (current) {
+        chunks.push(current);
+        current = "";
+      }
+
+      for (let i = 0; i < line.length; i += GAME_PANEL_MAX_CHARS) {
+        chunks.push(line.slice(i, i + GAME_PANEL_MAX_CHARS));
+      }
+      continue;
+    }
+
+    const candidate = current ? current + "\n" + line : line;
+
+    if (candidate.length > GAME_PANEL_MAX_CHARS) {
+      if (current) chunks.push(current);
+      current = line;
+    } else {
+      current = candidate;
+    }
+  }
+
+  if (current) chunks.push(current);
+
+  for (const chunk of chunks) {
+    await sendMessageAsync(api, threadID, chunk);
+  }
+}
+
 async function handleGameRules(api, event) {
   const threadID = String(event.threadID);
-  await sendMessageAsync(api, threadID, gameRegistry.renderRules());
+  await sendGamePanel(api, threadID, gameRegistry.renderRules());
   return true;
 }
 
 async function handleGameCenter(api, event) {
   const threadID = String(event.threadID);
-  await sendMessageAsync(api, threadID, gameRegistry.renderMenu());
+  await sendGamePanel(api, threadID, gameRegistry.renderMenu());
   return true;
 }
 
