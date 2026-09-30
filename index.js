@@ -6771,40 +6771,71 @@ function sendBanatReplyWithTyping(
           return;
         }
 
+        // ws3-fca can return the sent ID either as messageInfo.messageID
+        // or directly from the callback depending on the send path.
         const sentMessageID =
-          messageInfo?.messageID;
+          typeof messageInfo === "string"
+            ? messageInfo
+            : messageInfo?.messageID ||
+              messageInfo?.messageId ||
+              messageInfo?.id ||
+              null;
 
-        // React directly to the message ID returned by Messenger.
-        // This is more reliable than waiting for selfListen to deliver
-        // the outgoing message back through MQTT, and it lets Banat
-        // react to every Banat reply it sends.
-        if (
-          sentMessageID &&
-          api &&
-          typeof api.setMessageReaction === "function"
-        ) {
-          try {
+        if (!sentMessageID) {
+          console.warn(
+            "[BANAT] Messenger did not return a message ID; self-reaction skipped."
+          );
+          return;
+        }
+
+        try {
+          const reactionCallback = (reactionError) => {
+            if (reactionError) {
+              console.error(
+                "[BANAT] Self-reaction failed:",
+                reactionError
+              );
+            } else {
+              console.log(
+                "[BANAT] Reacted to own message:",
+                String(sentMessageID)
+              );
+            }
+          };
+
+          // Prefer the MQTT-specific reaction API when this ws3-fca
+          // version exposes it. Otherwise use the normal reaction API
+          // with the plain message ID (not a descriptor object).
+          if (
+            api &&
+            typeof api.setMessageReactionMqtt === "function"
+          ) {
+            api.setMessageReactionMqtt(
+              "😆",
+              String(sentMessageID),
+              String(threadID),
+              reactionCallback
+            );
+          } else if (
+            api &&
+            typeof api.setMessageReaction === "function"
+          ) {
             api.setMessageReaction(
               "😆",
-              {
-                messageID: String(sentMessageID),
-                threadID: String(threadID),
-              },
-              (reactionError) => {
-                if (reactionError) {
-                  console.error(
-                    "[BANAT] Self-reaction failed:",
-                    reactionError
-                  );
-                }
-              }
+              String(sentMessageID),
+              reactionCallback,
+              true
             );
-          } catch (reactionError) {
+          } else {
             console.error(
-              "[BANAT] Self-reaction error:",
-              reactionError
+              "[BANAT] No Messenger reaction API is available."
             );
           }
+        } catch (reactionError) {
+          console.error(
+            "[BANAT] Self-reaction error:",
+            reactionError
+          );
         }
       };
 
