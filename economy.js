@@ -78,16 +78,7 @@ const {
 // ADMIN
 // ============================================================================
 
-const ADMIN_IDS = new Set(
-  (process.env.ADMIN_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean)
-);
-
-function isAdmin(senderID) {
-  return ADMIN_IDS.has(String(senderID));
-}
+const { isAdmin } = require("./permissions");
 
 // ============================================================================
 // CONSTANTS
