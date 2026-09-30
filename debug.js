@@ -111,12 +111,6 @@ function moduleStatus(path) {
   };
 }
 
-function isAdmin(senderID) {
-  return ADMIN_IDS.includes(
-    String(senderID)
-  );
-}
-
 // ============================================================
 // DATABASE CHECK
 // ============================================================
