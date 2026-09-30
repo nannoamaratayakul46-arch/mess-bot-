@@ -146,7 +146,7 @@ function renderMetric(type, label, target, title, icon) {
     `${icon} ${label}: ${score}%`,
     `${bar(score)}`,
     "",
-    `⚡ ${label === "Rizz" ? "Smoothness" : "Chaos":} ${secondary}%`,
+    `⚡ ${label === "Rizz" ? "Smoothness" : "Chaos"}: ${secondary}%`,
     `🧬 Consistency: ${consistency}%`,
     `🎭 Archetype: ${archetype(target)}`,
     "",
