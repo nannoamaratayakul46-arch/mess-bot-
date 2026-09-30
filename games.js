@@ -7,6 +7,9 @@ const examManager = require("./exam-manager");
 const gameRegistry = require("./game-registry");
 const { handleSlots: handleExternalSlots } = require("./slots");
 const socialGames = require("./social-games");
+const gameRegistry = require("./game-registry");
+const { handleSlots: handleExternalSlots } = require("./slots");
+const socialGames = require("./social-games");
 
 // ============================================================
 // CONFIG
@@ -3437,6 +3440,7 @@ async function handleGameStatus(api, event) {
 async function handleGameRules(api, event) {
   const threadID = String(event.threadID);
   await sendMessageAsync(api, threadID, gameRegistry.renderRules());
+  return true;
 }
 
 async function handleGameCenter(api, event) {
@@ -3489,6 +3493,23 @@ async function handleGameCommand(api, event, command, args) {
   const cmd = String(command || "").trim().toLowerCase();
 
   const normalizedArgs = normalizeArgs(args);
+
+  // External game engines are routed explicitly through the registry.
+  // No Node module-loader patching is required.
+  const registeredGame = gameRegistry.getGame(cmd);
+
+  if (registeredGame?.command === "slots") {
+    await handleExternalSlots(api, event, normalizedArgs);
+    return true;
+  }
+
+  if (registeredGame?.category === "SOCIAL CHAOS") {
+    const socialText = socialGames.handleSocialGame(cmd, normalizedArgs);
+    if (socialText) {
+      await sendMessageAsync(api, String(event.threadID), socialText);
+    }
+    return true;
+  }
 
   // External engines are registered here instead of being injected by a
   // Node module-loader preload. This keeps command routing explicit.
