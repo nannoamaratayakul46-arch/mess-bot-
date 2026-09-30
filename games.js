@@ -7,9 +7,6 @@ const examManager = require("./exam-manager");
 const gameRegistry = require("./game-registry");
 const { handleSlots: handleExternalSlots } = require("./slots");
 const socialGames = require("./social-games");
-const gameRegistry = require("./game-registry");
-const { handleSlots: handleExternalSlots } = require("./slots");
-const socialGames = require("./social-games");
 
 // ============================================================
 // CONFIG
