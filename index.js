@@ -7769,35 +7769,11 @@ async function gracefulShutdown(
     );
   }
 
-  try {
-    if (activeMessengerApi && typeof activeMessengerApi.logout === "function") {
-      await new Promise((resolve) => {
-        let settled = false;
-        const done = () => {
-          if (settled) return;
-          settled = true;
-          resolve();
-        };
-        const timer = setTimeout(done, 3000);
-        try {
-          const result = activeMessengerApi.logout((error) => {
-            clearTimeout(timer);
-            if (error) console.warn("[SYSTEM] Messenger logout warning:", error.message || error);
-            done();
-          });
-          if (result && typeof result.then === "function") {
-            result.then(done).catch(() => done());
-          }
-        } catch {
-          clearTimeout(timer);
-          done();
-        }
-      });
-    }
-  } catch (error) {
-    console.error("[SYSTEM] Messenger shutdown failed:", error);
-  }
-
+  // Do NOT call Messenger logout during process shutdown.
+  // Render sends SIGTERM for normal deploys/restarts. Explicitly logging
+  // out here invalidates the Facebook session every time the process is
+  // replaced. Stopping the Node process is enough; ws3-fca/Facebook can
+  // keep the session valid for the next startup.
   try {
     if (server) {
       await new Promise(
