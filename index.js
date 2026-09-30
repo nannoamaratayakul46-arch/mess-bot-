@@ -4215,7 +4215,7 @@ async function handleMessage(
   // still be unable to reach economy, games, RPG, AI, etc.
   // ==========================================================
 
-  if (!isAdmin) {
+  if (!isAdmin(senderId)) {
     try {
       if (await isLocallyBanned(threadId, senderId)) {
         console.warn(
@@ -4248,7 +4248,7 @@ async function handleMessage(
     );
 
   if (ownerMatch) {
-    if (!isAdmin) {
+    if (!isAdmin(senderId)) {
       sendReplyWithTyping(
         api,
         "🔒 Owner access only.",
@@ -4418,7 +4418,7 @@ async function handleMessage(
     pauseMatch ||
     resumeMatch
   ) {
-    if (!isAdmin) {
+    if (!isAdmin(senderId)) {
       sendReplyWithTyping(
         api,
         [
@@ -4554,7 +4554,7 @@ async function handleMessage(
     );
 
   if (botControlMatch) {
-    if (!isAdmin) {
+    if (!isAdmin(senderId)) {
       sendReplyWithTyping(
         api,
         [
@@ -4760,7 +4760,7 @@ async function handleMessage(
   if (
     watchdogMatch
   ) {
-    if (!isAdmin) {
+    if (!isAdmin(senderId)) {
       sendReplyWithTyping(
         api,
         [
@@ -5020,7 +5020,7 @@ async function handleMessage(
     );
 
   if (cleanupMatch) {
-    if (!isAdmin) {
+    if (!isAdmin(senderId)) {
       return;
     }
 
@@ -5282,7 +5282,7 @@ async function handleMessage(
       originalText
     )
   ) {
-    if (!isAdmin) {
+    if (!isAdmin(senderId)) {
       sendReplyWithTyping(
         api,
         "❌ Admin only.",
@@ -5517,7 +5517,7 @@ async function handleMessage(
       musicSubcommand ===
       "pause"
     ) {
-      if (!isAdmin) {
+      if (!isAdmin(senderId)) {
         sendReplyWithTyping(
           api,
           [
@@ -5551,7 +5551,7 @@ async function handleMessage(
       musicSubcommand ===
         "play"
     ) {
-      if (!isAdmin) {
+      if (!isAdmin(senderId)) {
         sendReplyWithTyping(
           api,
           [
@@ -5762,7 +5762,7 @@ async function handleMessage(
   if (
     /^!broadcast(?:\s|$)/i.test(originalText)
   ) {
-    if (!isAdmin) {
+    if (!isAdmin(senderId)) {
       sendReplyWithTyping(
         api,
         [
@@ -6112,6 +6112,27 @@ async function handleMessage(
   }
 
   // ==========================================================
+  // COMMAND REGISTRY PATTERN
+  // Keep game command parsing synchronized with game-registry.js.
+  // ==========================================================
+
+  const escapeRegex = (value) =>
+    String(value || "").replace(/[.*+?^${}()|[\\]\\]/g, "\\  // ==========================================================
+  // RPG / LOVE QUEST / GAMES / ECONOMY
+  // ==========================================================");
+
+  const registeredGameCommandsPattern =
+    gameRegistry.COMMANDS
+      .map(escapeRegex)
+      .sort((a, b) => b.length - a.length)
+      .join("|");
+
+  const gameCommandPattern = new RegExp(
+    "^!(" + registeredGameCommandsPattern + ")(?:\\s+(.*))?$",
+    "i"
+  );
+
+  // ==========================================================
   // RPG / LOVE QUEST / GAMES / ECONOMY
   // ==========================================================
 
@@ -6223,7 +6244,7 @@ async function handleMessage(
     if (
       gameControlMatch
     ) {
-      if (!isAdmin) {
+      if (!isAdmin(senderId)) {
         sendReplyWithTyping(
           api,
           [
@@ -6467,7 +6488,7 @@ async function handleMessage(
 
     const investigationMatch =
       text.match(
-        new RegExp("^!(" + gameRegistry.COMMANDS.join("|") + "|hit|stand|double|split|surrender|games)(?:\\s+(.*))?$", "i")
+        /^!(case|haunt|incident|heist|trial|lost|investigator|investigations)(?:\s+(.*))?$/i
       );
 
     if (investigationMatch) {
@@ -6510,9 +6531,7 @@ async function handleMessage(
     // --------------------------------------------------------
 
     const gameMatch =
-      text.match(
-        /^!(trivia|rps|roll|guess|coinflip|blackjack|hit|stand|double|split|surrender|slots|math|riddle|8ball|games|chamber|roulette|lastchamber|rizz|simp|clown|aura|npc|delulu|menace|grass|bro|roast|compat|compatibility|ship|battle|vibes|social|socialgames)(?:\s+(.*))?$/i
-      );
+      text.match(gameCommandPattern);
 
     if (
       gameMatch
@@ -6620,7 +6639,7 @@ async function handleMessage(
     text.match(/^\/$/);
 
   if (banatControlMatch) {
-    if (!isAdmin) {
+    if (!isAdmin(senderId)) {
       sendReplyWithTyping(
         api,
         [
