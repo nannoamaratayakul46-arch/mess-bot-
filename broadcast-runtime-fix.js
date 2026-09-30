@@ -1,7 +1,6 @@
 "use strict";
 
 const Module = require("module");
-const originalLoad = Module._load;
 const originalExtension = Module._extensions[".js"];
 
 function installBroadcastFix(source) {
@@ -11,18 +10,87 @@ function installBroadcastFix(source) {
     return source;
   }
 
-  // Keep the existing implementation available for fallback/debugging.
+  patched = patched.replace(
+    "function getBroadcastImageAttachment(event) {",
+    "function getBroadcastImageAttachmentOriginal(event) {"
+  );
+
   patched = patched.replace(
     "async function stageBroadcastImage(attachment) {",
     "async function stageBroadcastImageOriginal(attachment) {"
   );
 
-  const marker = "\nfunction broadcastToAllThreads(";
+  const marker = "\nasync function stageBroadcastImageOriginal(attachment) {";
   if (!patched.includes(marker)) {
     return source;
   }
 
   const replacement = `
+function getBroadcastImageAttachment(event) {
+  const candidates = [];
+
+  const pushCandidate = (value) => {
+    if (value && typeof value === "object") {
+      candidates.push(value);
+    }
+  };
+
+  const attachments = Array.isArray(event?.attachments)
+    ? event.attachments
+    : [];
+
+  for (const attachment of attachments) {
+    pushCandidate(attachment);
+
+    if (Array.isArray(attachment?.attachments)) {
+      for (const nested of attachment.attachments) {
+        pushCandidate(nested);
+      }
+    }
+  }
+
+  pushCandidate(event?.attachment);
+  pushCandidate(event?.message?.attachment);
+  pushCandidate(event?.messageReply?.attachment);
+
+  const isImage = (attachment) => {
+    const type = String(
+      attachment?.type ||
+      attachment?.mimeType ||
+      attachment?.mime_type ||
+      attachment?.payload?.type ||
+      ""
+    ).toLowerCase();
+
+    const url = [
+      attachment?.url,
+      attachment?.payload?.url,
+      attachment?.payload?.source,
+      attachment?.source,
+      attachment?.href,
+      attachment?.downloadUrl,
+      attachment?.download_url,
+      attachment?.imageUrl,
+      attachment?.image_url,
+      attachment?.metadata?.url,
+      attachment?.metadata?.source,
+    ]
+      .map((value) => typeof value === "string" ? value.trim() : "")
+      .find((value) => /^https?:\\/\\//i.test(value));
+
+    return Boolean(
+      url &&
+      (type === "photo" ||
+       type === "image" ||
+       type === "picture" ||
+       type === "animated_image" ||
+       !type)
+    );
+  };
+
+  return candidates.find(isImage) || null;
+}
+
 async function stageBroadcastImage(attachment) {
   const candidates = [
     attachment?.url,
@@ -70,7 +138,6 @@ async function stageBroadcastImage(attachment) {
     }
 
     const buffer = Buffer.from(await response.arrayBuffer());
-
     if (!buffer.length) {
       throw new Error("Downloaded broadcast image is empty.");
     }
@@ -99,7 +166,7 @@ async function stageBroadcastImage(attachment) {
 }
 `;
 
-  patched = patched.replace(marker, `\n${replacement}${marker}`);
+  patched = patched.replace(marker, `\n${replacement}`);
   return patched;
 }
 
@@ -111,8 +178,4 @@ Module._extensions[".js"] = function broadcastRuntimeExtension(mod, filename) {
   }
 
   return originalExtension(mod, filename);
-};
-
-Module._load = function broadcastRuntimeLoad(request, parent, isMain) {
-  return originalLoad.apply(this, arguments);
 };
