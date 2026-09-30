@@ -109,7 +109,20 @@ async function advanceDungeon(threadID, userID) {
     await db.query(`UPDATE rpg_dungeons SET stage = $3, updated_at = $4 WHERE id = $1 AND thread_id = $2`, [dungeon.id, String(threadID), nextStage, Date.now()]);
     return { status: "active", message: `You cleared stage ${dungeon.stage}. The next room awaits.`, stage: nextStage };
   }
-  await db.query(`UPDATE rpg_dungeons SET status = 'cleared', updated_at = $3 WHERE id = $1 AND thread_id = $2`, [dungeon.id, String(threadID), Date.now()]);
+  const claimed = await db.query(
+    `UPDATE rpg_dungeons
+     SET status = 'cleared', updated_at = $3
+     WHERE id = $1 AND thread_id = $2 AND status = 'active'`,
+    [dungeon.id, String(threadID), Date.now()]
+  );
+
+  if (claimed.rowCount !== 1) {
+    return {
+      status: "already_resolved",
+      message: "This dungeon run was already resolved.",
+    };
+  }
+
   await addBalance(threadID, userID, definition.reward);
   await addXp(threadID, userID, definition.xp);
   await addItem(threadID, userID, definition.loot, 1);
