@@ -103,6 +103,29 @@ async function connect() {
       ADD COLUMN IF NOT EXISTS display_name TEXT;
   `);
 
+  // Keep all wallet/economy amounts above PostgreSQL INTEGER limits.
+  await pool.query(`
+    ALTER TABLE users
+      ALTER COLUMN balance TYPE BIGINT USING balance::bigint,
+      ALTER COLUMN bank_balance TYPE BIGINT USING bank_balance::bigint,
+      ALTER COLUMN loan_principal TYPE BIGINT USING loan_principal::bigint,
+      ALTER COLUMN loan_remaining TYPE BIGINT USING loan_remaining::bigint;
+
+    ALTER TABLE economy_transactions
+      ALTER COLUMN amount TYPE BIGINT USING amount::bigint;
+  `);
+
+  // Gambling safety net: tracks only real wagered-game losses.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS gambling_safety (
+      thread_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      loss_streak INTEGER NOT NULL DEFAULT 0,
+      updated_at BIGINT NOT NULL,
+      PRIMARY KEY (thread_id, user_id)
+    );
+  `);
+
   // ═════════════════════════════════════════════════════════
   // THREAD SETTINGS
   // ═════════════════════════════════════════════════════════
@@ -1464,6 +1487,111 @@ async function spendBalance(
 
     await client.query("COMMIT");
     return getUser(threadId, userId);
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+// ═══════════════════════════════════════════════════════════
+// GAMBLING PROTECTION
+// ═══════════════════════════════════════════════════════════
+
+async function recordGamblingWin(threadId, userId) {
+  threadId = String(threadId);
+  userId = String(userId);
+  const now = Date.now();
+
+  await requireConn().query(
+    `
+    INSERT INTO gambling_safety(thread_id, user_id, loss_streak, updated_at)
+    VALUES($1, $2, 0, $3)
+    ON CONFLICT(thread_id, user_id)
+    DO UPDATE SET loss_streak = 0, updated_at = EXCLUDED.updated_at
+    `,
+    [threadId, userId, now]
+  );
+
+  return { lossStreak: 0, triggered: false, payout: 0 };
+}
+
+async function recordGamblingLoss(threadId, userId, lossAmount = 0) {
+  threadId = String(threadId);
+  userId = String(userId);
+  const loss = Math.max(0, Math.floor(Number(lossAmount) || 0));
+  const now = Date.now();
+  const client = await requireConn().connect();
+
+  try {
+    await client.query("BEGIN");
+
+    const { rows } = await client.query(
+      `
+      INSERT INTO gambling_safety(thread_id, user_id, loss_streak, updated_at)
+      VALUES($1, $2, 1, $3)
+      ON CONFLICT(thread_id, user_id)
+      DO UPDATE SET loss_streak = gambling_safety.loss_streak + 1,
+                    updated_at = EXCLUDED.updated_at
+      RETURNING loss_streak
+      `,
+      [threadId, userId, now]
+    );
+
+    let streak = Number(rows[0]?.loss_streak) || 1;
+    let payout = 0;
+
+    if (streak >= 3) {
+      const wallet = await client.query(
+        `SELECT balance FROM users
+         WHERE thread_id = $1 AND user_id = $2
+         FOR UPDATE`,
+        [threadId, userId]
+      );
+
+      if (wallet.rows.length) {
+        const preLossBalance = Math.max(
+          0,
+          Number(wallet.rows[0].balance) + loss
+        );
+
+        payout = Math.min(Math.floor(preLossBalance * 0.10), 500_000);
+
+        if (payout > 0) {
+          await client.query(
+            `UPDATE users SET balance = balance + $3
+             WHERE thread_id = $1 AND user_id = $2`,
+            [threadId, userId, payout]
+          );
+
+          await client.query(
+            `INSERT INTO economy_transactions(
+               thread_id, user_id, type, amount, description, created_at
+             ) VALUES($1, $2, 'gambling_protection', $3, $4, $5)`,
+            [
+              threadId,
+              userId,
+              payout,
+              'Gambling protection after 3 consecutive losses',
+              now,
+            ]
+          );
+        }
+      }
+
+      streak = 0;
+      await client.query(
+        `UPDATE gambling_safety
+         SET loss_streak = 0, updated_at = $3
+         WHERE thread_id = $1 AND user_id = $2`,
+        [threadId, userId, now]
+      );
+    }
+
+    await client.query("COMMIT");
+
+    return { lossStreak: streak, triggered: payout > 0, payout };
   } catch (error) {
     try { await client.query("ROLLBACK"); } catch {}
     throw error;
@@ -3615,6 +3743,10 @@ module.exports = {
   // Wallet
   addBalance,
   spendBalance,
+
+  // Gambling protection
+  recordGamblingWin,
+  recordGamblingLoss,
 
   // Game statistics
   incrementGameStats,
