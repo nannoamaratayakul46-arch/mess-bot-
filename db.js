@@ -1048,11 +1048,23 @@ async function connect() {
     CREATE INDEX IF NOT EXISTS rpg_kingdom_quest_records_player_idx
       ON rpg_kingdom_quest_records(thread_id, user_id, kingdom_id);
 
-    -- weather.js inserts into rpg_world_state without these columns
+    -- Keep older Neon databases compatible with newer RPG world-state fields.
+    ALTER TABLE rpg_world_state
+      ADD COLUMN IF NOT EXISTS season_started_at BIGINT,
+      ADD COLUMN IF NOT EXISTS weather_changed_at BIGINT,
+      ADD COLUMN IF NOT EXISTS active_event TEXT,
+      ADD COLUMN IF NOT EXISTS updated_at BIGINT;
+
     ALTER TABLE rpg_world_state
       ALTER COLUMN season_started_at SET DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
       ALTER COLUMN weather_changed_at SET DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT,
       ALTER COLUMN updated_at SET DEFAULT (EXTRACT(EPOCH FROM NOW()) * 1000)::BIGINT;
+
+    UPDATE rpg_world_state
+    SET
+      season_started_at = COALESCE(season_started_at, EXTRACT(EPOCH FROM NOW())::BIGINT * 1000),
+      weather_changed_at = COALESCE(weather_changed_at, EXTRACT(EPOCH FROM NOW())::BIGINT * 1000),
+      updated_at = COALESCE(updated_at, EXTRACT(EPOCH FROM NOW())::BIGINT * 1000);
   `);
 
   // ═════════════════════════════════════════════════════════
