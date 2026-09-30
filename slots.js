@@ -4,14 +4,16 @@ const db = require("./db");
 
 const MAX_BET = 10_000_000;
 const XP_REWARD = 45;
+const WIN_TAX_RATE = 0.10;
+const MAX_WIN_TAX = 1_000_000;
 
 const SYMBOLS = [
-  { symbol: "🍒", weight: 34, triple: 5 },
-  { symbol: "🍋", weight: 27, triple: 7 },
-  { symbol: "🍊", weight: 19, triple: 9 },
-  { symbol: "🍉", weight: 11, triple: 12 },
-  { symbol: "⭐", weight: 7, triple: 18 },
-  { symbol: "💎", weight: 2, triple: 30 },
+  { symbol: "🍒", weight: 34, triple: 2 },
+  { symbol: "🍋", weight: 27, triple: 3 },
+  { symbol: "🍊", weight: 19, triple: 4 },
+  { symbol: "🍉", weight: 11, triple: 5 },
+  { symbol: "⭐", weight: 7, triple: 8 },
+  { symbol: "💎", weight: 2, triple: 13 },
 ];
 
 const TOTAL_WEIGHT = SYMBOLS.reduce((sum, item) => sum + item.weight, 0);
@@ -28,6 +30,26 @@ const active = new Set();
 
 function formatNumber(value) {
   return Number(value || 0).toLocaleString("en-US");
+}
+
+async function recordGamblingLossSafe(threadID, userID, amount) {
+  try { return await db.recordGamblingLoss(threadID, userID, amount); }
+  catch (error) { console.error("[slots] gambling protection:", error); return { lossStreak: 0, triggered: false, payout: 0 }; }
+}
+
+async function recordGamblingWinSafe(threadID, userID) {
+  try { await db.recordGamblingWin(threadID, userID); }
+  catch (error) { console.error("[slots] gambling protection reset:", error); }
+}
+
+function winningTax(gross) {
+  const amount = Math.max(0, Math.floor(Number(gross) || 0));
+  return Math.min(Math.floor(amount * WIN_TAX_RATE), MAX_WIN_TAX);
+}
+
+function protectionLine(protection) {
+  const payout = Math.max(0, Math.floor(Number(protection?.payout) || 0));
+  return payout > 0 ? `♡ protection · +${formatNumber(payout)} coins after 3 losses` : "";
 }
 
 function parseBet(value) {
@@ -164,6 +186,7 @@ async function handleSlots(api, event, args = []) {
   }
 
   active.add(key);
+  let betCharged = false;
 
   try {
     const grid = makeGrid();
@@ -171,6 +194,7 @@ async function handleSlots(api, event, args = []) {
 
     try {
       await db.spendBalance(threadID, userID, bet, `Slots bet: ${bet}`);
+      betCharged = true;
     } catch (error) {
       await sendMessage(
         api,
@@ -186,29 +210,37 @@ async function handleSlots(api, event, args = []) {
       `${header()}\n\nbet · ${formatNumber(bet)} coins\n\n🍒  │  🍋  │  ⭐\n🍋  │  ⭐  │  🍒\n⭐  │  🍒  │  🍋\n\nspinning... ♡`
     );
 
-    let payout = 0;
+    let payoutGross = 0;
+    let tax = 0;
+    let payoutNet = 0;
+    let protection = { payout: 0 };
 
     if (result.won) {
-      payout = bet * result.multiplier;
-      await db.addBalance(threadID, userID, payout);
+      payoutGross = bet * result.multiplier;
+      tax = winningTax(payoutGross);
+      payoutNet = Math.max(0, payoutGross - tax);
+      if (payoutNet > 0) await db.addBalance(threadID, userID, payoutNet);
       await db.addXP(threadID, userID, XP_REWARD);
+      await recordGamblingWinSafe(threadID, userID);
     } else {
+      protection = await recordGamblingLossSafe(threadID, userID, bet);
       await db.addXP(threadID, userID, -Math.floor(XP_REWARD * 0.5));
     }
 
     const winningSymbols = new Set(result.wins.map((win) => win.symbol));
     const balance = await getBalanceText(threadID, userID);
-    const profit = payout - bet;
+    const profit = payoutNet - bet;
 
     const final = result.won
-      ? `${header()}\n\nbet · ${formatNumber(bet)} coins\n\n${renderGrid(grid, winningSymbols)}\n\n♡ WIN · ${result.multiplier}×\n♡ payout · +${formatNumber(payout)}\n✧ profit · +${formatNumber(profit)}\n\n${balance}`
-      : `${header()}\n\nbet · ${formatNumber(bet)} coins\n\n${renderGrid(grid, winningSymbols)}\n\n୨୧ NO MATCH\n♡ lost · -${formatNumber(bet)}\n✧ XP · -${Math.floor(XP_REWARD * 0.5)}\n\n${balance}`;
+      ? `${header()}\n\nbet · ${formatNumber(bet)} coins\n\n${renderGrid(grid, winningSymbols)}\n\n♡ WIN · ${result.multiplier}×\n♡ payout · +${formatNumber(payoutNet)}\n${tax > 0 ? `♡ tax · -${formatNumber(tax)}` : ""}\n✧ profit · ${profit >= 0 ? "+" : ""}${formatNumber(profit)}\n\n${balance}`
+      : `${header()}\n\nbet · ${formatNumber(bet)} coins\n\n${renderGrid(grid, winningSymbols)}\n\n୨୧ NO MATCH\n♡ lost · -${formatNumber(bet)}\n${protectionLine(protection)}\n✧ XP · -${Math.floor(XP_REWARD * 0.5)}\n\n${balance}`;
 
     await sendMessage(api, threadID, final);
     return true;
   } catch (error) {
     console.error("[slots] spin:", error);
-    await sendMessage(api, threadID, "♡ the reels couldn't finish. your wager was protected.");
+    if (betCharged) await db.addBalance(threadID, userID, bet).catch(() => {});
+    await sendMessage(api, threadID, "♡ the reels couldn't finish. your wager was refunded.");
     return true;
   } finally {
     active.delete(key);
