@@ -19,6 +19,7 @@ Module._extensions['.js']=function(mod,file){
   if(/index\.js$/.test(file)){
     const fs=require('fs');let s=fs.readFileSync(file,'utf8');
     s=s.replace(/getTriggerReply\(\n\s*body,\n\s*senderId,\n\s*threadId\n\s*\)/,'getTriggerReply(\n      body,\n      senderId,\n      threadId,\n      api,\n      event\n    )');
+    s=s.replace('originalText !== require("./slash-banats")()','originalText !== "sino uupakan kong mukhang aso dito?"');
     s=s.replace('sendReplyWithTyping(\n          api,\n          "sino uupakan kong mukhang aso dito?",\n          threadID\n        );','sendReplyWithTyping(api, require("./slash-banats")(), threadID);');
     return mod._compile(s,file);
   }
