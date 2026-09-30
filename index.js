@@ -6117,10 +6117,7 @@ async function handleMessage(
   // ==========================================================
 
   const escapeRegex = (value) =>
-    String(value || "").replace(/[.*+?^${}()|[\\]\\]/g, "\\    String(value || "").replace(/[.*+?^${}()|[\\]\\]/g, "\\  // ==========================================================");
-  // RPG / LOVE QUEST / GAMES / ECONOMY
-  // ==========================================================");
-
+    String(value || "").replace(/[.*+?^${}()|[\]\\]/g, (match) => "\\" + match);
   const registeredGameCommandsPattern =
     gameRegistry.COMMANDS
       .map(escapeRegex)
