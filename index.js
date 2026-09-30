@@ -6511,7 +6511,7 @@ async function handleMessage(
 
     const gameMatch =
       text.match(
-        /^!(trivia|rps|roll|guess|coinflip|blackjack|hit|stand|double|split|surrender|slots|math|riddle|8ball|games|chamber|roulette|lastchamber|rizz|simp|clown|aura|npc|delulu|menace|grass|bro|roast|compat|compatibility|ship|battle|vibes|social|socialgames)(?:\\s+(.*))?$/i
+        /^!(trivia|rps|roll|guess|coinflip|blackjack|hit|stand|double|split|surrender|slots|math|riddle|8ball|games|chamber|roulette|lastchamber|rizz|simp|clown|aura|npc|delulu|menace|grass|bro|roast|compat|compatibility|ship|battle|vibes|social|socialgames)(?:\s+(.*))?$/i
       );
 
     if (
