@@ -38,7 +38,7 @@ for (const game of GAMES) {
 }
 
 const COMMANDS = Object.freeze(Array.from(BY_COMMAND.keys()).sort((a,b) => b.length - a.length));
-const COMMAND_PATTERN_SOURCE = COMMANDS.map((command) => command.replace(/[.*+?^$()|[\\]\\]/g, "\\$&")).join("|");
+const COMMAND_PATTERN_SOURCE = COMMANDS.map((command) => command.replace(/[.*+?^${}()|[\\]\\]/g, "\\command.replace(/[.*+?^$()|[\\]\\]/g, "\\$&")")).join("|");
 
 function getGame(command) {
   return BY_COMMAND.get(String(command || "").replace(/^!/, "").toLowerCase()) || null;
