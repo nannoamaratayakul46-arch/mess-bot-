@@ -1,4 +1,5 @@
 const db = require("./db");
+const { isAdmin } = require("./permissions");
 const { reply } = require("./util");
 const triviaManager = require("./trivia-manager");
 const riddleManager = require("./riddle-manager");
@@ -4211,11 +4212,7 @@ function chamberWithTimeout(promise, ms, label = "operation") {
 }
 
 function chamberIsAdmin(userID) {
-  return (process.env.ADMIN_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean)
-    .includes(String(userID));
+  return isAdmin(userID);
 }
 
 function chamberHalted() {
