@@ -40,8 +40,8 @@ test("database exposes graceful shutdown and transaction primitives", () => {
 test("main process contains one shutdown path", () => {
   const index = read("index.js");
   assert.match(index, /async function gracefulShutdown/);
-  assert.match(index, /process\.once\(\"SIGTERM\"/);
-  assert.match(index, /process\.once\(\"SIGINT\"/);
+  assert.match(index, /process\.once\(\s*"SIGTERM"/);
+  assert.match(index, /process\.once\(\s*"SIGINT"/);
   assert.match(index, /await db\.close\(\)/);
   assert.match(index, /stopTrafficGovernor\(\)/);
   assert.match(index, /shutdownGames\(\)/);
