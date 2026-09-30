@@ -17,6 +17,7 @@ const path = require("path");
 
 const db = require("../db");
 const judge = require("./judge");
+const { isAdmin } = require("../permissions");
 const profile = require("./profile");
 const TOPICS = require("./topics.json");
 
@@ -134,13 +135,6 @@ function key(threadID, userID) {
   return `${String(threadID)}:${String(userID)}`;
 }
 
-function isAdmin(userID) {
-  return (process.env.ADMIN_IDS || "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean)
-    .includes(String(userID));
-}
 
 function send(api, threadID, text) {
   return new Promise((resolve, reject) => {
