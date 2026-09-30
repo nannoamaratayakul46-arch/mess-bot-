@@ -4137,65 +4137,62 @@ async function handleMessage(
   // ==========================================================
   // ECLIPSE SELF-MESSAGE GUARD
   // ==========================================================
-  // Self-listening exists only so Banat can react to ECLIPSE's
-  // own outgoing messages. Never let a self-message enter the
-  // normal command/AI/Banat-reply pipeline.
+  // ECLIPSE's own outgoing messages are ignored completely.
+  // Banat's laugh reaction belongs to the configured ECLIPSE
+  // admin/owner sending an incoming message, not to the bot
+  // reacting to its own outgoing replies.
   // ==========================================================
 
   if (
     eclipseUserID &&
     senderId === eclipseUserID
   ) {
-    let roastEnabled = false;
+    return;
+  }
 
+  // ==========================================================
+  // BANAT — ECLIPSE ADMIN LAUGH REACTION
+  // ==========================================================
+  // When Banat is ON in this thread, react directly to the
+  // configured ECLIPSE admin's own incoming message.
+  //
+  // This uses the actual Messenger message ID, so Facebook
+  // displays 😆 on the user's message itself. No text "😆"
+  // message is sent.
+  // ==========================================================
+
+  if (
+    isOwner(senderId) &&
+    event.messageID &&
+    api &&
+    typeof api.setMessageReaction === "function"
+  ) {
     try {
-      roastEnabled = await db.isRoastEnabled(threadId);
-    } catch (error) {
-      console.error(
-        "[BANAT] Failed to check self-message Banat status:",
-        error
-      );
-      return;
-    }
+      const roastEnabled = await db.isRoastEnabled(threadId);
 
-    if (
-      !roastEnabled ||
-      originalText !== require("./slash-banats")() ||
-      !event.messageID ||
-      !api ||
-      typeof api.setMessageReaction !== "function"
-    ) {
-      return;
-    }
-
-    const reactionCallback = (reactionError) => {
-      if (reactionError) {
-        console.error(
-          "[BANAT] Self-reaction failed:",
-          reactionError
+      if (roastEnabled) {
+        api.setMessageReaction(
+          "😆",
+          {
+            messageID: String(event.messageID),
+            threadID: threadId,
+          },
+          (reactionError) => {
+            if (reactionError) {
+              console.error(
+                "[BANAT] Admin laugh reaction failed:",
+                reactionError
+              );
+            }
+          }
         );
       }
-    };
-
-    try {
-      // ws3-fca's current reaction path expects the message descriptor
-      // when MQTT is active, so include the thread ID explicitly.
-      api.setMessageReaction(
-        "😆",
-        {
-          messageID: String(event.messageID),
-          threadID: threadId,
-        },
-        reactionCallback
-      );
     } catch (reactionError) {
       console.error(
-        "[BANAT] Self-reaction error:",
+        "[BANAT] Admin laugh reaction error:",
         reactionError
       );
     }
-
-    return;
   }
 
   // ==========================================================
