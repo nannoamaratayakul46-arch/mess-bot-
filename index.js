@@ -16,6 +16,7 @@ const {
   handleGamesCommand,
   handleGameResponse,
   initLastChamber,
+  shutdownGames,
 } = require("./games");
 
 // ============================================================
@@ -638,6 +639,7 @@ const trafficThreadCommandTimes = new Map();
 let trafficGovernorRunning = false;
 let trafficGovernorTimer = null;
 let trafficGovernorInstalled = false;
+let trafficShuttingDown = false;
 let trafficLastSendAt = 0;
 let trafficTotalSent = 0;
 let trafficTotalDelayed = 0;
@@ -1239,6 +1241,28 @@ async function trafficProcessQueue() {
   } finally {
     trafficGovernorRunning = false;
   }
+}
+
+function stopTrafficGovernor() {
+  trafficShuttingDown = true;
+
+  if (trafficGovernorTimer) {
+    clearImmediate(trafficGovernorTimer);
+    trafficGovernorTimer = null;
+  }
+
+  const error = new Error("ECLIPSE is shutting down.");
+  error.code = "ECLIPSE_SHUTTING_DOWN";
+
+  while (trafficSendQueue.length) {
+    const job = trafficSendQueue.shift();
+    if (typeof job?.callback === "function") {
+      try { job.callback(error); } catch {}
+    }
+  }
+
+  trafficGovernorRunning = false;
+  console.log("[TRAFFIC] Traffic Governor stopped.");
 }
 
 function trafficStartWorker() {
@@ -7654,6 +7678,24 @@ async function gracefulShutdown(
   );
 
   stopWatchdog();
+  stopTrafficGovernor();
+
+  try {
+    shutdownGames();
+  } catch (error) {
+    console.error("[SYSTEM] Game shutdown failed:", error);
+  }
+
+  try {
+    stopCleanupScheduler();
+  } catch (error) {
+    console.error("[SYSTEM] Cleanup scheduler shutdown failed:", error);
+  }
+
+  if (loginRetryTimer) {
+    clearTimeout(loginRetryTimer);
+    loginRetryTimer = null;
+  }
 
   console.log(
     `[SYSTEM] Received ${signal}. Cleaning up ECLIPSE...`
@@ -7684,6 +7726,35 @@ async function gracefulShutdown(
   }
 
   try {
+    if (activeMessengerApi && typeof activeMessengerApi.logout === "function") {
+      await new Promise((resolve) => {
+        let settled = false;
+        const done = () => {
+          if (settled) return;
+          settled = true;
+          resolve();
+        };
+        const timer = setTimeout(done, 3000);
+        try {
+          const result = activeMessengerApi.logout((error) => {
+            clearTimeout(timer);
+            if (error) console.warn("[SYSTEM] Messenger logout warning:", error.message || error);
+            done();
+          });
+          if (result && typeof result.then === "function") {
+            result.then(done).catch(() => done());
+          }
+        } catch {
+          clearTimeout(timer);
+          done();
+        }
+      });
+    }
+  } catch (error) {
+    console.error("[SYSTEM] Messenger shutdown failed:", error);
+  }
+
+  try {
     if (server) {
       await new Promise(
         (resolve) => {
@@ -7700,8 +7771,24 @@ async function gracefulShutdown(
     );
   }
 
+  try {
+    await db.close();
+  } catch (error) {
+    console.error("[SYSTEM] Database shutdown failed:", error);
+  }
+
   process.exit(0);
 }
+
+process.once("uncaughtException", (error) => {
+  console.error("[SYSTEM] Uncaught exception:", error);
+  void gracefulShutdown("uncaughtException");
+});
+
+process.once("unhandledRejection", (reason) => {
+  console.error("[SYSTEM] Unhandled rejection:", reason);
+  void gracefulShutdown("unhandledRejection");
+});
 
 process.once(
   "SIGTERM",
