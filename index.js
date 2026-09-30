@@ -120,10 +120,7 @@ const {
 // CONFIGURATION
 // ============================================================
 
-const ADMIN_IDS = (process.env.ADMIN_IDS || "")
-  .split(",")
-  .map((id) => id.trim())
-  .filter(Boolean);
+const { ADMIN_IDS, isAdmin } = require("./permissions");
 
 const RANDOM_ROAST_ENABLED =
   !/^(0|false|no|off)$/i.test(
