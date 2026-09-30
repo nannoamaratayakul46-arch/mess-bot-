@@ -197,6 +197,12 @@ let watchdogConsecutiveFailures = 0;
 let watchdogMessengerConnected =
   false;
 
+let watchdogMessengerDisconnectedAt =
+  Date.now();
+
+const WATCHDOG_MESSENGER_TIMEOUT_MS =
+  3 * 60 * 1000;
+
 let watchdogShuttingDown = false;
 
 let watchdogLastLogAt = 0;
@@ -217,13 +223,14 @@ function watchdogHeartbeat() {
 function watchdogSetMessengerConnected(
   connected
 ) {
-  watchdogMessengerConnected =
-    Boolean(connected);
+  const next = Boolean(connected);
+  watchdogMessengerConnected = next;
 
-  if (
-    watchdogMessengerConnected
-  ) {
+  if (next) {
+    watchdogMessengerDisconnectedAt = 0;
     watchdogHeartbeat();
+  } else if (!watchdogMessengerDisconnectedAt) {
+    watchdogMessengerDisconnectedAt = Date.now();
   }
 }
 
@@ -306,12 +313,21 @@ function getWatchdogStatus() {
     eventLoopAgeMs <=
     WATCHDOG_EVENT_LOOP_TIMEOUT_MS;
 
+  const messengerConnectionHealthy =
+    watchdogMessengerConnected ||
+    (
+      !watchdogMessengerDisconnectedAt ||
+      now - watchdogMessengerDisconnectedAt <
+        WATCHDOG_MESSENGER_TIMEOUT_MS
+    );
+
   const watchdogHealthy =
     !watchdogShuttingDown &&
     (
       inStartupGrace ||
       (
         eventLoopHealthy &&
+        messengerConnectionHealthy &&
         watchdogConsecutiveFailures <
           WATCHDOG_FAILURE_LIMIT
       )
@@ -332,6 +348,14 @@ function getWatchdogStatus() {
 
     messengerConnected:
       watchdogMessengerConnected,
+
+    messengerDisconnectedAt:
+      watchdogMessengerDisconnectedAt || null,
+
+    messengerConnectionAgeMs:
+      watchdogMessengerConnected || !watchdogMessengerDisconnectedAt
+        ? 0
+        : now - watchdogMessengerDisconnectedAt,
 
     uptimeMs,
 
@@ -398,7 +422,29 @@ function runWatchdogCheck() {
     eventLoopDelay <=
     WATCHDOG_EVENT_LOOP_TIMEOUT_MS;
 
+  const messengerConnectionHealthy =
+    watchdogMessengerConnected ||
+    (
+      !watchdogMessengerDisconnectedAt ||
+      now - watchdogMessengerDisconnectedAt <
+        WATCHDOG_MESSENGER_TIMEOUT_MS
+    );
+
   if (
+    !messengerConnectionHealthy
+  ) {
+    watchdogConsecutiveFailures++;
+
+    watchdogRecomputeMode();
+
+    console.error(
+      `[WATCHDOG] Messenger connection unavailable for ${now - watchdogMessengerDisconnectedAt}ms`
+    );
+
+    console.error(
+      `[WATCHDOG] Failure ${watchdogConsecutiveFailures}/${WATCHDOG_FAILURE_LIMIT}`
+    );
+  } else if (
     !eventLoopHealthy
   ) {
     watchdogConsecutiveFailures++;
@@ -1121,30 +1167,50 @@ async function trafficProcessQueue() {
       trafficSendQueue.shift();
 
       try {
-        trafficRecordSend(
-          job.threadID,
-          decision.fingerprint
-        );
-
         await new Promise((resolve) => {
+          let settled = false;
+
+          const finish = (error, messageInfo = null) => {
+            if (settled) return;
+            settled = true;
+
+            if (!error) {
+              trafficRecordSend(
+                job.threadID,
+                decision.fingerprint
+              );
+            }
+
+            if (typeof job.callback === "function") {
+              try {
+                job.callback(
+                  error || null,
+                  messageInfo || null
+                );
+              } catch (callbackError) {
+                console.error(
+                  "[TRAFFIC] Messenger callback failed:",
+                  callbackError
+                );
+              }
+            }
+
+            resolve();
+          };
+
+          const timeout = setTimeout(() => {
+            const error = new Error(
+              "Messenger send timed out; Traffic Governor released the queue."
+            );
+            error.code = "ECLIPSE_SEND_TIMEOUT";
+            finish(error);
+          }, 30_000);
+
           try {
             const sendCallback = (error, messageInfo) => {
-                if (typeof job.callback === "function") {
-                  try {
-                    job.callback(
-                      error || null,
-                      messageInfo || null
-                    );
-                  } catch (callbackError) {
-                    console.error(
-                      "[TRAFFIC] Messenger callback failed:",
-                      callbackError
-                    );
-                  }
-                }
-
-                resolve();
-              };
+              clearTimeout(timeout);
+              finish(error, messageInfo);
+            };
 
             if (job.replyToMessageID) {
               job.api.sendMessage(
@@ -1161,18 +1227,8 @@ async function trafficProcessQueue() {
               );
             }
           } catch (error) {
-            if (typeof job.callback === "function") {
-              try {
-                job.callback(error);
-              } catch (callbackError) {
-                console.error(
-                  "[TRAFFIC] Messenger callback failed:",
-                  callbackError
-                );
-              }
-            }
-
-            resolve();
+            clearTimeout(timeout);
+            finish(error);
           }
         });
       } catch (error) {
