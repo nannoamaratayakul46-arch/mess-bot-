@@ -4,7 +4,7 @@
   "description": "Facebook Messenger bot using saved session cookies",
   "main": "index.js",
   "scripts": {
-    "start": "node -r ./rpg-help-preload -r ./trigger-runtime-fix -r ./broadcast-runtime-fix index.js",
+    "start": "node -r ./rpg-help-preload -r ./trigger-runtime-fix -r ./broadcast-runtime-fix bootstrap.js",
     "test": "node --test"
   },
   "engines": {
@@ -16,6 +16,6 @@
     "pg": "^8.11.5",
     "yt-search": "latest",
     "youtube-dl-exec": "3.0.10",
-    "ws3-fca": "2.0.0"
+    "ws3-fca": "2.0.1"
   }
 }
