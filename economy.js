@@ -500,6 +500,11 @@ function createEconomyAdminMenu() {
       "    ♡ reply + !setmoney <amount>",
       "",
       "୨୧ bank",
+      "    ♡ !loan <amount>",
+      "    ♡ !loan status",
+      "    ♡ !loan pay <amount|all>",
+      "    ♡ bank earns 1% daily interest",
+      "    ♡ loans carry 10% interest",
       "    ♡ !addbank <amount>",
       "    ♡ !addbank @user <amount>",
       "    ♡ reply + !addbank <amount>",
@@ -771,6 +776,117 @@ async function handleWithdraw(
       )
     );
   }
+}
+
+// ============================================================================
+// LOANS
+// ============================================================================
+
+async function handleLoan(api, event, args = []) {
+  const threadID = String(event.threadID);
+  const userID = String(event.senderID);
+  const action = String(args[0] || "").toLowerCase();
+
+  if (action === "status" || action === "info") {
+    const user = await db.getUser(threadID, userID);
+    const remaining = Number(user.loan_remaining) || 0;
+    const principal = Number(user.loan_principal) || 0;
+    const due = Number(user.loan_due) || 0;
+    const credit = Number(user.credit_score) || 600;
+
+    if (remaining <= 0) {
+      await reply(api, threadID, createBox("🏦 LOAN STATUS", [
+        "No active loan.",
+        "",
+        "💳 Credit score: " + credit,
+        "Borrow with: !loan <amount>"
+      ]));
+      return true;
+    }
+
+    const dueText = due ? new Date(due).toLocaleString() : "not set";
+
+    await reply(api, threadID, createBox("🏦 LOAN STATUS", [
+      "💰 Principal: " + formatCoins(principal) + " coins",
+      "💸 Remaining: " + formatCoins(remaining) + " coins",
+      "📅 Due: " + dueText,
+      "💳 Credit score: " + credit,
+      "",
+      "Pay with: !loan pay <amount|all>"
+    ]));
+    return true;
+  }
+
+  if (action === "pay" || action === "repay") {
+    const user = await db.getUser(threadID, userID);
+    const remaining = Number(user.loan_remaining) || 0;
+
+    if (remaining <= 0) {
+      await reply(api, threadID, createError("You don't have an active loan."));
+      return true;
+    }
+
+    const amount = parseAmountInput(args[1], Number(user.balance) || 0);
+
+    if (amount === null) {
+      await reply(api, threadID, createError("Usage: !loan pay <amount|all>"));
+      return true;
+    }
+
+    try {
+      const result = await db.payLoan(threadID, userID, amount);
+
+      await reply(api, threadID, createBox(
+        result.paidOff ? "🏦 LOAN PAID" : "🏦 LOAN PAYMENT",
+        [
+          "💸 Paid: -" + formatCoins(result.payment) + " coins",
+          "💰 Remaining: " + formatCoins(result.remaining) + " coins",
+          "💳 Credit score: " + result.creditScore,
+          result.paidOff ? "✨ Loan cleared. Your credit improved." : "Keep paying before the due date."
+        ]
+      ));
+    } catch (error) {
+      await reply(api, threadID, createError(error.message || "Loan payment failed."));
+    }
+
+    return true;
+  }
+
+  const user = await db.getUser(threadID, userID);
+  const wallet = Number(user.balance) || 0;
+  const amount = parseAmountInput(args[0], 0);
+
+  if (amount === null) {
+    await reply(api, threadID, createBox("🏦 LOAN", [
+      "Borrow coins directly into your wallet.",
+      "",
+      "Usage: !loan <amount>",
+      "Status: !loan status",
+      "Repay: !loan pay <amount|all>",
+      "",
+      "Interest: 10% per loan",
+      "Term: 7 days",
+      "Wallet: " + formatCoins(wallet) + " coins"
+    ]));
+    return true;
+  }
+
+  try {
+    const result = await db.applyLoan(threadID, userID, amount);
+
+    await reply(api, threadID, createBox("🏦 LOAN APPROVED", [
+      "💰 Received: +" + formatCoins(result.principal) + " coins",
+      "📈 Interest: 10% (" + formatCoins(result.totalDue - result.principal) + " coins)",
+      "💸 Total due: " + formatCoins(result.totalDue) + " coins",
+      "📅 Due: " + new Date(result.dueDate).toLocaleString(),
+      "",
+      "Use !loan pay all to clear it."
+    ]));
+  } catch (error) {
+    await reply(api, threadID, createError(error.message || "Loan request failed."));
+  }
+
+  return true;
 }
 
 // ============================================================================
@@ -2599,6 +2715,25 @@ async function handleEconomyCommand(
       args
     );
 
+    return true;
+  }
+
+  // --------------------------------------------------------------------------
+  // LOANS
+  // --------------------------------------------------------------------------
+
+  if (
+    text === "!loan" ||
+    text.startsWith("!loan ")
+  ) {
+    const args =
+      originalText
+        .slice("!loan".length)
+        .trim()
+        .split(/\s+/)
+        .filter(Boolean);
+
+    await handleLoan(api, event, args);
     return true;
   }
 
