@@ -5,7 +5,7 @@ Module._load=function(req,parent,isMain){
   if(req==='./triggers'&&parent&&/index\.js$/.test(parent.filename)&&typeof out.getTriggerReply==='function'){
     const original=out.getTriggerReply;
     out.getTriggerReply=async function(body,senderId,threadId,api,event){
-      const reply=await original(body,senderId,threadId);
+      const reply=await original(body,senderId,threadId,api,event);
       if(String(reply).trim().toLowerCase()!=='jaiden na naman')return reply;
       const r=event&&event.messageReply,id=r&&(r.senderID||r.senderId||r.sender_id);
       if(!id||!api||typeof api.getUserInfo!=='function')return reply;
@@ -19,7 +19,8 @@ Module._extensions['.js']=function(mod,file){
   if(/index\.js$/.test(file)){
     const fs=require('fs');let s=fs.readFileSync(file,'utf8');
     s=s.replace(/getTriggerReply\(\n\s*body,\n\s*senderId,\n\s*threadId\n\s*\)/,'getTriggerReply(\n      body,\n      senderId,\n      threadId,\n      api,\n      event\n    )');
-    s=s.replace('originalText !== require("./slash-banats")()','originalText !== "sino uupakan kong mukhang aso dito?"');
+    s=s.replace('originalText !== require("./slash-banats")()','!require("./slash-banats").is(originalText)');
+    s=s.replace('originalText !== "sino uupakan kong mukhang aso dito?"','!require("./slash-banats").is(originalText)');
     s=s.replace('sendReplyWithTyping(\n          api,\n          "sino uupakan kong mukhang aso dito?",\n          threadID\n        );','sendReplyWithTyping(api, require("./slash-banats")(), threadID);');
     return mod._compile(s,file);
   }
