@@ -4,6 +4,9 @@ const { reply } = require("./util");
 const triviaManager = require("./trivia-manager");
 const riddleManager = require("./riddle-manager");
 const examManager = require("./exam-manager");
+const gameRegistry = require("./game-registry");
+const { handleSlots: handleExternalSlots } = require("./slots");
+const socialGames = require("./social-games");
 
 // ============================================================
 // CONFIG
@@ -3003,254 +3006,11 @@ async function resolveBlackjack(api, event, action) {
 // ============================================================
 // SLOTS
 // ============================================================
-
-const SLOT_SYMBOLS = [
-  "🍒",
-  "🍋",
-  "🍊",
-  "🍉",
-  "⭐",
-  "💎",
-];
-
-function slotMultiplier(reels) {
-  const [a, b, c] = reels;
-
-  if (a === b && b === c) {
-    if (a === "💎") {
-      return 20;
-    }
-
-    if (a === "⭐") {
-      return 15;
-    }
-
-    return 10;
-  }
-
-  if (a === b || b === c || a === c) {
-    return 2;
-  }
-
-  return 0;
-}
-
-function slotsRandomSymbol() {
-  return SLOT_SYMBOLS[randInt(0, SLOT_SYMBOLS.length - 1)];
-}
-
-function slotsRandomReels() {
-  return [
-    slotsRandomSymbol(),
-    slotsRandomSymbol(),
-    slotsRandomSymbol(),
-  ];
-}
-
-function slotsReelText(reels, highlight = false) {
-  const cells = highlight
-    ? reels.map((symbol) => `[${symbol}]`)
-    : reels;
-
-  return `♡  ${cells.join("   ·   ")}  ♡`;
-}
+// Slots live in slots.js. games.js remains the command gateway,
+// while the registry makes the connection explicit and testable.
 
 async function handleSlots(api, event, args) {
-  const threadID = String(event.threadID);
-  const userID = String(event.senderID);
-
-  if (!lockGame(threadID, userID)) {
-    await safeReply(api, event, challengeBusyText());
-
-    return;
-  }
-
-  let betCharged = false;
-  let settled = false;
-  let bet = NaN;
-
-  try {
-    bet = parseBet(args?.[0]);
-
-    if (!validBet(bet)) {
-      await safeReply(
-        api,
-        event,
-        [
-          "♡ invalid wager.",
-          "",
-          "minimum · 1",
-          `maximum · ${formatNumber(MAX_BET)} coins`,
-        ].join("\n")
-      );
-
-      return;
-    }
-
-    // SEND
-    const animator = await createAnimator(
-      api,
-      threadID,
-      [
-        gameHeader("slots", playerLine(event)),
-        "",
-        "✧ SLOTS ✧",
-        "",
-        "♡     🍒   ·   🍋   ·   ⭐     ♡",
-        "",
-        `wager · ${formatNumber(bet)} coins`,
-        "",
-        "spinning... ♡",
-      ].join("\n"),
-      "slots"
-    );
-
-    if (!animator.messageID) {
-      return;
-    }
-
-    try {
-      await db.spendBalance(
-        threadID,
-        userID,
-        bet,
-        `Slots bet: ${bet}`
-      );
-
-      betCharged = true;
-    } catch (error) {
-      await updateGameMessage(
-        api,
-        threadID,
-        animator.messageID,
-        [
-          gameHeader("slots"),
-          "",
-          "୨୧ WAGER REJECTED",
-          "",
-          error.message || "not enough wallet coins.",
-        ].join("\n")
-      );
-
-      return;
-    }
-
-    await sleep(editDelay());
-
-    // EDIT #1: single spin frame
-    await updateGameMessage(
-      api,
-      threadID,
-      animator.messageID,
-      [
-        gameHeader("slots"),
-        "",
-        thinDivider(),
-        "",
-        slotsReelText(slotsRandomReels()),
-        "",
-        "♡ spinning...",
-      ].join("\n")
-    );
-
-    await sleep(editDelay());
-
-    const reels = slotsRandomReels();
-    const multiplier = slotMultiplier(reels);
-    const won = multiplier > 0;
-
-    let finalText;
-
-    if (won) {
-      const payout = bet * multiplier;
-      const net = payout - bet;
-
-      const payoutInfo = await creditGameWinnings(
-        threadID,
-        userID,
-        payout
-      );
-
-      // Payout credited: the wager is resolved, never refund it.
-      settled = true;
-
-      await db.addXP(threadID, userID, xpForGame("slots"));
-
-      const balanceText = await getFinalBalanceText(
-        threadID,
-        userID
-      );
-
-      finalText = [
-        gameHeader("slots"),
-        "",
-        thinDivider(),
-        "",
-        slotsReelText(reels, true),
-        "",
-        `♡ ${multiplier}× MATCH`,
-        "",
-        `♡ payout · +${formatNumber(payout)} coins`,
-        `✧ profit · +${formatNumber(net)} coins`,
-        "",
-        "that was pretty lucky ♡",
-        "",
-        balanceText,
-      ].join("\n");
-    } else {
-      // Loss: the wager is already spent, never refund it.
-      settled = true;
-
-      await db.addXP(
-        threadID,
-        userID,
-        -Math.floor(xpForGame("slots") * 0.5)
-      );
-
-      const balanceText = await getFinalBalanceText(
-        threadID,
-        userID
-      );
-
-      finalText = [
-        gameHeader("slots"),
-        "",
-        thinDivider(),
-        "",
-        slotsReelText(reels),
-        "",
-        "୨୧ NO MATCH",
-        "",
-        `♡ lost · -${formatNumber(bet)} coins`,
-        "",
-        balanceText,
-      ].join("\n");
-    }
-
-    // EDIT #2: final result
-    await updateGameMessage(
-      api,
-      threadID,
-      animator.messageID,
-      finalText
-    );
-  } catch (error) {
-    console.error("[games] slots:", error);
-
-    if (betCharged && !settled && validBet(bet)) {
-      await db
-        .addBalance(threadID, userID, bet)
-        .catch(() => {});
-    }
-
-    await safeReply(
-      api,
-      event,
-      "♡ the reels couldn't finish. your wager was protected."
-    );
-  } finally {
-    unlockGame(threadID, userID);
-  }
+  return handleExternalSlots(api, event, args);
 }
 
 // ============================================================
@@ -3676,163 +3436,12 @@ async function handleGameStatus(api, event) {
 
 async function handleGameRules(api, event) {
   const threadID = String(event.threadID);
-
-  await sendMessageAsync(
-    api,
-    threadID,
-    [
-      "╭──────────────────────────────╮",
-      "          ♡ ECLIPSE ♡",
-      "           GAME RULES",
-      "╰──────────────────────────────╯",
-      "",
-      "୨୧ CHALLENGES",
-      "",
-      "♡ !trivia",
-      "   answer questions · +50 XP / +150 coins",
-      "",
-      "♡ !riddle",
-      "   solve mysteries · +50 XP / +150 coins",
-      "",
-      "♡ !math",
-      "   solve equations · +50 XP / +175 coins",
-      "",
-      thinDivider(),
-      "",
-      "✧ LUCK",
-      "",
-      "♡ !roll <bet> [sides] [tier]",
-      "   safe · 1.5×",
-      "   balanced · 2×",
-      "   risky · 4×",
-      "   wins open a 50/50 ladder · max 3",
-      "",
-      "୨୧ !coinflip <bet> <heads|tails>",
-      "   correct calls open a 50/50 ladder",
-      "   max 5 doubles",
-      "",
-      "♡ !slots <bet>",
-      "   pair · 2×",
-      "   triple · 10×",
-      "   ⭐⭐⭐ · 15×",
-      "   💎💎💎 · 20×",
-      "",
-      thinDivider(),
-      "",
-      "୨୧ SKILL",
-      "",
-      "♡ !guess <min> <max> [bet]",
-      "   1st try · 4×",
-      "   2nd try · 2.5×",
-      "   3rd try · 1.5×",
-      "   optional double-down before final guess",
-      "",
-      "୨୧ !rps <rock|paper|scissors>",
-      "   best of 3",
-      "   persistent win streak",
-      "   streak boosts coins up to 2.5×",
-      "",
-      thinDivider(),
-      "",
-      "✧ TABLE",
-      "",
-      "♡ !blackjack <bet>",
-      "   natural blackjack · 2.5×",
-      "   win · 2×",
-      "   push · wager refunded",
-      "   !hit · !stand · !double",
-      "",
-      "🌑 !chamber · last chamber (pvp pot)",
-      "   !chamber rules for the full rules",
-      "",
-      thinDivider(),
-      "",
-      "୨୧ ECLIPSE",
-      "",
-      "♡ !8ball <question>",
-      "   ask me anything · no wager",
-      "",
-      "♡ !daily",
-      "   claim your daily reward",
-      "",
-      "♡ !work",
-      "   take a little shift",
-      "",
-      "after daily/work:",
-      "reply 'gamble' or 'keep'",
-      "",
-      thinDivider(),
-      "",
-      `maximum wager · ${formatNumber(MAX_BET)} coins`,
-      "",
-      "wagers are charged before resolution.",
-      "unexpected wager failures are refunded ♡",
-      "",
-      "♡ !games · return to the game room",
-    ].join("\n")
-  );
-
-  return true;
+  await sendMessageAsync(api, threadID, gameRegistry.renderRules());
 }
-
-// ============================================================
-// GAME CENTER
-// ============================================================
 
 async function handleGameCenter(api, event) {
   const threadID = String(event.threadID);
-
-  await sendMessageAsync(
-    api,
-    threadID,
-    [
-      "╭──────────────────────────────╮",
-      "          ♡ ECLIPSE ♡",
-      "           GAME ROOM",
-      "╰──────────────────────────────╯",
-      "",
-      "       ୨୧ choose something ୨୧",
-      "",
-      "♡ LUCK",
-      "   ┊ !roll       · roll the dice",
-      "   ┊ !coinflip   · heads or tails",
-      "   ┊ !slots      · try your luck",
-      "   ┊ !guess      · guess the number",
-      "",
-      "♡ PLAY",
-      "   ┊ !rps        · rock paper scissors",
-      "   ┊ !blackjack  · beat the dealer",
-      "   ┊ !chamber    · last chamber (pvp)",
-      "",
-      "♡ MIND",
-      "   ┊ !trivia       · test your knowledge",
-      "   ┊ !riddle       · solve a mystery",
-      "   ┊ !math         · quick calculation",
-      "   ┊ !exam         · take an examination",
-      "   ┊ !investigator · solve the case",
-      "",
-      "♡ ECLIPSE",
-      "   ┊ !8ball      · ask me anything",
-      "",
-      thinDivider(),
-      "",
-      "♡ COMING SOON",
-      "   ┊ !simulation · coming soon",
-      "   ┊ !debate     · coming soon",
-      "",
-      thinDivider(),
-      "",
-      "୨୧ OTHER",
-      "   ┊ !daily      · daily reward",
-      "   ┊ !work       · earn some coins",
-      "",
-      "♡ !games rules  · complete rules",
-      "♡ !games status · your game status",
-      "",
-      "          ♡ have fun ♡",
-    ].join("\n")
-  );
-
+  await sendMessageAsync(api, threadID, gameRegistry.renderMenu());
   return true;
 }
 
@@ -3880,6 +3489,23 @@ async function handleGameCommand(api, event, command, args) {
   const cmd = String(command || "").trim().toLowerCase();
 
   const normalizedArgs = normalizeArgs(args);
+
+  // External engines are registered here instead of being injected by a
+  // Node module-loader preload. This keeps command routing explicit.
+  const registeredGame = gameRegistry.getGame(cmd);
+
+  if (registeredGame?.command === "slots") {
+    await handleExternalSlots(api, event, normalizedArgs);
+    return true;
+  }
+
+  if (registeredGame?.category === "SOCIAL CHAOS") {
+    const socialText = socialGames.handleSocialGame(cmd, normalizedArgs);
+    if (socialText) {
+      await sendMessageAsync(api, String(event.threadID), socialText);
+    }
+    return true;
+  }
 
   // Action words typed like commands (the prompts show "!hit", "!stand"...)
   // are routed to the open game, but only when that game accepts them.
