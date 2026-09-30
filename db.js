@@ -1221,6 +1221,34 @@ async function query(text, params = []) {
   return requireConn().query(text, params);
 }
 
+async function withTransaction(work) {
+  if (typeof work !== "function") {
+    throw new TypeError("withTransaction requires a function.");
+  }
+
+  const client = await requireConn().connect();
+
+  try {
+    await client.query("BEGIN");
+    const result = await work(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (error) {
+    try { await client.query("ROLLBACK"); } catch {}
+    throw error;
+  } finally {
+    client.release();
+  }
+}
+
+async function close() {
+  if (!pool) return;
+  const current = pool;
+  pool = null;
+  await current.end();
+  console.log("[DB] Neon PostgreSQL connection pool closed.");
+}
+
 // ═══════════════════════════════════════════════════════════
 // USER MANAGEMENT
 // ═══════════════════════════════════════════════════════════
@@ -3742,6 +3770,8 @@ module.exports = {
   // Database
   query,
   connect,
+  close,
+  withTransaction,
   healthCheck,
   getDashboardSnapshot,
   getDashboardUser,
