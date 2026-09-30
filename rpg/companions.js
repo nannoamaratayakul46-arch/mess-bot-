@@ -95,9 +95,17 @@ async function hatch(t,u,id){
   if(await db.getRpgItemQuantity(t,u,id)<1)throw new Error("You do not have that egg.");
   await db.consumeRpgItem(t,u,id,1);
   const pet=e.pool[Math.floor(Math.random()*e.pool.length)],now=Date.now();
-  await db.query(`INSERT INTO rpg_player_pets(thread_id,user_id,pet_id,name,level,experience,active,obtained_from,obtained_at,updated_at,evolution_stage,evolution_xp)
-    VALUES($1,$2,$3,$4,1,0,FALSE,$5,$6,$6,1,0)
-    ON CONFLICT(thread_id,user_id,pet_id) DO UPDATE SET experience=rpg_player_pets.experience+100,level=LEAST(${MAX_LEVEL},rpg_player_pets.level+CASE WHEN rpg_player_pets.experience+100>=${XP_BASE}*rpg_player_pets.level*(rpg_player_pets.level+1)/2 THEN 1 ELSE 0 END),updated_at=EXCLUDED.updated_at`,[String(t),String(u),pet,PETS[pet].name,"hatch:"+id,now]);
+
+  try {
+    await db.query(`INSERT INTO rpg_player_pets(thread_id,user_id,pet_id,name,level,experience,active,obtained_from,obtained_at,updated_at,evolution_stage,evolution_xp)
+      VALUES($1,$2,$3,$4,1,0,FALSE,$5,$6,$6,1,0)
+      ON CONFLICT(thread_id,user_id,pet_id) DO UPDATE SET experience=rpg_player_pets.experience+100,level=LEAST(${MAX_LEVEL},rpg_player_pets.level+CASE WHEN rpg_player_pets.experience+100>=${XP_BASE}*rpg_player_pets.level*(rpg_player_pets.level+1)/2 THEN 1 ELSE 0 END),updated_at=EXCLUDED.updated_at`,[String(t),String(u),pet,PETS[pet].name,"hatch:"+id,now]);
+  } catch (error) {
+    // Never burn an egg when pet creation fails.
+    await db.addRpgItem(t,u,id,1);
+    throw error;
+  }
+
   return PETS[pet];
 }
 
@@ -134,7 +142,17 @@ async function evolve(t,u,id){
   if(level<req.level)throw new Error(`Requires companion level ${req.level}. Current: ${level}.`);
   if(xp<req.xp)throw new Error(`Requires ${req.xp.toLocaleString()} total companion XP. Current: ${xp.toLocaleString()}.`);
   await db.spendBalance(t,u,req.coins,`Companion evolution: ${pet.name} Stage ${next}`);
-  await db.query("UPDATE rpg_player_pets SET evolution_stage=$1,evolution_xp=$2,updated_at=$3 WHERE id=$4",[next,xp,Date.now(),row.id]);
+
+  const updated = await db.query(
+    "UPDATE rpg_player_pets SET evolution_stage=$1,evolution_xp=$2,updated_at=$3 WHERE id=$4 AND evolution_stage=$5",
+    [next,xp,Date.now(),row.id,current]
+  );
+
+  if (updated.rowCount !== 1) {
+    await db.addBalance(t,u,req.coins,`Refund: concurrent companion evolution ${pet.name} Stage ${next}`);
+    throw new Error("Companion evolution was already completed by another request. Your coins were refunded.");
+  }
+
   return {...pet,level,experience:xp,evolutionStage:next,evolutionName:EVOLUTION_STAGES[next-1].name,unlocked:EVOLUTION_STAGES[next-1].unlock,cost:req.coins,skill:pet.skills?.[Math.min(3,Math.floor((next-1)/2))]||pet.ability};
 }
 
