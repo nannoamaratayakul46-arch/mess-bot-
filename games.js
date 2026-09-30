@@ -216,6 +216,21 @@ function winningTaxLine(tax) {
   return amount > 0 ? `♡ tax       -${formatNumber(amount)}` : "";
 }
 
+async function recordGamblingLossSafe(threadID, userID, amount) {
+  try { return await db.recordGamblingLoss(threadID, userID, amount); }
+  catch (error) { console.error("[games] gambling protection:", error); return { lossStreak: 0, triggered: false, payout: 0 }; }
+}
+
+async function recordGamblingWinSafe(threadID, userID) {
+  try { await db.recordGamblingWin(threadID, userID); }
+  catch (error) { console.error("[games] gambling protection reset:", error); }
+}
+
+function gamblingProtectionLine(protection) {
+  const payout = Math.max(0, Math.floor(Number(protection && protection.payout) || 0));
+  return payout > 0 ? ["", "♡ PROTECTION MONEY", ` +${formatNumber(payout)} coins returned after 3 consecutive losses.`].join("\n") : "";
+}
+
 // ============================================================
 // REWARDS
 // ============================================================
@@ -880,6 +895,9 @@ async function resolveClaimGamble(api, event, actionText) {
 
   if (won) {
     payoutInfo = await creditGameWinnings(threadID, userID, payout);
+    await recordGamblingWinSafe(threadID, userID);
+  } else {
+    payoutInfo.protection = await recordGamblingLossSafe(threadID, userID, session.amount);
   }
 
   const balanceText = await getFinalBalanceText(threadID, userID);
@@ -897,6 +915,7 @@ async function resolveClaimGamble(api, event, actionText) {
       : `♡ lost     -${formatNumber(session.amount)} coins`,
     "",
     won ? "that was a little lucky." : "don't look so sad ♡",
+    won ? "" : gamblingProtectionLine(payoutInfo.protection),
     "",
     balanceText,
   ].join("\n");
@@ -1566,6 +1585,7 @@ async function handleRoll(api, event, args) {
 
     if (!won) {
       settled = true;
+      const protection = await recordGamblingLossSafe(threadID, userID, bet);
 
       const balanceText = await getFinalBalanceText(threadID, userID);
 
@@ -1582,6 +1602,7 @@ async function handleRoll(api, event, args) {
         flavor,
         "",
         `♡ lost · -${formatNumber(bet)} coins`,
+        gamblingProtectionLine(protection),
         "",
         balanceText,
       ].join("\n");
@@ -1593,6 +1614,8 @@ async function handleRoll(api, event, args) {
 
       return;
     }
+
+    await recordGamblingWinSafe(threadID, userID);
 
     const session = {
       type: "roll_ladder",
@@ -1664,6 +1687,7 @@ async function resolveRollLadder(api, event, actionText) {
       session.pendingPayout
     );
 
+    await recordGamblingWinSafe(threadID, userID);
     await db.addXP(threadID, userID, xpForGame("roll"));
 
     const balanceText = await getFinalBalanceText(threadID, userID);
@@ -2033,6 +2057,12 @@ async function resolveGuess(api, event, guessText) {
           isCorrect,
           coinsAmount
         );
+
+        if (isCorrect) {
+          await recordGamblingWinSafe(threadID, userID);
+        } else {
+          reward.protection = await recordGamblingLossSafe(threadID, userID, session.bet);
+        }
       } else {
         reward = await awardPlayer(threadID, userID, "guess", isCorrect);
       }
@@ -2052,6 +2082,7 @@ async function resolveGuess(api, event, guessText) {
         session.bet && !isCorrect
           ? `♡ lost · -${formatNumber(session.bet)} coins`
           : "",
+        session.bet && !isCorrect ? gamblingProtectionLine(reward.protection) : "",
         "",
         rewardLine(reward, balanceText, isCorrect),
       ]
@@ -2154,7 +2185,7 @@ async function handleCoinFlip(api, event, args) {
       betText = first;
     }
 
-    bet = parseBet(betText);
+    bet = await resolveBet(threadID, userID, parseBet(betText));
 
     if (!validBet(bet) || !["heads", "tails"].includes(choice)) {
       unlockGame(threadID, userID);
@@ -2250,6 +2281,7 @@ async function handleCoinFlip(api, event, args) {
 
     if (!won) {
       settled = true;
+      const protection = await recordGamblingLossSafe(threadID, userID, bet);
 
       const balanceText = await getFinalBalanceText(threadID, userID);
 
@@ -2262,6 +2294,7 @@ async function handleCoinFlip(api, event, args) {
         `result · ${result}`,
         "",
         `♡ lost · -${formatNumber(bet)} coins`,
+        gamblingProtectionLine(protection),
         "",
         "the coin had other plans.",
         "",
@@ -2275,6 +2308,8 @@ async function handleCoinFlip(api, event, args) {
 
       return;
     }
+
+    await recordGamblingWinSafe(threadID, userID);
 
     const session = {
       type: "coinflip_ladder",
@@ -2336,6 +2371,7 @@ async function resolveCoinflipLadder(api, event, actionText) {
       session.pendingPayout
     );
 
+    await recordGamblingWinSafe(threadID, userID);
     await db.addXP(threadID, userID, xpForGame("coinflip"));
 
     const balanceText = await getFinalBalanceText(threadID, userID);
@@ -2544,7 +2580,7 @@ async function handleBlackjack(api, event, args) {
   let bet = NaN;
 
   try {
-    bet = parseBet(args?.[0]);
+    bet = await resolveBet(threadID, userID, parseBet(args?.[0]));
 
     if (!validBet(bet)) {
       unlockGame(threadID, userID);
@@ -2657,6 +2693,7 @@ async function handleBlackjack(api, event, args) {
         );
 
         await db.addXP(threadID, userID, xpForGame("blackjack"));
+        await recordGamblingWinSafe(threadID, userID);
 
         const balanceText = await getFinalBalanceText(threadID, userID);
 
@@ -2733,93 +2770,62 @@ async function handleBlackjack(api, event, args) {
 
 async function settleBlackjack(api, event, session) {
   const threadID = String(event.threadID);
-
   const userID = String(event.senderID);
 
   let botValue = calcHandValue(session.botHand);
-
   while (botValue < 17) {
     session.botHand.push(drawCard(session.deck));
-
     botValue = calcHandValue(session.botHand);
   }
 
   const playerValue = calcHandValue(session.playerHand);
-
   let result = "loss";
   let resultText = "the dealer wins.";
+  let payoutInfo = { gross: 0, tax: 0, net: 0 };
+  let protection = { payout: 0 };
 
-  if (botValue > 21) {
-    result = "win";
-    resultText = "the dealer busted ♡";
-  } else if (playerValue > botValue) {
-    result = "win";
-    resultText = "your hand wins ♡";
-  } else if (playerValue === botValue) {
-    result = "draw";
-    resultText = "push — neither hand wins.";
-  }
+  if (botValue > 21) { result = "win"; resultText = "the dealer busted ♡"; }
+  else if (playerValue > botValue) { result = "win"; resultText = "your hand wins ♡"; }
+  else if (playerValue === botValue) { result = "draw"; resultText = "push — neither hand wins."; }
 
   if (result === "draw") {
     await db.addBalance(threadID, userID, session.bet);
   } else if (result === "win") {
-    const payoutInfo = await creditGameWinnings(
-      threadID,
-      userID,
-      session.bet * 2
-    );
-
+    payoutInfo = await creditGameWinnings(threadID, userID, session.bet * 2);
     await db.addXP(threadID, userID, xpForGame("blackjack"));
+    await recordGamblingWinSafe(threadID, userID);
   } else {
-    await db.addXP(
-      threadID,
-      userID,
-      -Math.floor(xpForGame("blackjack") * 0.5)
-    );
+    protection = await recordGamblingLossSafe(threadID, userID, session.bet);
+    await db.addXP(threadID, userID, -Math.floor(xpForGame("blackjack") * 0.5));
   }
 
   const balanceText = await getFinalBalanceText(threadID, userID);
-
-  const rewardBlock =
-    result === "draw"
-      ? `♡ wager refunded · ${formatNumber(session.bet)} coins`
-      : result === "win"
-        ? `♡ payout · +${formatNumber(payoutInfo.net)} coins`,
-          winningTaxLine(payoutInfo.tax),
-          `✧ XP · +${xpForGame("blackjack")}`
-        : `୨୧ lost · -${formatNumber(session.bet)} coins\n✧ XP · -${Math.floor(xpForGame("blackjack") * 0.5)}`;
+  const rewardBlock = result === "draw"
+    ? `♡ wager refunded · ${formatNumber(session.bet)} coins`
+    : result === "win"
+      ? [`♡ payout · +${formatNumber(payoutInfo.net)} coins`, winningTaxLine(payoutInfo.tax), `✧ XP · +${xpForGame("blackjack")}`].filter(Boolean).join("\n")
+      : [`୨୧ lost · -${formatNumber(session.bet)} coins`, gamblingProtectionLine(protection), `✧ XP · -${Math.floor(xpForGame("blackjack") * 0.5)}`].filter(Boolean).join("\n");
 
   const finalText = [
-    gameHeader("blackjack"),
-    "",
-    result === "win"
-      ? "♡ YOU WIN"
-      : result === "draw"
-        ? "✧ PUSH"
-        : "୨୧ DEALER WINS",
-    "",
+    gameHeader("blackjack"), "",
+    result === "win" ? "♡ YOU WIN" : result === "draw" ? "✧ PUSH" : "୨୧ DEALER WINS", "",
     `you     ${session.playerHand.join("  ")}`,
-    `        total · ${playerValue}`,
-    "",
+    `        total · ${playerValue}`, "",
     `dealer  ${session.botHand.join("  ")}`,
-    `        total · ${botValue}`,
-    "",
-    resultText,
-    "",
-    rewardBlock,
-    "",
-    balanceText,
+    `        total · ${botValue}`, "",
+    resultText, "", rewardBlock, "", balanceText,
   ].join("\n");
 
   await sendResult(api, threadID, finalText);
 }
-
 async function settleBlackjackBust(api, event, session) {
   const threadID = String(event.threadID);
 
   const userID = String(event.senderID);
 
   const playerValue = calcHandValue(session.playerHand);
+
+  const protection = await recordGamblingLossSafe(threadID, userID, session.bet);
 
   await db.addXP(
     threadID,
@@ -2841,6 +2847,7 @@ async function settleBlackjackBust(api, event, session) {
     "you crossed 21 ♡",
     "",
     `୨୧ lost · -${formatNumber(session.bet)} coins`,
+    gamblingProtectionLine(protection),
     `✧ XP · -${Math.floor(xpForGame("blackjack") * 0.5)}`,
     "",
     balanceText,
