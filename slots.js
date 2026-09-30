@@ -103,19 +103,9 @@ function evaluate(grid) {
     counts.set(symbol, (counts.get(symbol) || 0) + 1);
   }
 
-  const pair = [...counts.entries()]
-    .filter(([, count]) => count >= 2)
-    .sort((a, b) => b[1] - a[1])[0];
-
-  if (pair) {
-    const multiplier = pair[1] >= 3 ? 4 : 2;
-    return {
-      won: true,
-      multiplier,
-      wins: [{ symbol: pair[0], multiplier }],
-    };
-  }
-
+  // Two-of-a-kind is only a near-miss now.
+  // Paying for pairs made the machine heavily player-favorable and
+  // allowed repeated spins to create an effectively endless bankroll.
   return { won: false, multiplier: 0, wins: [] };
 }
 
