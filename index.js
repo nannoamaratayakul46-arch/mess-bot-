@@ -680,11 +680,12 @@ function incomingEventKeys(event) {
 
   if (messageID) {
     keys.push(`id:${messageID}`);
+    return keys;
   }
 
-  // Messenger/FCA can occasionally deliver the same logical event
-  // through a reconnect with a different/absent message ID. Keep a
-  // second semantic fingerprint so one user action cannot execute twice.
+  // Only use semantic fingerprints when Messenger did not provide a
+  // message ID. This avoids suppressing legitimate identical messages
+  // from the same user that happen to arrive in the same second.
   const timestamp = Number(
     event.timestamp ||
       event.timestampMS ||
