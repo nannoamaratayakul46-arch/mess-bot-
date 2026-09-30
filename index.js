@@ -61,6 +61,7 @@ const {
 const {
   runCleanup,
   startCleanupScheduler,
+  stopCleanupScheduler,
   getCleanupStatus,
   getDiskAudit,
   formatDiskAudit,
@@ -4130,10 +4131,8 @@ async function handleMessage(
       senderID || ""
     ).trim();
 
-  const isAdmin =
-    ADMIN_IDS.includes(
-      senderId
-    );
+  const senderIsAdmin =
+    isAdmin(senderId);
 
   // ==========================================================
   // ECLIPSE SELF-MESSAGE GUARD
