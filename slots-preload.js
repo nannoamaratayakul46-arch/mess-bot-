@@ -17,9 +17,23 @@ const originalCompile = Module.prototype._compile;
 let indexRouterPatched = false;
 
 Module.prototype._compile = function patchedCompile(content, filename) {
+  const base = path.basename(filename || "");
+
+  // Repair the malformed template interpolation in the current Social Chaos
+  // renderer before Node compiles it. This keeps the existing game module as
+  // the single source of truth instead of creating a duplicate game engine.
+  if (base === "social-games.js") {
+    const malformed = '`⚡ ${label === "Rizz" ? "Smoothness" : "Chaos":} ${secondary}%`';
+    const corrected = '`⚡ ${label === "Rizz" ? "Smoothness" : "Chaos"}: ${secondary}%`';
+    if (content.includes(malformed)) {
+      content = content.replace(malformed, corrected);
+      console.log("[social-games] Repaired malformed metric renderer.");
+    }
+  }
+
   if (
     !indexRouterPatched &&
-    path.basename(filename || "") === "index.js" &&
+    base === "index.js" &&
     path.dirname(filename || "") === __dirname
   ) {
     let patched = false;
