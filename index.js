@@ -4070,7 +4070,7 @@ async function handleMessage(
 
     if (
       !roastEnabled ||
-      originalText !== "sino uupakan kong mukhang aso dito?" ||
+      originalText !== require("./slash-banats")() ||
       !event.messageID ||
       !api ||
       typeof api.setMessageReaction !== "function"
@@ -7100,7 +7100,9 @@ async function handleAutomaticBanatMessage({
     const triggerReply = await getTriggerReply(
       body,
       senderId,
-      threadId
+      threadId,
+      api,
+      event
     );
 
     if (triggerReply) {
