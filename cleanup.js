@@ -91,6 +91,8 @@ function createCleanupMenu() {
     [
       "୨୧ status",
       "    ♡ !cleanup status",
+      "୨୧ disk audit",
+      "    ♡ !cleanup disk",
       "୨୧ maintenance",
       "    ♡ !cleanup run",
       "    ♡ !cleanup repair",
@@ -672,6 +674,277 @@ function cleanupTemporaryFiles() {
   }
 
   return removed;
+}
+
+// ============================================================
+// DISK AUDIT
+// ============================================================
+//
+// Read-only filesystem inspection for Render/ephemeral storage.
+// This deliberately does NOT delete anything.
+//
+// It focuses on OS temp storage and application-owned writable
+// directories, while skipping source dependencies and VCS data.
+// YouTube files are reported if present but are never modified.
+//
+// ============================================================
+
+function formatBytes(bytes) {
+  const value = Math.max(0, Number(bytes) || 0);
+
+  if (value < 1024) {
+    return `${value} B`;
+  }
+
+  const units = ["KB", "MB", "GB", "TB"];
+  let size = value;
+  let unit = -1;
+
+  while (size >= 1024 && unit < units.length - 1) {
+    size /= 1024;
+    unit++;
+  }
+
+  return `${size.toFixed(size >= 10 ? 1 : 2)} ${units[unit]}`;
+}
+
+function safeStatFs(directory) {
+  try {
+    if (typeof fs.statfsSync !== "function") {
+      return null;
+    }
+
+    const stats = fs.statfsSync(directory);
+    const blockSize = Number(stats.bsize || 0);
+    const blocks = Number(stats.blocks || 0);
+    const freeBlocks = Number(stats.bfree ?? stats.bavail ?? 0);
+
+    if (!blockSize || !blocks) {
+      return null;
+    }
+
+    const total = blockSize * blocks;
+    const free = blockSize * freeBlocks;
+
+    return {
+      total,
+      free,
+      used: Math.max(0, total - free),
+      usedPercent:
+        total > 0
+          ? ((total - free) / total) * 100
+          : 0,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function collectFilesRecursive(rootDirectory, options = {}) {
+  const maxFiles =
+    Math.max(1, Number(options.maxFiles || 2000));
+
+  const maxDepth =
+    Math.max(0, Number(options.maxDepth ?? 4));
+
+  const skipNames = new Set(
+    options.skipNames || [
+      "node_modules",
+      ".git",
+      ".github",
+    ]
+  );
+
+  const files = [];
+  const stack = [
+    {
+      directory: rootDirectory,
+      depth: 0,
+    },
+  ];
+
+  while (stack.length && files.length < maxFiles) {
+    const current = stack.pop();
+
+    let entries;
+    try {
+      entries = fs.readdirSync(current.directory, {
+        withFileTypes: true,
+      });
+    } catch {
+      continue;
+    }
+
+    for (const entry of entries) {
+      if (files.length >= maxFiles) {
+        break;
+      }
+
+      if (skipNames.has(entry.name)) {
+        continue;
+      }
+
+      const filePath = path.join(
+        current.directory,
+        entry.name
+      );
+
+      if (entry.isDirectory()) {
+        if (current.depth < maxDepth) {
+          stack.push({
+            directory: filePath,
+            depth: current.depth + 1,
+          });
+        }
+        continue;
+      }
+
+      if (!entry.isFile()) {
+        continue;
+      }
+
+      try {
+        const stats = fs.statSync(filePath);
+        files.push({
+          path: filePath,
+          size: Number(stats.size || 0),
+          mtimeMs: Number(stats.mtimeMs || 0),
+        });
+      } catch {}
+    }
+  }
+
+  return files;
+}
+
+function getDiskAudit() {
+  const appRoot = __dirname;
+  const tempRoot =
+    typeof os.tmpdir === "function"
+      ? os.tmpdir()
+      : "/tmp";
+
+  const filesystem =
+    safeStatFs(tempRoot) ||
+    safeStatFs(appRoot);
+
+  const roots = [
+    {
+      name: "OS temp",
+      path: tempRoot,
+      maxDepth: 5,
+    },
+    {
+      name: "app writable files",
+      path: appRoot,
+      maxDepth: 3,
+    },
+  ];
+
+  const allFiles = [];
+  const seen = new Set();
+
+  for (const root of roots) {
+    for (const file of collectFilesRecursive(root.path, {
+      maxFiles: 3000,
+      maxDepth: root.maxDepth,
+    })) {
+      const normalized = path.resolve(file.path);
+
+      if (seen.has(normalized)) {
+        continue;
+      }
+
+      seen.add(normalized);
+      allFiles.push(file);
+    }
+  }
+
+  allFiles.sort((a, b) => b.size - a.size);
+
+  const tempFiles = allFiles.filter((file) => {
+    const normalized = path.resolve(file.path);
+    const temp = path.resolve(tempRoot);
+    return (
+      normalized === temp ||
+      normalized.startsWith(temp + path.sep)
+    );
+  });
+
+  const appFiles = allFiles.filter((file) => {
+    const normalized = path.resolve(file.path);
+    const app = path.resolve(appRoot);
+    return (
+      normalized === app ||
+      normalized.startsWith(app + path.sep)
+    );
+  });
+
+  const writableFiles = allFiles.slice(0, 20);
+
+  return {
+    generatedAt: new Date().toISOString(),
+    filesystem,
+    tempRoot,
+    appRoot,
+    scanned: {
+      files: allFiles.length,
+      tempFiles: tempFiles.length,
+      appFiles: appFiles.length,
+    },
+    largestTempFiles: tempFiles.slice(0, 15),
+    largestAppFiles: appFiles.slice(0, 15),
+    largestFiles: writableFiles,
+  };
+}
+
+function formatDiskAudit(report) {
+  if (!report) {
+    return createCoquettePanel(
+      "DISK AUDIT",
+      ["♡ audit unavailable"]
+    );
+  }
+
+  const fsStats = report.filesystem || {};
+  const lines = [
+    "୨୧ filesystem",
+    `    ♡ used: ${formatBytes(fsStats.used)} / ${formatBytes(fsStats.total)}`,
+    `    ♡ free: ${formatBytes(fsStats.free)}`,
+    `    ♡ usage: ${Number(fsStats.usedPercent || 0).toFixed(1)}%`,
+    "",
+    "୨୧ scan",
+    `    ♡ OS temp files: ${Number(report.scanned?.tempFiles || 0)}`,
+    `    ♡ app files: ${Number(report.scanned?.appFiles || 0)}`,
+    `    ♡ temp root: ${report.tempRoot}`,
+    "",
+    "୨୧ largest files",
+  ];
+
+  const largest = Array.isArray(report.largestFiles)
+    ? report.largestFiles
+    : [];
+
+  if (!largest.length) {
+    lines.push("    ♡ none found");
+  } else {
+    for (const file of largest.slice(0, 10)) {
+      lines.push(
+        `    ♡ ${formatBytes(file.size)} · ${path.relative(process.cwd(), file.path) || file.path}`
+      );
+    }
+  }
+
+  lines.push(
+    "",
+    "୨୧ safety",
+    "    ♡ READ-ONLY — nothing was deleted",
+    "    ♡ YouTube files are not modified",
+    "",
+    `    ♡ generated: ${report.generatedAt}`
+  );
+
+  return createCoquettePanel("DISK AUDIT", lines);
 }
 
 // ============================================================
@@ -2904,6 +3177,8 @@ module.exports = {
 
   // Status
   getCleanupStatus,
+  getDiskAudit,
+  formatDiskAudit,
 
   healthCheck,
 
