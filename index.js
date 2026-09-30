@@ -4080,7 +4080,7 @@ async function handleMessage(
       // ws3-fca's current reaction path expects the message descriptor
       // when MQTT is active, so include the thread ID explicitly.
       api.setMessageReaction(
-        "🥷",
+        "😆",
         {
           messageID: String(event.messageID),
           threadID: threadId,
@@ -6774,7 +6774,38 @@ function sendBanatReplyWithTyping(
         const sentMessageID =
           messageInfo?.messageID;
 
-        // Self-reaction is handled by the Banat-only self-message path.
+        // React directly to the message ID returned by Messenger.
+        // This is more reliable than waiting for selfListen to deliver
+        // the outgoing message back through MQTT, and it lets Banat
+        // react to every Banat reply it sends.
+        if (
+          sentMessageID &&
+          api &&
+          typeof api.setMessageReaction === "function"
+        ) {
+          try {
+            api.setMessageReaction(
+              "😆",
+              {
+                messageID: String(sentMessageID),
+                threadID: String(threadID),
+              },
+              (reactionError) => {
+                if (reactionError) {
+                  console.error(
+                    "[BANAT] Self-reaction failed:",
+                    reactionError
+                  );
+                }
+              }
+            );
+          } catch (reactionError) {
+            console.error(
+              "[BANAT] Self-reaction error:",
+              reactionError
+            );
+          }
+        }
       };
 
       trafficSendMessage(
