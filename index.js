@@ -4005,20 +4005,31 @@ async function handleMessage(
     body,
   } = event;
 
+  const threadId =
+    String(threadID || "");
+
+  const hasBroadcastImage =
+    Boolean(
+      getBroadcastImageAttachment(event)
+    );
+
   if (
-    !threadID ||
-    typeof body !==
-      "string" ||
-    !body.trim()
+    !threadId ||
+    (
+      (
+        typeof body !== "string" ||
+        !body.trim()
+      ) &&
+      !hasBroadcastImage
+    )
   ) {
     return;
   }
 
-  const threadId =
-    String(threadID);
-
   const originalText =
-    body.trim();
+    typeof body === "string"
+      ? body.trim()
+      : "";
 
   const text =
     originalText.toLowerCase();
