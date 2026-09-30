@@ -3291,7 +3291,7 @@ async function getDashboardSnapshot() {
     conn.query(`
       SELECT
         thread_id, user_id, display_name, balance, bank_balance,
-        xp, level, games_played, wins
+        xp, games_played, wins
       FROM users
       ORDER BY COALESCE(GREATEST(COALESCE(last_daily, 0), COALESCE(last_work, 0)), 0) DESC,
                user_id ASC
@@ -3424,11 +3424,17 @@ async function getDashboardSnapshot() {
 
   const row = (result) => result.rows[0] || {};
 
+  const dashboardRecentUsers =
+    recentUsers.rows.map((user) => ({
+      ...user,
+      level: calculateLevel(user.xp),
+    }));
+
   return {
     generated_at: new Date().toISOString(),
     users: {
       ...row(userStats),
-      recent_users: recentUsers.rows,
+      recent_users: dashboardRecentUsers,
     },
     economy: {
       ...row(economyStats),
