@@ -6,6 +6,11 @@ const replies = Object.freeze([
   "Hev Abi is otw to save u, baby."
 ]);
 
-module.exports = function pickSlashBanat() {
+function pickSlashBanat() {
   return replies[Math.floor(Math.random() * replies.length)];
-};
+}
+
+pickSlashBanat.is = (text) => replies.includes(String(text || ""));
+pickSlashBanat.replies = replies;
+
+module.exports = pickSlashBanat;
