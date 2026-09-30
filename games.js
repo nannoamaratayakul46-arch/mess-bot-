@@ -24,7 +24,7 @@ const EDIT_RETRY_DELAY_MS = 400;
 const DAILY_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const WORK_COOLDOWN_MS = 60 * 60 * 1000;
 
-const MAX_BET = 1_000_000;
+const MAX_BET = 10_000_000;
 
 // Ladder / press-your-luck caps
 const ROLL_LADDER_MAX = 3;
@@ -74,17 +74,32 @@ function normalizeArgs(args) {
 }
 
 function parseBet(value) {
-  const bet = Number(String(value || "").replace(/,/g, "").trim());
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/,/g, "");
 
-  if (!Number.isInteger(bet)) {
-    return NaN;
+  if (/^(all[- ]?in|max)$/.test(normalized)) {
+    return "ALL_IN";
   }
 
-  return bet;
+  const bet = Number(normalized);
+
+  return Number.isInteger(bet) ? bet : NaN;
 }
 
 function validBet(bet) {
   return Number.isInteger(bet) && bet >= 1 && bet <= MAX_BET;
+}
+
+async function resolveBet(threadID, userID, value) {
+  if (value === "ALL_IN") {
+    const user = await db.getUser(threadID, userID);
+    const balance = Math.floor(Number(user?.balance) || 0);
+    return balance >= 1 ? balance : NaN;
+  }
+
+  return value;
 }
 
 function normalizeKeyword(value) {
@@ -1373,7 +1388,8 @@ async function handleRoll(api, event, args) {
   let settled = false;
 
   try {
-    const bet = parseBet(args?.[0]);
+    const parsedBet = parseBet(args?.[0]);
+    const bet = await resolveBet(threadID, userID, parsedBet);
 
     const { tier, sides } = parseRollArgs(args);
 
@@ -1388,6 +1404,7 @@ async function handleRoll(api, event, args) {
           "",
           `minimum · 1`,
           `maximum · ${formatNumber(MAX_BET)} coins`,
+          "or · all in / allin / max",
         ].join("\n")
       );
 
