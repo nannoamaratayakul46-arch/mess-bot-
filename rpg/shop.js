@@ -17,11 +17,68 @@ function getShopLines() {
 }
 
 async function buyRpgItem(threadID, userID, input, quantity = 1) {
-  const item = resolveRpgItem(input); const amount = Math.max(1, Math.min(99, Math.floor(Number(quantity) || 1)));
-  if (!item) throw new Error("That RPG item does not exist. Use !shop to see item numbers.");
-  const total = Number(item.value) * amount; await ensurePlayer(threadID, userID); let balance;
-  try { balance = await db.spendBalance(threadID, userID, total, "RPG shop: " + item.id + " x" + amount); await addItem(threadID, userID, item.id, amount); }
-  catch (error) { if (balance !== undefined) await db.addBalance(threadID, userID, total); throw error; }
+  const item = resolveRpgItem(input);
+  const amount = Math.max(
+    1,
+    Math.min(99, Math.floor(Number(quantity) || 1))
+  );
+
+  if (!item) {
+    throw new Error("That RPG item does not exist. Use !shop to see item numbers.");
+  }
+
+  const total = Number(item.value) * amount;
+  await ensurePlayer(threadID, userID);
+
+  const thread = String(threadID);
+  const user = String(userID);
+  const itemId = String(item.id);
+  const description = "RPG shop: " + item.id + " x" + amount;
+
+  const balance = await db.withTransaction(async (client) => {
+    const wallet = await client.query(
+      `SELECT balance FROM users
+       WHERE thread_id = $1 AND user_id = $2
+       FOR UPDATE`,
+      [thread, user]
+    );
+
+    if (!wallet.rows.length) {
+      throw new Error("User not found.");
+    }
+
+    if (Number(wallet.rows[0].balance) < total) {
+      throw new Error("Not enough wallet coins.");
+    }
+
+    await client.query(
+      `UPDATE users
+       SET balance = balance - $3
+       WHERE thread_id = $1 AND user_id = $2`,
+      [thread, user, total]
+    );
+
+    await client.query(
+      `INSERT INTO economy_transactions(
+         thread_id, user_id, type, amount, description, created_at
+       ) VALUES($1, $2, 'rpg_spend', $3, $4, $5)`,
+      [thread, user, total, description.slice(0, 500), Date.now()]
+    );
+
+    await client.query(
+      `INSERT INTO rpg_inventory_items(
+         thread_id, user_id, item_id, quantity, updated_at
+       ) VALUES($1, $2, $3, $4, $5)
+       ON CONFLICT(thread_id, user_id, item_id)
+       DO UPDATE SET
+         quantity = rpg_inventory_items.quantity + EXCLUDED.quantity,
+         updated_at = EXCLUDED.updated_at`,
+      [thread, user, itemId, amount, Date.now()]
+    );
+
+    return Number(wallet.rows[0].balance) - total;
+  });
+
   return { item, quantity: amount, total, balance };
 }
 
