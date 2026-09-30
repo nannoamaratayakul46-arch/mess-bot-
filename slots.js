@@ -2,7 +2,7 @@
 
 const db = require("./db");
 
-const MAX_BET = 1_000_000;
+const MAX_BET = 10_000_000;
 const XP_REWARD = 45;
 
 const SYMBOLS = [
@@ -31,8 +31,29 @@ function formatNumber(value) {
 }
 
 function parseBet(value) {
-  const bet = Number(String(value || "").replace(/,/g, "").trim());
-  return Number.isInteger(bet) && bet >= 1 && bet <= MAX_BET ? bet : NaN;
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/,/g, "");
+
+  if (/^(all[- ]?in|max)$/.test(normalized)) {
+    return "ALL_IN";
+  }
+
+  const bet = Number(normalized);
+  return Number.isInteger(bet) && bet >= 1 && bet <= MAX_BET
+    ? bet
+    : NaN;
+}
+
+async function resolveBet(threadID, userID, value) {
+  if (value === "ALL_IN") {
+    const user = await db.getUser(threadID, userID);
+    const balance = Math.floor(Number(user?.balance) || 0);
+    return balance >= 1 ? balance : NaN;
+  }
+
+  return value;
 }
 
 function weightedSymbol() {
@@ -141,12 +162,13 @@ async function handleSlots(api, event, args = []) {
     return true;
   }
 
-  const bet = parseBet(args[0]);
+  const parsedBet = parseBet(args[0]);
+  const bet = await resolveBet(threadID, userID, parsedBet);
   if (!Number.isInteger(bet)) {
     await sendMessage(
       api,
       threadID,
-      `♡ usage · !slots <bet>\nminimum · 1\nmaximum · ${formatNumber(MAX_BET)} coins`
+      `♡ usage · !slots <bet>\nminimum · 1\nmaximum · ${formatNumber(MAX_BET)} coins\nor · all in / allin / max`
     );
     return true;
   }
