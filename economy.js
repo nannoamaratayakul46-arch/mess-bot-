@@ -561,6 +561,8 @@ async function handleBalance(api, event) {
     senderID
   } = event;
 
+  await db.applyBankInterest(threadID, senderID).catch(() => {});
+
   const user =
     await db.getUser(
       threadID,
@@ -605,6 +607,8 @@ async function handleDeposit(
     threadID,
     senderID
   } = event;
+
+  await db.applyBankInterest(threadID, senderID).catch(() => {});
 
   const user =
     await db.getUser(
