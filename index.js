@@ -6528,7 +6528,7 @@ async function handleMessage(
       if (enabled) {
         sendReplyWithTyping(
           api,
-          "sino uupakan kong mukhang aso dito?",
+          require("./slash-banats")(),
           threadID
         );
 
