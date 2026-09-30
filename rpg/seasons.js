@@ -255,7 +255,7 @@ async function ensureWorldState(threadID) {
           updated_at
         )
       VALUES
-        ($1, $2, 'clear', NOW())
+        ($1, $2, 'clear', $3)
       ON CONFLICT (thread_id)
       DO NOTHING
       RETURNING *
@@ -263,6 +263,7 @@ async function ensureWorldState(threadID) {
     [
       String(threadID),
       DEFAULT_SEASON,
+      Date.now(),
     ]
   );
 
@@ -315,13 +316,14 @@ async function setWorldSeason(
       UPDATE rpg_world_state
       SET
         season = $2,
-        updated_at = NOW()
+        updated_at = $3
       WHERE thread_id = $1
       RETURNING *
     `,
     [
       String(threadID),
       season,
+      Date.now(),
     ]
   );
 
