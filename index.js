@@ -62,6 +62,8 @@ const {
   runCleanup,
   startCleanupScheduler,
   getCleanupStatus,
+  getDiskAudit,
+  formatDiskAudit,
   registerGCActivity,
   getGCStatus,
 } = require("./cleanup");
@@ -5014,7 +5016,7 @@ async function handleMessage(
 
   const cleanupMatch =
     originalText.match(
-      /^!cleanup(?:\s+(status|run|repair|optimize|full))?$/i
+      /^!cleanup(?:\s+(status|disk|run|repair|optimize|full))?$/i
     );
 
   if (cleanupMatch) {
@@ -5036,6 +5038,9 @@ async function handleMessage(
           "୨୧ status",
           "    ♡ !cleanup status",
           "",
+          "୨୧ disk audit",
+          "    ♡ !cleanup disk",
+          "",
           "୨୧ maintenance",
           "    ♡ !cleanup run",
           "    ♡ !cleanup repair",
@@ -5045,6 +5050,43 @@ async function handleMessage(
         ].join("\n"),
         threadID
       );
+
+      return;
+    }
+
+    if (
+      cleanupCommand ===
+      "disk"
+    ) {
+      try {
+        const diskReport =
+          getDiskAudit();
+
+        sendReplyWithTyping(
+          api,
+          formatDiskAudit(diskReport),
+          threadID
+        );
+      } catch (error) {
+        console.error(
+          "[CLEANUP] Disk audit failed:",
+          error
+        );
+
+        sendReplyWithTyping(
+          api,
+          [
+            "╭────── 🎀  DISK AUDIT  🎀 ──────╮",
+            "",
+            "🔴 AUDIT FAILED",
+            "",
+            "Check Render logs for details.",
+            "",
+            "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+          ].join("\n"),
+          threadID
+        );
+      }
 
       return;
     }
