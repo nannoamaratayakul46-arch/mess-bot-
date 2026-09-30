@@ -7,15 +7,13 @@ const {
   isAutoModClassifierConfigured,
 } = require("./ai/moderation-classifier");
 
-const ADMIN_IDS = String(process.env.ADMIN_IDS || "")
-  .split(",")
-  .map((id) => id.trim())
-  .filter(Boolean);
+const {
+  isOwner: isBotOwner,
+  isTrustedAdmin,
+  isAdmin,
+  getAdminLevel,
+} = require("./permissions");
 
-const TRUSTED_ADMIN_IDS = String(process.env.TRUSTED_ADMIN_IDS || "")
-  .split(",")
-  .map((id) => id.trim())
-  .filter(Boolean);
 
 /*
 |--------------------------------------------------------------------------
@@ -2367,36 +2365,7 @@ function now() {
   return Date.now();
 }
 
-function isBotOwner(userId) {
-  return ADMIN_IDS.includes(
-    String(userId)
-  );
-}
 
-function isTrustedAdmin(userId) {
-  return TRUSTED_ADMIN_IDS.includes(
-    String(userId)
-  );
-}
-
-function isAdmin(userId) {
-  return (
-    isBotOwner(userId) ||
-    isTrustedAdmin(userId)
-  );
-}
-
-function getAdminLevel(userId) {
-  if (isBotOwner(userId)) {
-    return 3;
-  }
-
-  if (isTrustedAdmin(userId)) {
-    return 2;
-  }
-
-  return 1;
-}
 
 function cleanReason(reason) {
   const value =
