@@ -3818,10 +3818,7 @@ const TOP_LEVEL_ALIASES = new Set([
    MAIN RPG COMMAND ROUTER
 ========================================================= */
 
-function isRpgRootAdmin(userID) {
-  const admins = String(process.env.ADMIN_IDS || "").split(",").map(x => x.trim()).filter(Boolean);
-  return admins.includes(String(userID || "").trim());
-}
+const { isOwner: isRpgRootAdmin } = require("../permissions");
 
 function mentionedUser(event) {
   const mentions = event && event.mentions;
