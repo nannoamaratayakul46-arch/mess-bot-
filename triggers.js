@@ -1144,8 +1144,40 @@ async function getTriggerReply(
       );
 
     if (hit) {
-      const reply=getNextReply(group);
-      if(String(reply).trim().toLowerCase()==="jaiden na naman"){const n=await resolveReplyTargetName(api,event);return n?`${n} na naman`:reply;}
+      const isFlirtyBanatGroup =
+        group.name === "trash-talk" ||
+        group.name === "banat-expanded" ||
+        group.name === "public";
+
+      const reply = isFlirtyBanatGroup
+        ? pickFreshRandom(
+            group.replies,
+            recentBanatReplies
+          )
+        : getNextReply(group);
+
+      if (isFlirtyBanatGroup && reply) {
+        rememberRecent(
+          recentBanatReplies,
+          reply,
+          12
+        );
+      }
+
+      if (
+        String(reply).trim().toLowerCase() ===
+        "jaiden na naman"
+      ) {
+        const n = await resolveReplyTargetName(
+          api,
+          event
+        );
+
+        return n
+          ? n + " na naman"
+          : reply;
+      }
+
       return reply;
     }
   }
