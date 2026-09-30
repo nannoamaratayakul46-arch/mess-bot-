@@ -19,6 +19,8 @@ const {
   shutdownGames,
 } = require("./games");
 
+const gameRegistry = require("./game-registry");
+
 // ============================================================
 // ECLIPSE ACADEMY / EXAM
 // ============================================================
@@ -6423,7 +6425,7 @@ async function handleMessage(
 
     const investigationMatch =
       text.match(
-        /^!(investigations?|investigator|case|haunt|incident|heist|trial|lost)(?:\s+(.*))?$/i
+        new RegExp("^!(" + gameRegistry.COMMAND_PATTERN_SOURCE + "|hit|stand|double|split|surrender|games)(?:\\s+(.*))?$", "i")
       );
 
     if (investigationMatch) {
