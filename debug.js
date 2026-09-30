@@ -3,12 +3,7 @@
 const os = require("os");
 const db = require("./db");
 
-const ADMIN_IDS = String(
-  process.env.ADMIN_IDS || ""
-)
-  .split(",")
-  .map((id) => id.trim())
-  .filter(Boolean);
+const { isAdmin } = require("./permissions");
 
 // ============================================================
 // HELPERS
