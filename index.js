@@ -7533,6 +7533,47 @@ async function handleAutomaticBanatMessage({
   return false;
 }
 
+function humanTypingDelayMs(message) {
+  const text = String(message || "").trim();
+
+  if (!text) return 350;
+
+  const words = text.split(/\s+/).filter(Boolean).length;
+  const chars = text.length;
+
+  // Human-like range: short replies are quick; longer replies take
+  // proportionally longer, with jitter so timing is never identical.
+  const base = 300 + words * 95 + chars * 5.5;
+  const jitter = Math.floor(
+    (Math.random() * 2 - 1) * Math.min(700, 180 + base * 0.18)
+  );
+
+  return Math.max(
+    350,
+    Math.min(3500, Math.round(base + jitter))
+  );
+}
+
+function startHumanTyping(api, threadID) {
+  try {
+    if (api && typeof api.sendTypingIndicator === "function") {
+      api.sendTypingIndicator(threadID, (typingError) => {
+        if (typingError) {
+          console.error(
+            "[BANAT] Human typing indicator failed:",
+            typingError
+          );
+        }
+      });
+    }
+  } catch (typingError) {
+    console.error(
+      "[BANAT] Human typing indicator error:",
+      typingError
+    );
+  }
+}
+
 function sendBanatReplyWithTyping(
   api,
   message,
@@ -7542,10 +7583,17 @@ function sendBanatReplyWithTyping(
   linkUrl = null,
   replyDelayMs = BANAT_REPLY_DELAY_MS
 ) {
-  const delayMs =
+  const requestedDelayMs =
     Number.isFinite(Number(replyDelayMs))
       ? Math.max(0, Number(replyDelayMs))
-      : BANAT_REPLY_DELAY_MS;
+      : 0;
+
+  const humanDelayMs =
+    requestedDelayMs > 0
+      ? requestedDelayMs
+      : humanTypingDelayMs(message);
+
+  startHumanTyping(api, threadID);
 
   setTimeout(() => {
     try {
