@@ -4183,27 +4183,48 @@ async function handleMessage(
     isOwner(senderId) &&
     event.messageID &&
     api &&
-    typeof api.setMessageReaction === "function"
+    (
+      typeof api.setMessageReactionMqtt === "function" ||
+      typeof api.setMessageReaction === "function"
+    )
   ) {
     try {
       const roastEnabled = await db.isRoastEnabled(threadId);
 
       if (roastEnabled) {
-        api.setMessageReaction(
-          "😆",
-          {
-            messageID: String(event.messageID),
-            threadID: threadId,
-          },
-          (reactionError) => {
-            if (reactionError) {
-              console.error(
-                "[BANAT] Admin laugh reaction failed:",
-                reactionError
-              );
-            }
+        const messageID = String(event.messageID);
+
+        const reactionCallback = (reactionError) => {
+          if (reactionError) {
+            console.error(
+              "[BANAT] Admin laugh reaction failed:",
+              reactionError
+            );
+          } else {
+            console.log(
+              "[BANAT] Reacted 😆 to admin message:",
+              messageID
+            );
           }
-        );
+        };
+
+        if (typeof api.setMessageReactionMqtt === "function") {
+          api.setMessageReactionMqtt(
+            "😆",
+            messageID,
+            threadId,
+            reactionCallback
+          );
+        } else {
+          // ws3-fca expects the message ID string here, not a
+          // { messageID, threadID } descriptor object.
+          api.setMessageReaction(
+            "😆",
+            messageID,
+            reactionCallback,
+            true
+          );
+        }
       }
     } catch (reactionError) {
       console.error(
