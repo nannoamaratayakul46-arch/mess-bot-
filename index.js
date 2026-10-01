@@ -209,6 +209,22 @@ let watchdogMessengerDisconnectedAt =
 const WATCHDOG_MESSENGER_TIMEOUT_MS =
   3 * 60 * 1000;
 
+// Detect the case where Facebook still accepts the session but the MQTT
+// listener silently stops delivering callbacks.
+const WATCHDOG_LISTENER_STALE_MS = Math.max(
+  2 * 60 * 1000,
+  Number(
+    process.env.ECLIPSE_WATCHDOG_LISTENER_STALE_MS ||
+      5 * 60 * 1000
+  )
+);
+
+const WATCHDOG_LISTENER_STALE_FAILURE_LIMIT = 2;
+
+let watchdogLastListenerActivityAt = Date.now();
+let watchdogListenerStaleFailures = 0;
+let watchdogListenerRestarting = false;
+
 let watchdogShuttingDown = false;
 
 let watchdogLastLogAt = 0;
@@ -239,6 +255,54 @@ function watchdogSetMessengerConnected(
   } else if (!watchdogMessengerDisconnectedAt) {
     watchdogMessengerDisconnectedAt = Date.now();
   }
+}
+
+function watchdogRecordListenerActivity() {
+  watchdogLastListenerActivityAt = Date.now();
+  watchdogListenerStaleFailures = 0;
+}
+
+function watchdogCleanRestartForDeadListener(reason) {
+  if (
+    watchdogListenerRestarting ||
+    watchdogShuttingDown
+  ) {
+    return;
+  }
+
+  watchdogListenerRestarting = true;
+  watchdogShuttingDown = true;
+  watchdogMessengerConnected = false;
+
+  console.error(
+    "[WATCHDOG] Messenger listener appears silently dead."
+  );
+
+  console.error(
+    "[WATCHDOG] " + reason
+  );
+
+  console.error(
+    "[WATCHDOG] Stopping the stale listener and exiting with code 1 so Render can perform a clean restart."
+  );
+
+  try {
+    if (
+      activeMessengerApi &&
+      typeof activeMessengerApi.stopListenMqtt === "function"
+    ) {
+      activeMessengerApi.stopListenMqtt();
+    }
+  } catch (error) {
+    console.error(
+      "[WATCHDOG] Failed to stop stale Messenger listener cleanly:",
+      error
+    );
+  }
+
+  setTimeout(() => {
+    process.exit(1);
+  }, 1000);
 }
 
 function watchdogSetShuttingDown(
@@ -360,10 +424,24 @@ function getWatchdogStatus() {
     messengerDisconnectedAt:
       watchdogMessengerDisconnectedAt || null,
 
+    listenerStaleAfterMs:
+      WATCHDOG_LISTENER_STALE_MS,
+
     messengerConnectionAgeMs:
       watchdogMessengerConnected || !watchdogMessengerDisconnectedAt
         ? 0
         : now - watchdogMessengerDisconnectedAt,
+
+    listenerActivityAgeMs:
+      watchdogMessengerConnected
+        ? Math.max(0, now - watchdogLastListenerActivityAt)
+        : 0,
+
+    listenerStaleFailures:
+      watchdogListenerStaleFailures,
+
+    listenerRestarting:
+      watchdogListenerRestarting,
 
     uptimeMs,
 
@@ -439,6 +517,11 @@ function runWatchdogCheck() {
         WATCHDOG_MESSENGER_TIMEOUT_MS
     );
 
+  const listenerActivityAgeMs =
+    watchdogMessengerConnected
+      ? now - watchdogLastListenerActivityAt
+      : 0;
+
   if (
     !messengerConnectionHealthy
   ) {
@@ -485,6 +568,42 @@ function runWatchdogCheck() {
 
     return;
   }
+
+  // Facebook can keep the session valid while MQTT has silently died.
+  // Require two consecutive stale checks before restarting.
+  if (
+    watchdogMessengerConnected &&
+    listenerActivityAgeMs >= WATCHDOG_LISTENER_STALE_MS
+  ) {
+    watchdogListenerStaleFailures++;
+
+    console.error(
+      "[WATCHDOG] Messenger listener callback stale for " +
+        Math.round(listenerActivityAgeMs / 1000) +
+        "s (check " +
+        watchdogListenerStaleFailures +
+        "/" +
+        WATCHDOG_LISTENER_STALE_FAILURE_LIMIT +
+        ")."
+    );
+
+    if (
+      watchdogListenerStaleFailures >=
+      WATCHDOG_LISTENER_STALE_FAILURE_LIMIT
+    ) {
+      watchdogCleanRestartForDeadListener(
+        "No listenMqtt callback has been observed for " +
+          Math.round(listenerActivityAgeMs / 1000) +
+          "s."
+      );
+      return;
+    }
+
+    watchdogRecomputeMode();
+    return;
+  }
+
+  watchdogListenerStaleFailures = 0;
 
   watchdogLastHealthyAt =
     now;
@@ -3963,6 +4082,8 @@ function attemptLogin() {
           listenError,
           event
         ) => {
+          watchdogRecordListenerActivity();
+
           if (thisGeneration !== activeListenerGeneration) {
             return;
           }
@@ -4061,6 +4182,8 @@ function attemptLogin() {
       );
     }
     );
+
+    watchdogRecordListenerActivity();
 
     if (
       loginResult &&
