@@ -23,36 +23,44 @@ const durationEl = document.getElementById("duration");
 const status = document.getElementById("status");
 
 const timeline = [
-  { start: 0.0, end: 7.5, text: "SO WHAT IF I CALL?" },
-  { start: 7.5, end: 12.5, text: "AND YOU PICK UP THE PHONE" },
-  { start: 12.5, end: 17.5, text: "AND I USE THIS HOLIDAY" },
-  { start: 17.5, end: 22.5, text: "TO MAKE MY WAY TO YOUR GHOST" },
-  { start: 22.5, end: 28.5, text: "YOU WALKED IN THE PARTY, YOUR COAT WAS UNTIED" },
-  { start: 28.5, end: 34.5, text: "SLAMMING THE DOOR 'CAUSE IT'S COLDER OUTSIDE" },
-  { start: 34.5, end: 41.5, text: "NOW I WON'T FORGET THAT MOMENT LIKE THE BLINK OF AN EYE" },
-  { start: 41.5, end: 46.5, text: "YOU'RE OFF TO THE BEACH NOW 'TIL THE WEATHER GETS NICE" },
-  { start: 46.5, end: 51.5, text: "BUT WHAT IF I CALL?" },
-  { start: 51.5, end: 56.5, text: "AND YOU PICK UP THE PHONE" },
-  { start: 56.5, end: 61.5, text: "AND I USE THIS HOLIDAY" },
-  { start: 61.5, end: 66.5, text: "TO MAKE MY WAY TO YOUR GHOST" },
-  { start: 66.5, end: 71.5, text: "OH, WHAT IF YOU'RE LONELY?" },
-  { start: 71.5, end: 76.5, text: "AND YOU KNOW I AM TOO" },
-  { start: 76.5, end: 81.5, text: "AND I GET THE CHANCE TO SAY" },
-  { start: 81.5, end: 86.5, text: "I WISH I DIDN'T BUT I MISS YOU" },
-  { start: 86.5, end: 91.5, text: "I MISS YOU" },
-  { start: 91.5, end: 96.5, text: "YOU KNOW IT'S TRUE" },
-  { start: 96.5, end: 101.5, text: "YEAH, I MISS YOU" },
-  { start: 101.5, end: 106.5, text: "YOU KNOW IT'S TRUE" },
-  { start: 106.5, end: 111.5, text: "SO WHAT IF I CALL?" },
-  { start: 111.5, end: 116.5, text: "AND YOU PICK UP THE PHONE" },
-  { start: 116.5, end: 121.5, text: "AND I USE THIS HOLIDAY" },
-  { start: 121.5, end: 126.5, text: "TO MAKE MY WAY TO YOUR GHOST" },
-  { start: 126.5, end: 131.5, text: "OH, WHAT IF YOU'RE LONELY?" },
-  { start: 131.5, end: 136.5, text: "AND YOU KNOW I AM TOO" },
-  { start: 136.5, end: 141.5, text: "AND I GET THE CHANCE TO SAY" },
-  { start: 141.5, end: 146.5, text: "I WISH I DIDN'T BUT I MISS YOU" },
-  { start: 146.5, end: 152.0, text: "I MISS YOU" },
-  { start: 152.0, end: 162.7, text: "" }
+  { start: 0.000,   end: 7.733,   text: "SO WHAT IF I CALL?" },
+
+  { start: 7.733,   end: 12.400,  text: "AND YOU PICK UP THE PHONE" },
+  { start: 12.400,   end: 15.367,  text: "AND I USE THIS HOLIDAY" },
+  { start: 15.367,   end: 20.867,  text: "TO MAKE MY WAY TO YOUR GHOST" },
+
+  { start: 20.867,  end: 33.167,  text: "YOU WALKED IN THE PARTY, YOUR COAT WAS UNTIED" },
+  { start: 33.167,  end: 41.367,  text: "SLAMMING THE DOOR 'CAUSE IT'S COLDER OUTSIDE" },
+  { start: 41.367,  end: 51.167,  text: "NOW I WON'T FORGET THAT MOMENT LIKE THE BLINK OF AN EYE" },
+  { start: 51.167,  end: 57.967,  text: "YOU'RE OFF TO THE BEACH NOW 'TIL THE WEATHER GETS NICE" },
+
+  { start: 57.967,  end: 62.367,  text: "BUT WHAT IF I CALL?" },
+  { start: 62.367,  end: 67.334,  text: "AND YOU PICK UP THE PHONE" },
+  { start: 67.334,  end: 70.334,  text: "AND I USE THIS HOLIDAY" },
+  { start: 70.334,  end: 76.234,  text: "TO MAKE MY WAY TO YOUR GHOST" },
+
+  { start: 76.234,  end: 80.767,  text: "OH, WHAT IF YOU'RE LONELY?" },
+  { start: 80.767,  end: 85.434,  text: "AND YOU KNOW I AM TOO" },
+  { start: 85.434,  end: 88.301,  text: "AND I GET THE CHANCE TO SAY" },
+  { start: 88.301,  end: 94.768,  text: "I WISH I DIDN'T BUT I MISS YOU" },
+
+  { start: 94.768,  end: 96.568,  text: "I MISS YOU" },
+  { start: 96.568,  end: 103.734, text: "YOU KNOW IT'S TRUE" },
+  { start: 103.734, end: 108.534, text: "YEAH, I MISS YOU" },
+  { start: 108.534, end: 112.701, text: "YOU KNOW IT'S TRUE" },
+
+  { start: 112.701, end: 117.301, text: "SO WHAT IF I CALL?" },
+  { start: 117.301, end: 122.068, text: "AND YOU PICK UP THE PHONE" },
+  { start: 122.068, end: 125.268, text: "AND I USE THIS HOLIDAY" },
+  { start: 125.268, end: 131.201, text: "TO MAKE MY WAY TO YOUR GHOST" },
+
+  { start: 131.201, end: 133.601, text: "OH, WHAT IF YOU'RE LONELY?" },
+  { start: 133.601, end: 140.501, text: "AND YOU KNOW I AM TOO" },
+  { start: 140.501, end: 143.601, text: "AND I GET THE CHANCE TO SAY" },
+  { start: 143.601, end: 149.868, text: "I WISH I DIDN'T BUT I MISS YOU" },
+
+  { start: 149.868, end: 151.802, text: "I MISS YOU" },
+  { start: 151.802, end: 162.702, text: "…" }
 ];
 
 let W = 0;
