@@ -13,13 +13,36 @@ const statusEl = document.getElementById("status");
  * Replace the placeholder entries with the real timestamps/lyrics when ready.
  */
 const timeline = [
-  { start: 0, end: 5.2, text: "MERRY CHRISTMAS\nI MISS YOU" },
-  { start: 5.2, end: 10.8, text: "SO, WHAT IF\nI CALL" },
-  { start: 10.8, end: 16, text: "YOU PICK\nUP THE PHONE?" },
-  { start: 16, end: 21.5, text: "TO MAKE MY\nWAY" },
-  { start: 21.5, end: 27, text: "AND YOU KNOW\nI AM TOO?" },
-  { start: 27, end: 34, text: "AND I GET THE\nCHANCE TO SAY" },
-  { start: 34, end: 40, text: "I MISS YOU..." }
+  { start: 0.0, end: 7.5, text: "SO WHAT IF I CALL?" },
+  { start: 7.5, end: 12.5, text: "AND YOU PICK UP THE PHONE" },
+  { start: 12.5, end: 17.5, text: "AND I USE THIS HOLIDAY" },
+  { start: 17.5, end: 22.5, text: "TO MAKE MY WAY TO YOUR GHOST" },
+  { start: 22.5, end: 28.5, text: "YOU WALKED IN THE PARTY, YOUR COAT WAS UNTIED" },
+  { start: 28.5, end: 34.5, text: "SLAMMING THE DOOR 'CAUSE IT'S COLDER OUTSIDE" },
+  { start: 34.5, end: 41.5, text: "NOW I WON'T FORGET THAT MOMENT LIKE THE BLINK OF AN EYE" },
+  { start: 41.5, end: 46.5, text: "YOU'RE OFF TO THE BEACH NOW 'TIL THE WEATHER GETS NICE" },
+  { start: 46.5, end: 51.5, text: "BUT WHAT IF I CALL?" },
+  { start: 51.5, end: 56.5, text: "AND YOU PICK UP THE PHONE" },
+  { start: 56.5, end: 61.5, text: "AND I USE THIS HOLIDAY" },
+  { start: 61.5, end: 66.5, text: "TO MAKE MY WAY TO YOUR GHOST" },
+  { start: 66.5, end: 71.5, text: "OH, WHAT IF YOU'RE LONELY?" },
+  { start: 71.5, end: 76.5, text: "AND YOU KNOW I AM TOO" },
+  { start: 76.5, end: 81.5, text: "AND I GET THE CHANCE TO SAY" },
+  { start: 81.5, end: 86.5, text: "I WISH I DIDN'T BUT I MISS YOU" },
+  { start: 86.5, end: 91.5, text: "I MISS YOU" },
+  { start: 91.5, end: 96.5, text: "YOU KNOW IT'S TRUE" },
+  { start: 96.5, end: 101.5, text: "YEAH, I MISS YOU" },
+  { start: 101.5, end: 106.5, text: "YOU KNOW IT'S TRUE" },
+  { start: 106.5, end: 111.5, text: "SO WHAT IF I CALL?" },
+  { start: 111.5, end: 116.5, text: "AND YOU PICK UP THE PHONE" },
+  { start: 116.5, end: 121.5, text: "AND I USE THIS HOLIDAY" },
+  { start: 121.5, end: 126.5, text: "TO MAKE MY WAY TO YOUR GHOST" },
+  { start: 126.5, end: 131.5, text: "OH, WHAT IF YOU'RE LONELY?" },
+  { start: 131.5, end: 136.5, text: "AND YOU KNOW I AM TOO" },
+  { start: 136.5, end: 141.5, text: "AND I GET THE CHANCE TO SAY" },
+  { start: 141.5, end: 146.5, text: "I WISH I DIDN'T BUT I MISS YOU" },
+  { start: 146.5, end: 152.0, text: "I MISS YOU" },
+  { start: 152.0, end: 162.7, text: "" }
 ];
 
 let W = 0;
