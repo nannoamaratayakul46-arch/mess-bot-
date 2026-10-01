@@ -72,6 +72,24 @@
             <div class="miniSpectrum" id="miniSpectrum" aria-hidden="true">
               <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
             </div>
+            <div class="phoneLyricsPage" id="phoneLyricsPage" aria-hidden="true">
+              <div class="phoneLyricsTop">
+                <button id="phoneLyricsBack" class="phonePageButton" type="button" aria-label="Back to player">‹</button>
+                <span>LYRICS · ECLIPSE</span>
+                <button id="phoneLyricsFull" class="phonePageButton" type="button" aria-label="Show full lyrics">↗</button>
+              </div>
+              <div class="phoneLyricsNow">
+                <span class="smallLabel">PLAYING NOW</span>
+                <p id="phoneCurrentLyric">…</p>
+              </div>
+              <div class="phoneLyricsList" id="phoneLyricsList"></div>
+              <div class="phoneLyricsProgress"><span id="phoneLyricsProgressBar"></span></div>
+              <div class="phoneLyricsFooter">
+                <span id="phoneLyricsTime">00:00</span>
+                <span>A LETTER, KEPT</span>
+              </div>
+              <div class="phoneFullLyrics" id="phoneFullLyrics" aria-hidden="true"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -80,23 +98,6 @@
         <span id="playCaption">the song starts here.</span>
         <span class="equalizer"><b></b><b></b><b></b><b></b></span>
       </div>
-    </section>
-
-    <section class="lyricsSection" id="lyricsSection">
-      <div class="lyricsHeader">
-        <div>
-          <div class="sectionLabel">THE LYRICS</div>
-          <h2>Let the words<br /><em>stay awhile.</em></h2>
-        </div>
-        <button id="fullLyricsBtn" class="textButton" type="button">VIEW FULL ↗</button>
-      </div>
-
-      <div class="currentLyricCard" id="currentLyricCard">
-        <span class="smallLabel">PLAYING NOW</span>
-        <p id="currentLyric">Press play and the lyrics will follow.</p>
-      </div>
-
-      <div class="lyricsPreview" id="lyricsPreview"></div>
     </section>
 
     <section class="archiveEnd" id="archiveEnd">
@@ -115,21 +116,6 @@
       <span id="stickyStatus">READY</span>
     </div>
     <button id="stickyPlay" type="button" aria-label="Play or pause">▶</button>
-  </div>
-
-  <div class="lyricsModal" id="lyricsModal" aria-hidden="true">
-    <div class="modalBackdrop" id="modalBackdrop"></div>
-    <div class="lyricsSheet" role="dialog" aria-modal="true" aria-labelledby="fullLyricsTitle">
-      <div class="sheetHandle"></div>
-      <div class="sheetTop">
-        <div>
-          <div class="sectionLabel">FULL LYRICS</div>
-          <h2 id="fullLyricsTitle">A Letter, Kept</h2>
-        </div>
-        <button id="closeLyricsBtn" class="closeButton" type="button" aria-label="Close lyrics">×</button>
-      </div>
-      <div class="fullLyrics" id="fullLyrics"></div>
-    </div>
   </div>
 
   <div id="status" class="srOnly" aria-live="polite">READY</div>
