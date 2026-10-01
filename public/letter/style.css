@@ -1243,3 +1243,123 @@ body.letterFinished .archiveEnd{animation:archiveReveal 2.2s cubic-bezier(.16,1,
 @keyframes archiveReveal{from{opacity:.45}to{opacity:1}}
 @media(max-width:560px){.archiveEnd{min-height:76svh;padding-left:8vw;padding-right:8vw}.archiveEnd h2{font-size:clamp(4rem,20vw,6rem)}}
 @media(prefers-reduced-motion:reduce){.hero,.currentLyricCard p,.archiveEnd,.progressTrackGlow{transition:none;animation:none!important}}
+
+
+/* ============================================================
+   PHONE LYRIC PAGE — CINEMATIC ZOOM
+   ============================================================ */
+
+.phoneScreen{position:relative;isolation:isolate}
+.phoneScreen > :not(.phoneLyricsPage){transition:opacity .55s ease,transform .75s cubic-bezier(.16,1,.3,1),filter .75s ease}
+.phoneLyricsPage{
+  position:absolute;
+  z-index:20;
+  inset:0;
+  padding:18px 17px 15px;
+  border-radius:31px;
+  overflow:hidden;
+  opacity:0;
+  pointer-events:none;
+  transform:scale(.72);
+  transform-origin:center center;
+  background:
+    radial-gradient(circle at 50% 16%,rgba(217,206,145,.13),transparent 34%),
+    linear-gradient(180deg,#171411 0%,#0b0a09 72%,#080706 100%);
+  transition:opacity .55s ease,transform .8s cubic-bezier(.16,1,.3,1);
+}
+.phoneLyricsPage::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  background:linear-gradient(115deg,rgba(255,255,255,.055),transparent 25%,transparent 70%,rgba(255,255,255,.025));
+  pointer-events:none;
+}
+.phoneLyricsPage.open{
+  opacity:1;
+  pointer-events:auto;
+  transform:scale(1);
+}
+body.isPlaying .phoneScreen > :not(.phoneLyricsPage){
+  transform:scale(.94);
+}
+.phoneLyricsPage .phoneLyricsTop{
+  position:relative;
+  z-index:2;
+  display:grid;
+  grid-template-columns:30px 1fr 30px;
+  align-items:center;
+  gap:8px;
+  color:rgba(238,232,201,.42);
+  font-size:6px;
+  letter-spacing:.18em;
+  text-align:center;
+}
+.phonePageButton{
+  width:30px;height:30px;padding:0;border:1px solid rgba(238,232,201,.12);
+  border-radius:50%;background:rgba(238,232,201,.035);color:var(--paper);
+  cursor:pointer;font-size:15px;line-height:1;
+}
+.phoneLyricsNow{
+  position:relative;z-index:2;
+  min-height:150px;display:flex;flex-direction:column;justify-content:end;
+  padding:15px 2px 22px;
+}
+.phoneLyricsNow p{
+  margin:9px 0 0;
+  font-family:Georgia,"Times New Roman",serif;
+  font-size:clamp(1.8rem,7vw,2.5rem);
+  line-height:1.02;letter-spacing:-.045em;
+  color:var(--paper);
+  text-shadow:0 0 30px rgba(217,206,145,.12);
+}
+.phoneLyricsList{
+  position:relative;z-index:2;
+  height:calc(100% - 255px);
+  overflow:auto;
+  padding:5px 2px 45px;
+  scrollbar-width:none;
+  mask-image:linear-gradient(to bottom,transparent 0,#000 9%,#000 88%,transparent 100%);
+}
+.phoneLyricsList::-webkit-scrollbar,.phoneFullLyrics::-webkit-scrollbar{display:none}
+.phoneLyricLine{
+  display:block;width:100%;padding:13px 0;border:0;border-bottom:1px solid rgba(238,232,201,.055);
+  background:transparent;color:rgba(238,232,201,.23);text-align:left;cursor:pointer;
+  transition:color .35s ease,transform .45s cubic-bezier(.16,1,.3,1),opacity .35s ease;
+}
+.phoneLyricLine .phoneLineTime{
+  display:block;margin-bottom:4px;color:rgba(238,232,201,.12);font-size:5px;letter-spacing:.16em;
+}
+.phoneLyricLine > span:last-child{
+  display:block;font-family:Georgia,"Times New Roman",serif;font-size:13px;line-height:1.15;
+}
+.phoneLyricLine.active{
+  color:var(--paper);transform:translateX(7px) scale(1.025);
+}
+.phoneLyricLine.active .phoneLineTime{color:var(--gold)}
+.phoneLyricLine.silence span:last-child{color:rgba(238,232,201,.38);font-style:italic}
+.phoneLyricLine.silence.active span:last-child{color:var(--gold)}
+.phoneLyricsProgress{
+  position:absolute;left:17px;right:17px;bottom:37px;height:2px;border-radius:99px;background:rgba(238,232,201,.1);z-index:3;overflow:hidden;
+}
+.phoneLyricsProgress span{display:block;width:0;height:100%;background:var(--gold);box-shadow:0 0 9px rgba(217,206,145,.55);transition:width .1s linear}
+.phoneLyricsFooter{
+  position:absolute;z-index:3;left:17px;right:17px;bottom:17px;display:flex;justify-content:space-between;
+  color:rgba(238,232,201,.2);font-size:5px;letter-spacing:.16em;
+}
+.phoneFullLyrics{
+  position:absolute;z-index:4;inset:0;overflow:auto;padding:55px 17px 42px;
+  opacity:0;pointer-events:none;transform:translateX(18px);
+  background:linear-gradient(180deg,#14120f,#080706);
+  transition:opacity .4s ease,transform .45s cubic-bezier(.16,1,.3,1);
+}
+.phoneLyricsPage.full .phoneFullLyrics{opacity:1;pointer-events:auto;transform:translateX(0)}
+.phoneLyricsPage.full .phoneLyricsList{opacity:0;pointer-events:none}
+.phoneLyricsPage.full .phoneLyricsNow{opacity:0;pointer-events:none}
+@media(max-width:560px){
+  .phoneLyricsPage{padding-left:15px;padding-right:15px}
+  .phoneLyricsNow{min-height:145px}
+  .phoneLyricLine > span:last-child{font-size:12.5px}
+}
+@media(prefers-reduced-motion:reduce){
+  .phoneLyricsPage,.phoneScreen > :not(.phoneLyricsPage){transition:none!important}
+}
