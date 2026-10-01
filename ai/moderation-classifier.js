@@ -10,10 +10,10 @@ const CATEGORIES = new Set(["spam", "harassment", "threat", "sexual", "scam", "m
 const inFlight = new Map();
 
 function isAutoModClassifierConfigured() {
-  const hasKey = Object.keys(process.env).some((name) => {
-    return /^GEMINI_API_KEY(?:_([2-9]\d*))?$/.test(name) && String(process.env[name] || "").trim();
-  });
-  return Boolean(hasKey && String(process.env.AI_MODEL || "").trim());
+  return Boolean(
+    String(process.env.GROQ_API_KEY || "").trim() &&
+    String(process.env.AI_MODEL || "openai/gpt-oss-20b").trim()
+  );
 }
 
 function cleanJsonText(value) {
