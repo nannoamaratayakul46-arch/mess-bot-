@@ -8,21 +8,19 @@ const restartBtn = document.getElementById("restartBtn");
 const muteBtn = document.getElementById("muteBtn");
 const stickyPlay = document.getElementById("stickyPlay");
 const progress = document.getElementById("progress");
-
-const startScreen = document.getElementById("startScreen");
+const phoneLyricsPage = document.getElementById("phoneLyricsPage");
+const phoneLyricsList = document.getElementById("phoneLyricsList");
+const phoneFullLyrics = document.getElementById("phoneFullLyrics");
+const phoneCurrentLyric = document.getElementById("phoneCurrentLyric");
+const phoneLyricsProgressBar = document.getElementById("phoneLyricsProgressBar");
+const phoneLyricsTime = document.getElementById("phoneLyricsTime");
+const phoneLyricsBack = document.getElementById("phoneLyricsBack");
+const phoneLyricsFull = document.getElementById("phoneLyricsFull");
 const playerStatus = document.getElementById("playerStatus");
 const stickyStatus = document.getElementById("stickyStatus");
 const playCaption = document.getElementById("playCaption");
-const currentLyric = document.getElementById("currentLyric");
-const currentTime = document.getElementById("currentTime");
 const durationEl = document.getElementById("duration");
-const lyricsPreview = document.getElementById("lyricsPreview");
-const fullLyrics = document.getElementById("fullLyrics");
-
-const lyricsModal = document.getElementById("lyricsModal");
-const fullLyricsBtn = document.getElementById("fullLyricsBtn");
-const closeLyricsBtn = document.getElementById("closeLyricsBtn");
-const modalBackdrop = document.getElementById("modalBackdrop");
+const status = document.getElementById("status");
 
 const timeline = [
   { start: 0.0, end: 7.5, text: "SO WHAT IF I CALL?" },
@@ -68,9 +66,10 @@ let timeData = new Uint8Array(1024);
 let stars = [];
 let dust = [];
 let started = false;
-let autoScrolled = false;
 let activeIndex = -1;
 let animationId = 0;
+let phoneLyricsOpen = false;
+let fullLyricsOpen = false;
 
 function formatTime(value) {
   const t = Math.max(0, Number(value) || 0);
@@ -200,30 +199,38 @@ function drawBackground(t, energy) {
   ctx.fillRect(0, 0, W, H);
 }
 
-function renderLyrics() {
-  // Keep silent timeline slots visible. They are part of the song's pacing.
-  const makeLine = (entry, index) => {
-    const line = document.createElement("button");
-    line.type = "button";
-    line.className = "lyricLine" + (!entry.text ? " silence" : "");
-    line.dataset.index = String(index);
-    line.innerHTML = `
-      <span class="lineTime">${formatTime(entry.start)}</span>
-      <span class="lineText">${escapeHtml(entry.text || "…")}</span>
-    `;
-    line.addEventListener("click", () => {
-      audio.currentTime = entry.start;
-      if (audio.paused) playAudio();
-    });
-    return line;
-  };
 
-  lyricsPreview.replaceChildren();
-  fullLyrics.replaceChildren();
+
+function lyricIndexAt(t) {
+  // Timeline is the source of truth. rAF checks currentTime instead of
+  // relying on timeupdate, which is throttled and can visibly lag.
+  for (let i = 0; i < timeline.length; i++) {
+    if (t >= timeline[i].start && t < timeline[i].end) return i;
+  }
+  return t >= timeline[timeline.length - 1].start ? timeline.length - 1 : -1;
+}
+
+function renderPhoneLyrics() {
+  phoneLyricsList.replaceChildren();
+  phoneFullLyrics.replaceChildren();
 
   timeline.forEach((entry, index) => {
-    lyricsPreview.appendChild(makeLine(entry, index));
-    fullLyrics.appendChild(makeLine(entry, index));
+    const makeLine = (compact) => {
+      const line = document.createElement("button");
+      line.type = "button";
+      line.className = "phoneLyricLine" + (!entry.text ? " silence" : "");
+      line.dataset.index = String(index);
+      line.innerHTML = `<span class="phoneLineTime">${formatTime(entry.start)}</span><span>${escapeHtml(entry.text || "…")}</span>`;
+      line.addEventListener("click", () => {
+        audio.currentTime = entry.start;
+        updateLyric(audio.currentTime, true);
+        if (audio.paused) playAudio();
+      });
+      return line;
+    };
+
+    phoneLyricsList.appendChild(makeLine(true));
+    phoneFullLyrics.appendChild(makeLine(false));
   });
 }
 
@@ -236,49 +243,60 @@ function escapeHtml(value) {
     .replaceAll("'", "&#039;");
 }
 
-function updateLyric(t) {
-  // Find the actual timeline slot. Blank slots are intentional and must
-  // remain visible as "…" instead of being skipped.
-  const index = timeline.findIndex((entry) => t >= entry.start && t < entry.end);
-  const safeIndex = index >= 0 ? index : (t >= timeline[timeline.length - 1].start ? timeline.length - 1 : -1);
+function updateLyric(t, force = false) {
+  const index = lyricIndexAt(t);
+  if (!force && index === activeIndex) return;
+  activeIndex = index;
 
-  if (safeIndex === activeIndex) return;
+  const entry = timeline[index];
+  const text = entry ? (entry.text || "…") : "…";
+  phoneCurrentLyric.textContent = text;
 
-  activeIndex = safeIndex;
-
-  document.querySelectorAll(".lyricLine").forEach((el) => {
-    const active = Number(el.dataset.index) === safeIndex;
+  document.querySelectorAll(".phoneLyricLine").forEach((el) => {
+    const active = Number(el.dataset.index) === index;
     el.classList.toggle("active", active);
   });
 
-  const entry = timeline[safeIndex];
-  const nextText = entry ? (entry.text || "…") : "…";
-  if (currentLyric.textContent !== nextText) {
-    const card = document.getElementById("currentLyricCard");
-    card.classList.remove("lyricChanging");
-    void card.offsetWidth;
-    card.classList.add("lyricChanging");
-    window.setTimeout(() => card.classList.remove("lyricChanging"), 320);
-    currentLyric.textContent = nextText;
+  const activeLine = phoneLyricsOpen
+    ? phoneLyricsList.querySelector(`.phoneLyricLine[data-index="${index}"]`)
+    : null;
+
+  if (activeLine) {
+    activeLine.scrollIntoView({ behavior: "smooth", block: "center" });
   }
 
-  if (safeIndex >= 0 && !audio.paused) {
-    const previewLine = lyricsPreview.querySelector(`.lyricLine[data-index="${safeIndex}"]`);
+  const fullActive = fullLyricsOpen
+    ? phoneFullLyrics.querySelector(`.phoneLyricLine[data-index="${index}"]`)
+    : null;
 
-    if (previewLine) {
-      const section = document.getElementById("lyricsSection");
-      const rect = section.getBoundingClientRect();
-      const comfortablyInside = rect.top < window.innerHeight * 0.72 && rect.bottom > window.innerHeight * 0.2;
+  if (fullActive) {
+    fullActive.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
 
-      if (comfortablyInside) {
-        previewLine.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }
+function openPhoneLyrics() {
+  phoneLyricsOpen = true;
+  phoneLyricsPage.classList.add("open");
+  phoneLyricsPage.setAttribute("aria-hidden", "false");
+  updateLyric(audio.currentTime, true);
+}
 
-    if (lyricsModal.classList.contains("open")) {
-      const modalLine = fullLyrics.querySelector(`.lyricLine[data-index="${safeIndex}"]`);
-      if (modalLine) modalLine.scrollIntoView({ behavior: "smooth", block: "center" });
-    }
+function closePhoneLyrics() {
+  phoneLyricsOpen = false;
+  fullLyricsOpen = false;
+  phoneLyricsPage.classList.remove("open", "full");
+  phoneLyricsPage.setAttribute("aria-hidden", "true");
+}
+
+function toggleFullLyrics() {
+  fullLyricsOpen = !fullLyricsOpen;
+  phoneLyricsPage.classList.toggle("full", fullLyricsOpen);
+  phoneFullLyrics.setAttribute("aria-hidden", String(!fullLyricsOpen));
+  phoneLyricsList.setAttribute("aria-hidden", String(fullLyricsOpen));
+  phoneLyricsFull.setAttribute("aria-label", fullLyricsOpen ? "Close full lyrics" : "Show full lyrics");
+  if (fullLyricsOpen) {
+    const active = phoneFullLyrics.querySelector(`.phoneLyricLine[data-index="${activeIndex}"]`);
+    active?.scrollIntoView({ behavior: "auto", block: "center" });
   }
 }
 
@@ -288,23 +306,20 @@ function updatePlayerUI() {
   const pct = duration > 0 ? (t / duration) * 100 : 0;
 
   progress.value = String(Math.min(100, Math.max(0, pct)));
-  currentTime.textContent = formatTime(t);
   durationEl.textContent = formatTime(duration);
+  phoneLyricsProgressBar.style.width = Math.min(100, Math.max(0, pct)) + "%";
+  phoneLyricsTime.textContent = formatTime(t);
 
   const playing = !audio.paused && !audio.ended;
-  const status = playing ? "PLAYING" : (audio.ended ? "ENDED" : "PAUSED");
+  const state = playing ? "PLAYING" : (audio.ended ? "ENDED" : "PAUSED");
 
-  playerStatus.textContent = status;
-  stickyStatus.textContent = status;
-  document.getElementById("status").textContent = status;
-
+  playerStatus.textContent = state;
+  stickyStatus.textContent = state;
+  status.textContent = state;
   playPauseBtn.textContent = playing ? "❚❚" : "▶";
   playPauseBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
   stickyPlay.textContent = playing ? "❚❚" : "▶";
-
   playCaption.textContent = playing ? "stay here for a while." : (audio.ended ? "the letter has finished." : "the song starts here.");
-
-  updateLyric(t);
 }
 
 async function playAudio() {
@@ -312,27 +327,18 @@ async function playAudio() {
     document.body.classList.remove("letterFinished");
     setupAudio();
 
-    if (audioCtx.state === "suspended") {
-      await audioCtx.resume();
-    }
-
+    if (audioCtx.state === "suspended") await audioCtx.resume();
     await audio.play();
 
     started = true;
     document.body.classList.add("isPlaying");
     startBtn.innerHTML = '<span class="playIcon">❚❚</span><span>PLAYING</span>';
 
-    if (!autoScrolled) {
-      window.setTimeout(() => {
-        if (!autoScrolled && started) {
-          autoScrolled = true;
-          document.getElementById("lyricsSection").scrollIntoView({
-            behavior: "smooth",
-            block: "start"
-          });
-        }
-      }, 9500);
-    }
+    // The phone becomes the lyric experience instead of sending the page
+    // down to a separate lyrics section.
+    window.setTimeout(() => {
+      if (started && !audio.paused && !audio.ended) openPhoneLyrics();
+    }, 1150);
   } catch (error) {
     console.error("[LETTER] Audio start failed:", error);
     playerStatus.textContent = "CHECK AUDIO";
@@ -341,19 +347,19 @@ async function playAudio() {
 }
 
 function togglePlay() {
-  if (!started || audio.paused) {
-    playAudio();
-  } else {
-    audio.pause();
-  }
+  if (!started || audio.paused) playAudio();
+  else audio.pause();
 }
 
 startBtn.addEventListener("click", togglePlay);
 playPauseBtn.addEventListener("click", togglePlay);
 stickyPlay.addEventListener("click", togglePlay);
+phoneLyricsBack.addEventListener("click", closePhoneLyrics);
+phoneLyricsFull.addEventListener("click", toggleFullLyrics);
 
 restartBtn.addEventListener("click", () => {
   audio.currentTime = 0;
+  activeIndex = -1;
   playAudio();
 });
 
@@ -365,6 +371,7 @@ muteBtn.addEventListener("click", () => {
 progress.addEventListener("input", () => {
   const duration = Number.isFinite(audio.duration) ? audio.duration : 162.7;
   audio.currentTime = (Number(progress.value) / 100) * duration;
+  updateLyric(audio.currentTime, true);
 });
 
 audio.addEventListener("play", updatePlayerUI);
@@ -375,38 +382,18 @@ audio.addEventListener("ended", () => {
   document.body.classList.add("letterFinished");
   startBtn.innerHTML = '<span class="playIcon">↻</span><span>PLAY AGAIN</span>';
   playCaption.textContent = "the letter has finished.";
+  closePhoneLyrics();
   document.getElementById("archiveEnd")?.scrollIntoView({behavior:"smooth",block:"center"});
 });
-
 audio.addEventListener("loadedmetadata", updatePlayerUI);
-audio.addEventListener("timeupdate", updatePlayerUI);
 
-fullLyricsBtn.addEventListener("click", () => {
-  lyricsModal.classList.add("open");
-  lyricsModal.setAttribute("aria-hidden", "false");
-  document.body.style.overflow = "hidden";
-});
-
-function closeLyrics() {
-  lyricsModal.classList.remove("open");
-  lyricsModal.setAttribute("aria-hidden", "true");
-  document.body.style.overflow = "";
+function sync() {
+  if (!audio.paused) {
+    updateLyric(audio.currentTime);
+    updatePlayerUI();
+  }
+  animationId = requestAnimationFrame(sync);
 }
-
-closeLyricsBtn.addEventListener("click", closeLyrics);
-modalBackdrop.addEventListener("click", closeLyrics);
-document.addEventListener("keydown", (event) => {
-  if (event.key === "Escape") closeLyrics();
-});
-
-const observer = new IntersectionObserver(
-  ([entry]) => {
-    document.body.classList.toggle("hasScrolled", !entry.isIntersecting);
-  },
-  { threshold: 0.05 }
-);
-
-observer.observe(document.getElementById("hero"));
 
 function frame(ms) {
   const t = ms / 1000;
@@ -434,3 +421,14 @@ resize();
 renderLyrics();
 updatePlayerUI();
 animationId = requestAnimationFrame(frame);
+
+
+phoneLyricsPage.addEventListener("click", (event) => {
+  if (event.target === phoneLyricsPage) closePhoneLyrics();
+});
+
+resize();
+renderPhoneLyrics();
+updatePlayerUI();
+animationId = requestAnimationFrame(frame);
+requestAnimationFrame(sync);
