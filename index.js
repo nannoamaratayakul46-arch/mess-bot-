@@ -7278,6 +7278,16 @@ async function handleAutomaticBanatMessage({
     return false;
   }
 
+  // The owner is Banat-immune: their messages may still receive the
+  // separate 😆 owner reaction, but Banat must never generate a roast
+  // targeting the owner. Other members remain fully eligible.
+  if (isOwner(senderId)) {
+    console.log(
+      "[BANAT] Owner message skipped for roast targeting: " + senderId
+    );
+    return false;
+  }
+
   try {
     const triggerReply = await getTriggerReply(
       body,
