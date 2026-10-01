@@ -126,7 +126,7 @@ const {
 // CONFIGURATION
 // ============================================================
 
-const { ADMIN_IDS, isAdmin } = require("./permissions");
+const { ADMIN_IDS, isAdmin, isOwner } = require("./permissions");
 
 const RANDOM_ROAST_ENABLED =
   !/^(0|false|no|off)$/i.test(
