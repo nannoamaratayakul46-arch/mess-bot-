@@ -33,13 +33,15 @@
           <div class="phoneSpeaker"></div>
           <div class="phoneScreen">
             <div class="phoneTop">
-              <span id="playerStatus">READY</span>
-              <span>●</span>
+              <span class="phoneLive"><i></i><span id="playerStatus">READY</span></span>
+              <span class="phoneSignal" aria-hidden="true"><b></b><b></b><b></b><b></b></span>
             </div>
 
             <div class="coverWrap">
+              <div class="coverAura" aria-hidden="true"></div>
               <img id="cover" src="IMG_0842.jpeg" alt="Album artwork" />
               <div class="coverShine"></div>
+              <div class="coverNowPlaying">ECLIPSE · ARCHIVE 001</div>
             </div>
 
             <div class="songInfo">
@@ -48,6 +50,7 @@
             </div>
 
             <div class="progressArea">
+              <div class="progressTrackGlow" aria-hidden="true"></div>
               <input id="progress" type="range" min="0" max="100" value="0" aria-label="Song progress" />
               <div class="timeRow">
                 <span id="currentTime">00:00</span>
@@ -59,6 +62,11 @@
               <button class="control ghost" id="restartBtn" type="button" aria-label="Restart">↺</button>
               <button class="control main" id="playPauseBtn" type="button" aria-label="Pause">❚❚</button>
               <button class="control ghost" id="muteBtn" type="button" aria-label="Mute">⌁</button>
+            </div>
+
+            <div class="phoneFooter">
+              <span>LOSSLESS · ECLIPSE</span>
+              <span>♡</span>
             </div>
 
             <div class="miniSpectrum" id="miniSpectrum" aria-hidden="true">
