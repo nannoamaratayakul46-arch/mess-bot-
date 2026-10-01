@@ -162,30 +162,48 @@ function validateNetscapeCookieText(text, source) {
   const value = String(text || "").replace(/^\uFEFF/, "").trim();
 
   if (!value) {
-    throw new Error(\`\${source} decoded to an empty cookie file.\`);
+    throw new Error(`${source} decoded to an empty cookie file.`);
   }
 
-  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  // A real Netscape cookies.txt export is plain UTF-8/ASCII text.
+  // Reject binary/encrypted browser cookie databases before yt-dlp sees them.
+  if (/\u0000/.test(value)) {
+    throw new Error(
+      `${source} decoded to binary data, not a Netscape cookies.txt file. Export the actual Netscape cookies.txt text file, then Base64-encode that file.`
+    );
+  }
+
+  const lines = value
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+
   const dataLines = lines.filter((line) => !line.startsWith("#"));
 
   if (!dataLines.length) {
     throw new Error(
-      \`\${source} does not contain Netscape cookies.txt entries. Export a Netscape-format cookies.txt file, then Base64-encode that file.\`
+      `${source} does not contain Netscape cookies.txt entries. Export a Netscape-format cookies.txt file, then Base64-encode that file.`
     );
   }
 
   const validEntry = dataLines.some((line) => {
     const fields = line.split(/\s+/);
-    return fields.length >= 7 && fields[0].includes(".");
+
+    return (
+      fields.length >= 7 &&
+      fields[0].includes(".") &&
+      (fields[0].startsWith(".") || fields[0].includes("youtube.com")) &&
+      (fields[1] === "TRUE" || fields[1] === "FALSE") &&
+      (fields[3] === "TRUE" || fields[3] === "FALSE")
+    );
   });
 
   if (!validEntry) {
     throw new Error(
-      \`\${source} is not a valid Netscape-format cookies.txt file. Do not use a browser cookie database, encrypted cookie file, ZIP, or other binary export; use the actual Netscape cookies.txt text file.\`
+      `${source} is not a valid Netscape-format cookies.txt file. Do not use a browser cookie database, encrypted cookie file, ZIP, or other binary export; use the actual Netscape cookies.txt text file.`
     );
   }
 }
-
 async function getCookiePath() {
   const configuredPath = String(process.env.YOUTUBE_COOKIES || "").trim();
   const cookieContent = String(
