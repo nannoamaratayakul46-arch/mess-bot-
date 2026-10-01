@@ -2995,14 +2995,14 @@ app.post(
       return res.status(400).json({ ok: false, error: error?.message || "Invalid Facebook session export." });
     }
 
-    appState = incoming;
+    // Validate the replacement session before touching the currently
+    // working Messenger listener. If Facebook rejects these cookies,
+    // ECLIPSE stays connected with the previous valid session.
+    pendingFacebookAppState = incoming;
 
     dashboardBotPaused = false;
-    pushDashboardEvent("messenger", "Facebook session connect requested from Command Center.");
+    pushDashboardEvent("messenger", "Facebook session validation requested from Command Center.");
     listenerGeneration++;
-    activeListenerGeneration = 0;
-    activeMessengerApi = null;
-    watchdogSetMessengerConnected(false);
 
     if (loginRetryTimer) {
       clearTimeout(loginRetryTimer);
@@ -3506,6 +3506,11 @@ let dashboardLoginError = null;
 let dashboardFacebookCredentials = null;
 let preferDashboardCredentials = false;
 
+// A dashboard-submitted session is kept here until Facebook accepts it.
+// This prevents an invalid replacement cookie set from immediately
+// destroying an already-working Messenger session.
+let pendingFacebookAppState = null;
+
 // Prevent accidentally attaching two MQTT listeners to the same
 // Messenger API object during reconnect races.
 const listenerStartedApis = new WeakSet();
@@ -3599,8 +3604,11 @@ function getFacebookLoginErrorMessage(error) {
 }
 
 function attemptLogin() {
+  const candidateAppState =
+    pendingFacebookAppState || appState;
+
   if (
-    !appState &&
+    !candidateAppState &&
     !dashboardFacebookCredentials
   ) {
     console.warn(
@@ -3620,7 +3628,7 @@ function attemptLogin() {
   const loginInput =
     preferDashboardCredentials && dashboardFacebookCredentials
       ? dashboardFacebookCredentials
-      : appState;
+      : candidateAppState;
 
   let loginSettled = false;
 
@@ -3635,7 +3643,12 @@ function attemptLogin() {
     loginSettled = true;
     dashboardLoginError = getFacebookLoginErrorMessage(error);
     loginInProgress = false;
-    watchdogSetMessengerConnected(false);
+
+    // If this was only a replacement-session test, keep the currently
+    // connected Messenger account alive while the new session retries.
+    if (!activeMessengerApi) {
+      watchdogSetMessengerConnected(false);
+    }
 
     loginAttempt++;
 
@@ -3705,9 +3718,9 @@ function attemptLogin() {
           `[LOGIN] Login failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
         );
 
-        watchdogSetMessengerConnected(
-          false
-        );
+        if (!activeMessengerApi) {
+          watchdogSetMessengerConnected(false);
+        }
 
         loginInProgress = false;
 
@@ -3740,9 +3753,13 @@ function attemptLogin() {
             refreshedAppState.length > 0
           ) {
             appState = refreshedAppState;
+            pendingFacebookAppState = null;
             console.log(
               "[AUTH] Refreshed Facebook appState captured in memory."
             );
+          } else if (pendingFacebookAppState) {
+            appState = pendingFacebookAppState;
+            pendingFacebookAppState = null;
           }
         }
       } catch (error) {
@@ -3753,6 +3770,7 @@ function attemptLogin() {
       }
 
       preferDashboardCredentials = false;
+      pendingFacebookAppState = null;
 
       if (loginRetryTimer) {
         clearTimeout(loginRetryTimer);
