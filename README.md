@@ -98,10 +98,10 @@ Marches persist across restarts and are not limited by a global two-minute cap.
 
 ## Gemini AI configuration
 
-Lucien uses the official Google Gemini API. Set these environment variables in Render (never commit them):
+Lucien uses the official Groq API. Set these environment variables in Render (never commit them):
 
-- GEMINI_API_KEY — required Gemini API key
-- AI_MODEL — required Gemini model name, such as gemini-2.0-flash
+- GROQ_API_KEY — required Groq API key
+- AI_MODEL — optional Groq model name; defaults to openai/gpt-oss-20b
 - ALAIZA_MESSENGER_ID — the authorized Devoura/Alaiza Messenger user ID
 
 The AI handler checks authorization before calling Gemini. Unauthorized users do not trigger an AI request.
