@@ -239,55 +239,39 @@ function escapeHtml(value) {
 }
 
 function updateLyric(t) {
-  let index = timeline.findIndex((entry) => t >= entry.start && t < entry.end && entry.text);
+  // Find the actual timeline slot. Blank slots are intentional and must
+  // remain visible as "…" instead of being skipped.
+  const index = timeline.findIndex((entry) => t >= entry.start && t < entry.end);
+  const safeIndex = index >= 0 ? index : (t >= timeline[timeline.length - 1].start ? timeline.length - 1 : -1);
 
-  if (index === -1) {
-    const last = timeline[timeline.length - 2];
-    if (last && t >= last.start && last.text) index = timeline.length - 2;
-  }
+  if (safeIndex === activeIndex) return;
 
-  if (index === activeIndex) return;
-
-  activeIndex = index;
+  activeIndex = safeIndex;
 
   document.querySelectorAll(".lyricLine").forEach((el) => {
-    const active = Number(el.dataset.index) === index;
+    const active = Number(el.dataset.index) === safeIndex;
     el.classList.toggle("active", active);
   });
 
-  const entry = timeline[index];
-  currentLyric.textContent = entry?.text || "The song has gone quiet.";
+  const entry = timeline[safeIndex];
+  currentLyric.textContent = entry ? (entry.text || "…") : "…";
 
-  if (index >= 0 && !audio.paused) {
-    const activeLines = document.querySelectorAll(`.lyricLine[data-index="${index}"]`);
+  if (safeIndex >= 0 && !audio.paused) {
+    const previewLine = lyricsPreview.querySelector(`.lyricLine[data-index="${safeIndex}"]`);
 
-    activeLines.forEach((line) => {
-      line.classList.add("justActivated");
-    });
-
-    const previewLine = lyricsPreview.querySelector(`.lyricLine[data-index="${index}"]`);
-
-    if (previewLine && document.body.classList.contains("isPlaying")) {
+    if (previewLine) {
       const section = document.getElementById("lyricsSection");
       const rect = section.getBoundingClientRect();
       const comfortablyInside = rect.top < window.innerHeight * 0.72 && rect.bottom > window.innerHeight * 0.2;
 
       if (comfortablyInside) {
-        previewLine.scrollIntoView({
-          behavior: "smooth",
-          block: "center"
-        });
+        previewLine.scrollIntoView({ behavior: "smooth", block: "center" });
       }
     }
 
     if (lyricsModal.classList.contains("open")) {
-      const modalLine = fullLyrics.querySelector(`.lyricLine[data-index="${index}"]`);
-      if (modalLine) {
-        modalLine.scrollIntoView({
-          behavior: "smooth",
-          block: "center"
-        });
-      }
+      const modalLine = fullLyrics.querySelector(`.lyricLine[data-index="${safeIndex}"]`);
+      if (modalLine) modalLine.scrollIntoView({ behavior: "smooth", block: "center" });
     }
   }
 }
