@@ -403,7 +403,7 @@ function frame(ms) {
   const spectrumBars = document.querySelectorAll(".miniSpectrum i");
   if (spectrumBars.length) {
     spectrumBars.forEach((bar, index) => {
-      const bin = Math.min(freqData.length - 1, 3 + index * 4);
+      const bin = Math.min(Math.max(0, freqData.length - 1), 3 + index * 4);
       const sample = freqData.length ? freqData[bin] / 255 : energy;
       bar.style.height = Math.max(8, Math.min(100, 10 + sample * 90)) + "%";
     });
@@ -417,11 +417,6 @@ function frame(ms) {
 }
 
 window.addEventListener("resize", resize);
-resize();
-renderLyrics();
-updatePlayerUI();
-animationId = requestAnimationFrame(frame);
-
 
 phoneLyricsPage.addEventListener("click", (event) => {
   if (event.target === phoneLyricsPage) closePhoneLyrics();
@@ -430,5 +425,5 @@ phoneLyricsPage.addEventListener("click", (event) => {
 resize();
 renderPhoneLyrics();
 updatePlayerUI();
-animationId = requestAnimationFrame(frame);
+requestAnimationFrame(frame);
 requestAnimationFrame(sync);
