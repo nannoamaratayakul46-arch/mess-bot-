@@ -7742,7 +7742,7 @@ function sendBanatReplyWithTyping(
   }, humanDelayMs);
 }
 
-function sendReplyWithTyping,
+function sendReplyWithTyping(
   api,
   message,
   threadID,
