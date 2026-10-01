@@ -1171,6 +1171,18 @@ async function getTriggerReply(
       }
 
       let reply = fallbackReply;
+      let replyTargetName = null;
+
+      if (
+        String(fallbackReply).trim().toLowerCase() ===
+        "jaiden na naman"
+      ) {
+        replyTargetName = await resolveReplyTargetName(api, event);
+
+        if (replyTargetName) {
+          reply = replyTargetName + " na naman";
+        }
+      }
 
       // Groq adds variation to explicit trigger-word replies.
       // If Groq is unavailable, rate-limited, times out, or returns
@@ -1184,32 +1196,22 @@ async function getTriggerReply(
           trigger: matchedTrigger,
           groupName: group.name,
           incomingText: rawText,
-          fallback: fallbackReply,
+          fallback: reply,
+          replyTargetName,
         });
 
         if (typeof aiReply === "string" && aiReply.trim()) {
           reply = aiReply.trim().slice(0, 1200);
+
+          if (replyTargetName) {
+            reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
+          }
         }
       } catch (aiError) {
         console.warn(
           "[TRIGGERS] Groq unavailable; using generic trigger pool:",
           aiError?.status || aiError?.message || aiError
         );
-        reply = fallbackReply;
-      }
-
-      if (
-        String(fallbackReply).trim().toLowerCase() ===
-        "jaiden na naman"
-      ) {
-        const n = await resolveReplyTargetName(
-          api,
-          event
-        );
-
-        if (n) {
-          return n + " na naman";
-        }
       }
 
       return reply;
