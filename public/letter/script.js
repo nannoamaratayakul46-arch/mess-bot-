@@ -201,16 +201,15 @@ function drawBackground(t, energy) {
 }
 
 function renderLyrics() {
-  const visible = timeline.filter((entry) => entry.text);
-
+  // Keep silent timeline slots visible. They are part of the song's pacing.
   const makeLine = (entry, index) => {
     const line = document.createElement("button");
     line.type = "button";
-    line.className = "lyricLine";
+    line.className = "lyricLine" + (!entry.text ? " silence" : "");
     line.dataset.index = String(index);
     line.innerHTML = `
       <span class="lineTime">${formatTime(entry.start)}</span>
-      <span class="lineText">${escapeHtml(entry.text)}</span>
+      <span class="lineText">${escapeHtml(entry.text || "…")}</span>
     `;
     line.addEventListener("click", () => {
       audio.currentTime = entry.start;
@@ -222,8 +221,7 @@ function renderLyrics() {
   lyricsPreview.replaceChildren();
   fullLyrics.replaceChildren();
 
-  visible.forEach((entry) => {
-    const index = timeline.indexOf(entry);
+  timeline.forEach((entry, index) => {
     lyricsPreview.appendChild(makeLine(entry, index));
     fullLyrics.appendChild(makeLine(entry, index));
   });
@@ -254,7 +252,15 @@ function updateLyric(t) {
   });
 
   const entry = timeline[safeIndex];
-  currentLyric.textContent = entry ? (entry.text || "…") : "…";
+  const nextText = entry ? (entry.text || "…") : "…";
+  if (currentLyric.textContent !== nextText) {
+    const card = document.getElementById("currentLyricCard");
+    card.classList.remove("lyricChanging");
+    void card.offsetWidth;
+    card.classList.add("lyricChanging");
+    window.setTimeout(() => card.classList.remove("lyricChanging"), 320);
+    currentLyric.textContent = nextText;
+  }
 
   if (safeIndex >= 0 && !audio.paused) {
     const previewLine = lyricsPreview.querySelector(`.lyricLine[data-index="${safeIndex}"]`);
@@ -303,6 +309,7 @@ function updatePlayerUI() {
 
 async function playAudio() {
   try {
+    document.body.classList.remove("letterFinished");
     setupAudio();
 
     if (audioCtx.state === "suspended") {
@@ -365,7 +372,10 @@ audio.addEventListener("pause", updatePlayerUI);
 audio.addEventListener("ended", () => {
   updatePlayerUI();
   document.body.classList.remove("isPlaying");
+  document.body.classList.add("letterFinished");
   startBtn.innerHTML = '<span class="playIcon">↻</span><span>PLAY AGAIN</span>';
+  playCaption.textContent = "the letter has finished.";
+  document.getElementById("archiveEnd")?.scrollIntoView({behavior:"smooth",block:"center"});
 });
 
 audio.addEventListener("loadedmetadata", updatePlayerUI);
@@ -402,6 +412,15 @@ function frame(ms) {
   const t = ms / 1000;
   const energy = getEnergy();
   drawBackground(t, energy);
+
+  const spectrumBars = document.querySelectorAll(".miniSpectrum i");
+  if (spectrumBars.length) {
+    spectrumBars.forEach((bar, index) => {
+      const bin = Math.min(freqData.length - 1, 3 + index * 4);
+      const sample = freqData.length ? freqData[bin] / 255 : energy;
+      bar.style.height = Math.max(8, Math.min(100, 10 + sample * 90)) + "%";
+    });
+  }
 
   if (analyser && !audio.paused && timeData.length) {
     analyser.getByteTimeDomainData(timeData);
