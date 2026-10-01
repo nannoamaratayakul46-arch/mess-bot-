@@ -4153,6 +4153,30 @@ async function handleMessage(
     isAdmin(senderId);
 
   // ==========================================================
+  // ADMIN CONTROL DENIAL
+  // ==========================================================
+  // Keep unauthorized admin-command attempts short and playful
+  // instead of exposing the full admin-control panels/messages.
+  // ==========================================================
+
+  const adminControlAttempt =
+    /^(?:!owner(?:\\s+(?:bot|automated|economy|rpg|music|moderation|system))?|!pause(?:\\s+status)?|!resume|!(?:bot(?:\\s+(?:off|on|status))?|shutdown|startup)|!watchdog(?:\\s+(?:status|restart))?|!cleanup(?:\\s+(?:status|disk|run|repair|optimize|full))?|!gcstatus|!broadcast(?:\\s|$)|!game(?:\\s+(?:on|off|status))?|!mod(?:\\s|$)|!automod(?:\\s|$)|!economy(?:\\s|$)|!debug(?:\\s|$)|!lucien(?:\\s|$)|!warn(?:\\s|$)|!ban(?:\\s|$)|!kick(?:\\s|$)|!unban(?:\\s|$)|!modlog(?:\\s|$)|!banat(?:\\s|$)|!music\\s+(?:pause|resume|play))$/i.test(originalText) ||
+    originalText === "/";
+
+  if (
+    adminControlAttempt &&
+    !senderIsAdmin
+  ) {
+    sendReplyWithTyping(
+      api,
+      "bawal po panget gumamit sa bot commands, baby",
+      threadID
+    );
+
+    return;
+  }
+
+  // ==========================================================
   // ECLIPSE SELF-MESSAGE GUARD
   // ==========================================================
   // ECLIPSE's own outgoing messages are ignored completely.
