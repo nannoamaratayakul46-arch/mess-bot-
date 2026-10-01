@@ -158,6 +158,34 @@ async function searchYouTube(query) {
 
 let generatedCookiePath = null;
 
+function validateNetscapeCookieText(text, source) {
+  const value = String(text || "").replace(/^\uFEFF/, "").trim();
+
+  if (!value) {
+    throw new Error(\`\${source} decoded to an empty cookie file.\`);
+  }
+
+  const lines = value.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+  const dataLines = lines.filter((line) => !line.startsWith("#"));
+
+  if (!dataLines.length) {
+    throw new Error(
+      \`\${source} does not contain Netscape cookies.txt entries. Export a Netscape-format cookies.txt file, then Base64-encode that file.\`
+    );
+  }
+
+  const validEntry = dataLines.some((line) => {
+    const fields = line.split(/\s+/);
+    return fields.length >= 7 && fields[0].includes(".");
+  });
+
+  if (!validEntry) {
+    throw new Error(
+      \`\${source} is not a valid Netscape-format cookies.txt file. Do not use a browser cookie database, encrypted cookie file, ZIP, or other binary export; use the actual Netscape cookies.txt text file.\`
+    );
+  }
+}
+
 async function getCookiePath() {
   const configuredPath = String(process.env.YOUTUBE_COOKIES || "").trim();
   const cookieContent = String(
@@ -168,6 +196,8 @@ async function getCookiePath() {
   ).trim();
 
   if (cookieContent) {
+    validateNetscapeCookieText(cookieContent, "YOUTUBE_COOKIES_CONTENT");
+
     const target = path.join(
       "/tmp",
       "eclipse-youtube-cookies.txt"
@@ -195,6 +225,8 @@ async function getCookiePath() {
     if (!decoded.trim()) {
       throw new Error("YOUTUBE_COOKIES_B64 decoded to an empty cookie file.");
     }
+
+    validateNetscapeCookieText(decoded, "YOUTUBE_COOKIES_B64");
 
     const target = path.join(
       "/tmp",
