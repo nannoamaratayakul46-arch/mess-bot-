@@ -2,22 +2,39 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta
+    name="viewport"
+    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
+  />
   <title>Dot Matrix Music Visualizer</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
   <canvas id="visualizer"></canvas>
-  <audio id="audio" src="audio/wave%20to%20earth%20-%20seasons.mp3" preload="auto" crossorigin="anonymous"></audio>
 
+  <audio
+    id="audio"
+    src="audio/wave%20to%20earth%20-%20seasons.mp3"
+    preload="auto"
+    crossorigin="anonymous"
+  ></audio>
+
+  <!-- START SCREEN -->
   <div id="startScreen">
     <div class="startBox">
-      <div class="mini">DOT MATRIX VISUALIZER</div>
-      <button id="startBtn">START</button>
-      <div class="hint">A letter, kept.</div>
+      <div class="mini">
+        DOT MATRIX VISUALIZER
+      </div>
+      <button id="startBtn">
+        START
+      </button>
+      <div class="hint">
+        A letter, kept.
+      </div>
     </div>
   </div>
 
+  <!-- SMALL HUD -->
   <div id="hud">
     <span id="time">00:00</span>
     <span id="status">READY</span>
