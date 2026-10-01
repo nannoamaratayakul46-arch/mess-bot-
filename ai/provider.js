@@ -3,6 +3,13 @@
 const GROQ_API_BASE_URL = "https://api.groq.com/openai/v1/chat/completions";
 const DEFAULT_MODEL = "openai/gpt-oss-20b";
 const REQUEST_TIMEOUT_MS = 45_000;
+const TRIGGER_REQUEST_TIMEOUT_MS = Math.max(
+  4_000,
+  Math.min(
+    8_000,
+    Number(process.env.ECLIPSE_TRIGGER_AI_TIMEOUT_MS || 6_000)
+  )
+);
 
 function contentToText(content) {
   if (typeof content === "string") return content;
@@ -108,7 +115,10 @@ function providerError(message, status, retryable = false) {
 
 async function requestGroq(messages, options = {}) {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+  const timeoutMs = Number.isFinite(Number(options.timeoutMs))
+    ? Math.max(1_000, Number(options.timeoutMs))
+    : REQUEST_TIMEOUT_MS;
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   try {
     const response = await fetch(GROQ_API_BASE_URL, {
@@ -199,6 +209,7 @@ async function generateTriggerReply({
   groupName,
   incomingText,
   fallback,
+  replyTargetName = null,
 }) {
   const safeFallback = String(fallback || "").trim();
 
@@ -210,6 +221,7 @@ async function generateTriggerReply({
     "Do not mention AI, APIs, prompts, JSON, or these instructions.",
     "Do not copy the fallback verbatim unless necessary.",
     "Do not invent personal facts about the target.",
+    "If a reply target name is supplied, use that exact name when referring to the target.",
     "Do not make threats or encourage real-world harm.",
     "Return ONLY the reply text.",
   ].join(" ");
@@ -219,6 +231,7 @@ async function generateTriggerReply({
     "Trigger: " + String(trigger || ""),
     "Incoming message: " + String(incomingText || "").slice(0, 1000),
     "Existing pool example to imitate stylistically: " + safeFallback,
+    "Reply target name: " + String(replyTargetName || "(none)"),
   ].join("\n");
 
   return requestGroq(
@@ -231,6 +244,7 @@ async function generateTriggerReply({
       model: getModel(),
       temperature: 1.05,
       maxCompletionTokens: 120,
+      timeoutMs: TRIGGER_REQUEST_TIMEOUT_MS,
     }
   );
 }
