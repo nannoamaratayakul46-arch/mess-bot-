@@ -1,110 +1,28 @@
 <!doctype html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
-<meta name="theme-color" content="#05050d">
-<title>ECLIPSE · A LETTER, KEPT</title>
-<style>
-:root{--ink:#f8e9f4;--muted:#d8bfd1;--gold:#f6d7b7;--paper:rgba(31,18,34,.66)}
-*{box-sizing:border-box}
-html,body{margin:0;width:100%;min-height:100%;background:#03030a;color:var(--ink);font-family:Georgia,serif}
-body{overflow-x:hidden;overflow-y:auto}
-canvas{position:fixed;inset:0;width:100%;height:100%;z-index:0}
-.sky{position:fixed;inset:0;z-index:1;pointer-events:none;background:
-radial-gradient(circle at 50% 20%,rgba(143,101,180,.12),transparent 34%),
-radial-gradient(circle at 15% 70%,rgba(83,101,173,.09),transparent 30%),
-linear-gradient(180deg,rgba(2,2,9,.1),rgba(2,2,8,.62))}
-.moon{position:fixed;z-index:2;top:7vh;right:8vw;width:clamp(72px,15vw,150px);aspect-ratio:1;border-radius:50%;
-background:radial-gradient(circle at 34% 30%,#fff9fb 0 7%,#e8dfe8 40%,#b6aab8 72%,#706877 100%);
-box-shadow:0 0 35px rgba(255,238,250,.22),0 0 120px rgba(183,151,209,.12);opacity:.78;pointer-events:none}
-.moon:after{content:"";position:absolute;inset:10%;border-radius:50%;background:radial-gradient(circle at 62% 35%,rgba(80,65,86,.13),transparent 20%),radial-gradient(circle at 35% 67%,rgba(80,65,86,.11),transparent 18%);mix-blend-mode:multiply}
-.wrap{position:relative;z-index:3;width:min(900px,100%);margin:auto;padding:10vh 18px 16vh}
-.hero{min-height:76vh;display:grid;place-items:center;text-align:center;padding:7vh 0}
-.kicker,.meta{font:9px/1.6 Arial,sans-serif;letter-spacing:.34em;text-transform:uppercase;color:var(--muted)}
-.hero h1{font-weight:400;font-size:clamp(38px,10vw,82px);line-height:1.02;letter-spacing:.035em;margin:20px 0 16px;text-shadow:0 0 28px rgba(255,207,239,.12)}
-.subtitle{font-size:clamp(14px,3.8vw,19px);font-style:italic;letter-spacing:.08em;color:#e7d6e2}
-.tap{margin-top:58px;font:9px Arial,sans-serif;letter-spacing:.3em;text-transform:uppercase;color:#bca8b7;animation:pulse 2.8s ease-in-out infinite}
-@keyframes pulse{50%{opacity:.35;transform:translateY(3px)}}
-.letter{position:relative;margin:0 auto;padding:clamp(30px,7vw,72px) clamp(22px,7vw,76px);border:1px solid rgba(245,216,235,.17);background:linear-gradient(145deg,rgba(45,26,47,.72),rgba(16,13,25,.58));backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);box-shadow:0 28px 90px rgba(0,0,0,.4),inset 0 1px rgba(255,255,255,.05);overflow:hidden}
-.letter:before{content:"";position:absolute;inset:12px;border:1px solid rgba(246,215,183,.08);pointer-events:none}
-.archive{display:flex;justify-content:space-between;gap:20px;align-items:flex-start;margin-bottom:48px}
-.archive .right{text-align:right}
-h2{font-weight:400;font-size:clamp(27px,7vw,52px);margin:0 0 26px;line-height:1.1}
-.lead{font-size:clamp(17px,4.4vw,22px);line-height:1.8;color:#f2dfeb}
-.copy{font-size:clamp(15px,3.9vw,18px);line-height:2;color:#d9c8d4}
-.copy p{margin:0 0 1.4em}
-.rule{height:1px;background:linear-gradient(90deg,transparent,rgba(246,215,183,.35),transparent);margin:48px 0}
-.reveal{opacity:0;transform:translateY(28px);transition:opacity 1s ease,transform 1s ease}
-.reveal.show{opacity:1;transform:none}
-.end{text-align:center;padding:15vh 0 8vh}
-.end .title{font-size:clamp(28px,7vw,55px);font-weight:400;margin:16px 0}
-.end .small{font:9px Arial,sans-serif;letter-spacing:.3em;text-transform:uppercase;color:#bba8b6}
-.heart{font-size:30px;color:#f0c7df;filter:drop-shadow(0 0 12px rgba(240,199,223,.25))}
-@media(max-width:600px){.wrap{padding-top:5vh}.hero{min-height:84vh}.moon{top:4vh;right:6vw}.archive{font-size:8px}.letter{padding:34px 24px}.letter:before{inset:9px}}
-</style>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <title>Dot Matrix Music Visualizer</title>
+  <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-<canvas id="sky" aria-hidden="true"></canvas>
-<div class="sky"></div><div class="moon"></div>
-<main class="wrap">
-<section class="hero">
-<div>
-<div class="kicker">ECLIPSE · A LETTER, KEPT</div>
-<h1>A Sky Made For You</h1>
-<div class="subtitle">every little light brought us here.</div>
-<div class="tap">scroll slowly · the sky is listening</div>
-</div>
-</section>
-<article class="letter">
-<div class="archive reveal">
-<div><div class="meta">ARCHIVE ENTRY 001</div><div class="meta">THE FIRST ANNIVERSARY · 26 · 09 · 2026</div></div>
-<div class="right"><div class="meta">Known for: 1 year</div><div class="meta">Remembered for: everything</div></div>
-</div>
-<div class="reveal">
-<h2>For the one this sky remembers.</h2>
-<p class="lead">Some memories disappear with time. Some become part of the way we see everything after them.</p>
-</div>
-<div class="rule reveal"></div>
-<div class="copy reveal">
-<p>This page is a small place for the things that deserved to stay.</p>
-<p>A year is only a measurement. What it holds is much bigger: the ordinary days, the impossible ones, the laughter, the quiet, the moments that became memories before we even knew they would matter.</p>
-<p>So I made a sky instead of a clock. Every light can disappear, but for a moment it still exists — bright enough to be seen, remembered, and kept.</p>
-</div>
-<div class="rule reveal"></div>
-<div class="copy reveal">
-<p>Happy first anniversary.</p>
-<p>Whatever the next chapters look like, this one will always have a place here.</p>
-</div>
-<div class="end reveal">
-<div class="heart">♡</div>
-<div class="title">A letter, kept.</div>
-<div class="small">archive entry 001 · 26 · 09 · 2026</div>
-</div>
-</article>
-</main>
-<script>
-(()=>{"use strict";
-const c=document.getElementById("sky"),x=c.getContext("2d",{alpha:true});
-let W=0,H=0,D=1,stars=[],rockets=[],particles=[],rings=[],last=performance.now(),bursts=0;
-const TAU=Math.PI*2,rand=(a,b)=>Math.random()*(b-a)+a,clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-function resize(){D=Math.min(devicePixelRatio||1,2);W=innerWidth;H=innerHeight;c.width=Math.floor(W*D);c.height=Math.floor(H*D);x.setTransform(D,0,0,D,0,0);stars=Array.from({length:Math.min(180,Math.floor(W*H/7000))},()=>({x:Math.random()*W,y:Math.random()*H,r:rand(.3,1.5),a:rand(.18,.85),p:rand(0,TAU)}))}
-function starfield(t){for(const s of stars){const a=s.a*(.65+.35*Math.sin(t*.001+s.p));x.globalAlpha=a;x.fillStyle="#fff4fb";x.beginPath();x.arc(s.x,s.y,s.r,0,TAU);x.fill()}x.globalAlpha=1}
-function launch(tx,ty,mega=false){const sx=rand(W*.18,W*.82),sy=H+12;rockets.push({x:sx,y:sy,tx,ty,vx:(tx-sx)*.018,vy:-rand(9,12),trail:[],mega})}
-function burst(b){const count=b.mega?190:rand(75,120)|0;const colors=["#ffd7ed","#d9c9ff","#bcecff","#ffe0a8","#ffffff"];const base=colors[(Math.random()*colors.length)|0];for(let i=0;i<count;i++){const a=rand(0,TAU),sp=b.mega?rand(2.5,8):rand(1.8,6.2);particles.push({x:b.x,y:b.y,vx:Math.cos(a)*sp,vy:Math.sin(a)*sp,g:.035,drag:.982,life:rand(50,100),max:100,size:rand(.7,2.1),color:Math.random()<.18?"#fff":base})}rings.push({x:b.x,y:b.y,r:2,a:.7,life:34});}
-function heartBurst(cx,cy){for(let i=0;i<95;i++){const t=rand(0,TAU),q=rand(.15,1),hx=16*Math.pow(Math.sin(t),3),hy=-(13*Math.cos(t)-5*Math.cos(2*t)-2*Math.cos(3*t)-Math.cos(4*t));particles.push({x:cx+hx*q*2.2,y:cy+hy*q*2.2,vx:rand(-.25,.25),vy:rand(-.25,.25),g:.008,drag:.994,life:rand(70,120),max:120,size:rand(.8,2),color:"#ffc7e6"})}}
-function frame(t){const dt=clamp((t-last)/16.67,.5,2);last=t;x.clearRect(0,0,W,H);const g=x.createRadialGradient(W*.5,H*.32,0,W*.5,H*.32,Math.max(W,H)*.8);g.addColorStop(0,"rgba(95,65,125,.08)");g.addColorStop(1,"rgba(0,0,0,0)");x.fillStyle=g;x.fillRect(0,0,W,H);starfield(t);
-for(let i=rockets.length-1;i>=0;i--){const r=rockets[i];r.trail.push({x:r.x,y:r.y});if(r.trail.length>14)r.trail.shift();r.x+=r.vx*dt;r.y+=r.vy*dt;r.vy+=.055*dt;x.strokeStyle="rgba(255,220,242,.38)";x.lineWidth=1.4;x.beginPath();r.trail.forEach((p,j)=>j?x.lineTo(p.x,p.y):x.moveTo(p.x,p.y));x.stroke();if(r.y<=r.ty){burst({x:r.x,y:r.y,mega:r.mega});rockets.splice(i,1);if(Math.random()<.17)heartBurst(r.x,r.y)}}
-for(let i=particles.length-1;i>=0;i--){const p=particles[i];p.x+=p.vx*dt;p.y+=p.vy*dt;p.vy+=p.g*dt;p.vx*=Math.pow(p.drag,dt);p.vy*=Math.pow(p.drag,dt);p.life-=dt;if(p.life<=0){particles.splice(i,1);continue}x.globalAlpha=clamp(p.life/p.max,0,1);x.fillStyle=p.color;x.beginPath();x.arc(p.x,p.y,p.size,0,TAU);x.fill()}x.globalAlpha=1;
-for(let i=rings.length-1;i>=0;i--){const r=rings[i];r.r+=2.4*dt;r.a-=.022*dt;r.life-=dt;if(r.life<=0){rings.splice(i,1);continue}x.strokeStyle="rgba(255,220,242,"+Math.max(0,r.a)+")";x.lineWidth=1;x.beginPath();x.arc(r.x,r.y,r.r,0,TAU);x.stroke()}requestAnimationFrame(frame)}
-addEventListener("resize",resize,{passive:true});
-addEventListener("pointerdown",e=>{if(e.target.closest&&e.target.closest(".letter"))return;bursts++;launch(e.clientX,e.clientY,bursts%7===0)});
-resize();requestAnimationFrame(frame);
-const io=new IntersectionObserver(es=>es.forEach(e=>e.isIntersecting&&e.target.classList.add("show")),{threshold:.14});
-document.querySelectorAll(".reveal").forEach(el=>io.observe(el));
-setTimeout(()=>launch(W*.5,H*.32,true),900);
-setInterval(()=>{if(document.visibilityState==="visible")launch(rand(W*.25,W*.75),rand(H*.18,H*.48),Math.random()<.1)},5200);
-})();
-</script>
+  <canvas id="visualizer"></canvas>
+  <audio id="audio" src="audio/wave%20to%20earth%20-%20seasons.mp3" preload="auto" crossorigin="anonymous"></audio>
+
+  <div id="startScreen">
+    <div class="startBox">
+      <div class="mini">DOT MATRIX VISUALIZER</div>
+      <button id="startBtn">START</button>
+      <div class="hint">A letter, kept.</div>
+    </div>
+  </div>
+
+  <div id="hud">
+    <span id="time">00:00</span>
+    <span id="status">READY</span>
+  </div>
+
+  <script src="script.js"></script>
 </body>
 </html>
