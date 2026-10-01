@@ -249,12 +249,47 @@ function updateLyric(t) {
   if (index === activeIndex) return;
 
   activeIndex = index;
+
   document.querySelectorAll(".lyricLine").forEach((el) => {
-    el.classList.toggle("active", Number(el.dataset.index) === index);
+    const active = Number(el.dataset.index) === index;
+    el.classList.toggle("active", active);
   });
 
   const entry = timeline[index];
   currentLyric.textContent = entry?.text || "The song has gone quiet.";
+
+  if (index >= 0 && !audio.paused) {
+    const activeLines = document.querySelectorAll(`.lyricLine[data-index="${index}"]`);
+
+    activeLines.forEach((line) => {
+      line.classList.add("justActivated");
+    });
+
+    const previewLine = lyricsPreview.querySelector(`.lyricLine[data-index="${index}"]`);
+
+    if (previewLine && document.body.classList.contains("isPlaying")) {
+      const section = document.getElementById("lyricsSection");
+      const rect = section.getBoundingClientRect();
+      const comfortablyInside = rect.top < window.innerHeight * 0.72 && rect.bottom > window.innerHeight * 0.2;
+
+      if (comfortablyInside) {
+        previewLine.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
+      }
+    }
+
+    if (lyricsModal.classList.contains("open")) {
+      const modalLine = fullLyrics.querySelector(`.lyricLine[data-index="${index}"]`);
+      if (modalLine) {
+        modalLine.scrollIntoView({
+          behavior: "smooth",
+          block: "center"
+        });
+      }
+    }
+  }
 }
 
 function updatePlayerUI() {
