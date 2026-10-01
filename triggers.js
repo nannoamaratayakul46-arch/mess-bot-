@@ -1,3 +1,5 @@
+const { generateTriggerReply } = require("./ai/provider");
+
 // ============================================================
 // TRIGGERS / BANAT SYSTEM
 // ============================================================
@@ -1149,23 +1151,55 @@ async function getTriggerReply(
         group.name === "banat-expanded" ||
         group.name === "public";
 
-      const reply = isFlirtyBanatGroup
+      const fallbackReply = isFlirtyBanatGroup
         ? pickFreshRandom(
             group.replies,
             recentBanatReplies
           )
         : getNextReply(group);
 
-      if (isFlirtyBanatGroup && reply) {
+      if (!fallbackReply) {
+        return null;
+      }
+
+      if (isFlirtyBanatGroup) {
         rememberRecent(
           recentBanatReplies,
-          reply,
+          fallbackReply,
           12
         );
       }
 
+      let reply = fallbackReply;
+
+      // Groq adds variation to explicit trigger-word replies.
+      // If Groq is unavailable, rate-limited, times out, or returns
+      // anything unusable, the existing pool remains the fallback.
+      try {
+        const matchedTrigger = group.triggers.find((trigger) =>
+          matchesTrigger(text, trigger)
+        );
+
+        const aiReply = await generateTriggerReply({
+          trigger: matchedTrigger,
+          groupName: group.name,
+          incomingText: rawText,
+          fallback: fallbackReply,
+        });
+
+        if (typeof aiReply === "string" && aiReply.trim()) {
+          reply = aiReply.trim().slice(0, 1200);
+        }
+      } catch (aiError) {
+        console.warn(
+          "[TRIGGERS] Groq unavailable; using generic trigger pool:",
+          aiError?.status || aiError?.message || aiError
+        );
+        reply = fallbackReply;
+      }
+
       if (
-        String(reply).trim().toLowerCase() ===
+        String(fallbackReply).trim().toLowerCase() ===
         "jaiden na naman"
       ) {
         const n = await resolveReplyTargetName(
@@ -1173,9 +1207,9 @@ async function getTriggerReply(
           event
         );
 
-        return n
-          ? n + " na naman"
-          : reply;
+        if (n) {
+          return n + " na naman";
+        }
       }
 
       return reply;
