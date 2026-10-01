@@ -1218,3 +1218,28 @@ body.isPlaying .phoneScreen {
     transition: none;
   }
 }
+
+/* FINAL CINEMATIC POLISH */
+.hero{transition:filter 1.2s ease,opacity 1.2s ease,transform 1.2s cubic-bezier(.16,1,.3,1)}
+body.isPlaying .hero{filter:brightness(1.12)}
+body.isPlaying .heroPlay{box-shadow:0 0 0 1px rgba(217,206,145,.16),0 16px 70px rgba(217,206,145,.1)}
+.heroPlay .playIcon{transition:transform .45s cubic-bezier(.16,1,.3,1),background .45s ease}
+body.isPlaying .heroPlay .playIcon{transform:rotate(90deg)}
+.phone{will-change:transform,opacity,box-shadow}
+body.isPlaying .coverWrap{box-shadow:0 28px 55px rgba(0,0,0,.55),0 0 80px rgba(217,206,145,.14)}
+body.isPlaying .progressTrackGlow{animation:progressGlow 1.8s ease-in-out infinite}
+@keyframes progressGlow{50%{opacity:.45;transform:scaleX(1.01)}}
+.currentLyricCard p{transition:opacity .28s ease,transform .42s cubic-bezier(.16,1,.3,1)}
+.currentLyricCard.lyricChanging p{opacity:.2;transform:translateY(7px)}
+.lyricLine.silence .lineText{color:rgba(238,232,201,.38);font-style:italic;letter-spacing:.08em}
+.lyricLine.silence.active .lineText{color:var(--gold);text-shadow:0 0 35px rgba(217,206,145,.22)}
+.archiveEnd{min-height:82svh;padding-top:15vh;padding-bottom:18vh;background:radial-gradient(circle at 50% 42%,rgba(217,206,145,.065),transparent 38%),#090807}
+.archiveEndKicker{color:rgba(238,232,201,.28);font-size:8px;letter-spacing:.25em}
+.archiveEnd h2{margin:24px 0 18px;font-family:Georgia,"Times New Roman",serif;font-size:clamp(4rem,13vw,8rem);font-weight:400;line-height:.82;letter-spacing:-.06em}
+.archiveEnd h2 em{color:var(--gold);font-weight:400}
+.archiveEnd p{max-width:310px;margin:0 auto;color:rgba(238,232,201,.42);font-family:Georgia,"Times New Roman",serif;font-size:14px;font-style:italic;line-height:1.6;letter-spacing:0}
+.archiveEnd small{margin-top:38px;color:rgba(238,232,201,.18);font-size:7px;letter-spacing:.22em}
+body.letterFinished .archiveEnd{animation:archiveReveal 2.2s cubic-bezier(.16,1,.3,1) both}
+@keyframes archiveReveal{from{opacity:.45}to{opacity:1}}
+@media(max-width:560px){.archiveEnd{min-height:76svh;padding-left:8vw;padding-right:8vw}.archiveEnd h2{font-size:clamp(4rem,20vw,6rem)}}
+@media(prefers-reduced-motion:reduce){.hero,.currentLyricCard p,.archiveEnd,.progressTrackGlow{transition:none;animation:none!important}}
