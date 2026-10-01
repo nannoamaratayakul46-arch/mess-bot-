@@ -7372,11 +7372,11 @@ async function runBanatBurstQueue(threadID) {
     while (state.queue.length) {
       const job = state.queue.shift();
 
-      // Every accepted message waits 2 seconds before sending.
+      // Keep the burst cadence controlled in one place. The sender
+      // handles the human-like typing delay and this queue supplies
+      // the minimum spacing between accepted Banat replies.
       await sleep(BANAT_REPLY_DELAY_MS);
 
-      // The existing sender keeps using ECLIPSE's Traffic Governor.
-      // delay=0 here because the burst queue already supplied the 2s wait.
       sendBanatReplyWithTyping(
         job.api,
         job.message,
@@ -7387,9 +7387,6 @@ async function runBanatBurstQueue(threadID) {
         0
       );
 
-      if (state.queue.length) {
-        await sleep(BANAT_REPLY_DELAY_MS);
-      }
     }
   } finally {
     const current = banatBurstState.get(key);
@@ -7742,10 +7739,10 @@ function sendBanatReplyWithTyping(
         sendError
       );
     }
-  }, delayMs);
+  }, humanDelayMs);
 }
 
-function sendReplyWithTyping(
+function sendReplyWithTyping,
   api,
   message,
   threadID,
