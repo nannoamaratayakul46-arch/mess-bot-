@@ -2,34 +2,127 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, viewport-fit=cover"
-  />
-  <title>Dot Matrix Music Visualizer</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#080706" />
+  <title>A Letter, Kept — ECLIPSE</title>
   <link rel="stylesheet" href="style.css" />
 </head>
 <body>
-  <canvas id="visualizer"></canvas>
+  <canvas id="visualizer" aria-hidden="true"></canvas>
 
-  <audio
-    id="audio"
-    src="audio/v14044g50000daiis97og65tvqij35tg.mp4"
-    preload="auto"
-  ></audio>
+  <audio id="audio" src="audio/v14044g50000daiis97og65tvqij35tg.mp4" preload="metadata"></audio>
 
-  <div id="startScreen">
-    <div class="startBox">
-      <div class="mini">DOT MATRIX VISUALIZER</div>
-      <button id="startBtn">START</button>
-      <div class="hint">A letter, kept.</div>
+  <main id="experience">
+    <section class="hero" id="hero">
+      <div class="heroGlow"></div>
+      <div class="eyebrow">E C L I P S E · ARCHIVE ENTRY 001</div>
+      <h1>A letter,<br /><em>kept.</em></h1>
+      <p class="intro">Some things are easier to remember when you give them a place to stay.</p>
+      <button class="heroPlay" id="startBtn" type="button">
+        <span class="playIcon">▶</span>
+        <span>PLAY THIS LETTER</span>
+      </button>
+      <div class="scrollHint">TAP PLAY · THEN LET IT UNFOLD</div>
+    </section>
+
+    <section class="playerSection" id="playerSection">
+      <div class="sectionLabel">NOW PLAYING</div>
+
+      <div class="phone" id="phone">
+        <div class="phoneFrame">
+          <div class="phoneSpeaker"></div>
+          <div class="phoneScreen">
+            <div class="phoneTop">
+              <span id="playerStatus">READY</span>
+              <span>●</span>
+            </div>
+
+            <div class="coverWrap">
+              <img id="cover" src="IMG_0842.jpeg" alt="Album artwork" />
+              <div class="coverShine"></div>
+            </div>
+
+            <div class="songInfo">
+              <div class="songTitle">A Letter, Kept</div>
+              <div class="songArtist">ECLIPSE · FOR YOU</div>
+            </div>
+
+            <div class="progressArea">
+              <input id="progress" type="range" min="0" max="100" value="0" aria-label="Song progress" />
+              <div class="timeRow">
+                <span id="currentTime">00:00</span>
+                <span id="duration">02:42</span>
+              </div>
+            </div>
+
+            <div class="playerControls">
+              <button class="control ghost" id="restartBtn" type="button" aria-label="Restart">↺</button>
+              <button class="control main" id="playPauseBtn" type="button" aria-label="Pause">❚❚</button>
+              <button class="control ghost" id="muteBtn" type="button" aria-label="Mute">⌁</button>
+            </div>
+
+            <div class="miniSpectrum" id="miniSpectrum" aria-hidden="true">
+              <i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="playerCaption">
+        <span id="playCaption">the song starts here.</span>
+        <span class="equalizer"><b></b><b></b><b></b><b></b></span>
+      </div>
+    </section>
+
+    <section class="lyricsSection" id="lyricsSection">
+      <div class="lyricsHeader">
+        <div>
+          <div class="sectionLabel">THE LYRICS</div>
+          <h2>Let the words<br /><em>stay awhile.</em></h2>
+        </div>
+        <button id="fullLyricsBtn" class="textButton" type="button">VIEW FULL ↗</button>
+      </div>
+
+      <div class="currentLyricCard" id="currentLyricCard">
+        <span class="smallLabel">PLAYING NOW</span>
+        <p id="currentLyric">Press play and the lyrics will follow.</p>
+      </div>
+
+      <div class="lyricsPreview" id="lyricsPreview"></div>
+    </section>
+
+    <section class="archiveEnd">
+      <div class="archiveMark">୨୧</div>
+      <div>KEPT IN ECLIPSE</div>
+      <small>some memories deserve a place to return to.</small>
+    </section>
+  </main>
+
+  <div class="stickyPlayer" id="stickyPlayer">
+    <img src="IMG_0842.jpeg" alt="" />
+    <div class="stickyInfo">
+      <strong>A Letter, Kept</strong>
+      <span id="stickyStatus">READY</span>
+    </div>
+    <button id="stickyPlay" type="button" aria-label="Play or pause">▶</button>
+  </div>
+
+  <div class="lyricsModal" id="lyricsModal" aria-hidden="true">
+    <div class="modalBackdrop" id="modalBackdrop"></div>
+    <div class="lyricsSheet" role="dialog" aria-modal="true" aria-labelledby="fullLyricsTitle">
+      <div class="sheetHandle"></div>
+      <div class="sheetTop">
+        <div>
+          <div class="sectionLabel">FULL LYRICS</div>
+          <h2 id="fullLyricsTitle">A Letter, Kept</h2>
+        </div>
+        <button id="closeLyricsBtn" class="closeButton" type="button" aria-label="Close lyrics">×</button>
+      </div>
+      <div class="fullLyrics" id="fullLyrics"></div>
     </div>
   </div>
 
-  <div id="hud">
-    <span id="time">00:00</span>
-    <span id="status">READY</span>
-  </div>
+  <div id="status" class="srOnly" aria-live="polite">READY</div>
 
   <script src="script.js"></script>
 </body>
