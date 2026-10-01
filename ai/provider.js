@@ -86,9 +86,17 @@ function getApiKey() {
 }
 
 function getModel() {
-  return String(process.env.AI_MODEL || DEFAULT_MODEL)
+  const configured = String(process.env.AI_MODEL || "")
     .trim()
-    .replace(/^models\//, "") || DEFAULT_MODEL;
+    .replace(/^models\//, "");
+
+  // Prevent an old Gemini model name left in Render from breaking
+  // the Groq migration.
+  if (!configured || /^gemini(?:[-_]|$)/i.test(configured)) {
+    return DEFAULT_MODEL;
+  }
+
+  return configured;
 }
 
 function providerError(message, status, retryable = false) {
