@@ -7575,11 +7575,7 @@ const BANAT_KEY_NEIGHBORS = Object.freeze({
   z:"asx",x:"zsdc",c:"xdfv",v:"cfgb",b:"vghn",n:"bhjm",m:"njk",
 });
 
-const BANAT_SHORTHANDS = Object.freeze({
-  you:["u"], your:["ur"], "you are":["u r"], "you're":["ur"],
-  "right now":["rn"], though:["tho"], because:["bc","cuz"],
-  probably:["prob"], something:["smth"], about:["abt"],
-});
+const { BANAT_SHORTHANDS } = require("./banat-abbreviations");
 
 function humanPick(array) {
   if (!array.length) return null;
