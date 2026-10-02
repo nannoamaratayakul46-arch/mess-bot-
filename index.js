@@ -7337,6 +7337,9 @@ function registerActiveThreadCleanup() {
 
 const BANAT_REPLY_DELAY_MS = 2_000;
 const BANAT_BURST_MAX_REPLIES = 2;
+const BANAT_BURST_COALESCE_MS = 750;
+const BANAT_MIN_INTER_REPLY_GAP_MS = 1_600;
+const BANAT_STALE_JOB_MS = 9_000;
 
 // One Banat burst is shared by everyone in the same conversation.
 // At most 2 incoming messages are accepted. Each accepted message waits
@@ -7356,6 +7359,8 @@ function acceptBanatBurstMessage(threadID, job) {
       accepted: 0,
       queue: [],
       running: false,
+      lastSentAt: 0,
+      coalesceTimer: null,
     };
     banatBurstState.set(key, state);
   }
@@ -7365,16 +7370,28 @@ function acceptBanatBurstMessage(threadID, job) {
   }
 
   state.accepted++;
-  state.queue.push(job);
+  state.queue.push({
+    ...job,
+    queuedAt: Date.now(),
+  });
 
-  if (!state.running) {
-    runBanatBurstQueue(key).catch((error) => {
-      console.error("[BANAT] Burst queue failed:", error);
-      banatBurstState.delete(key);
-    });
+  // Let a rapid cluster of messages settle before starting the first
+  // reply. This prevents A -> bot -> B -> bot machine-gun behavior.
+  if (!state.running && !state.coalesceTimer) {
+    state.coalesceTimer = setTimeout(() => {
+      state.coalesceTimer = null;
+      runBanatBurstQueue(key).catch((error) => {
+        console.error("[BANAT] Burst queue failed:", error);
+        banatBurstState.delete(key);
+      });
+    }, BANAT_BURST_COALESCE_MS);
   }
 
   return true;
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 }
 
 async function runBanatBurstQueue(threadID) {
@@ -7390,28 +7407,45 @@ async function runBanatBurstQueue(threadID) {
   try {
     while (state.queue.length) {
       const job = state.queue.shift();
+      const age = Date.now() - Number(job.queuedAt || Date.now());
 
-      // Keep the burst cadence controlled in one place. The sender
-      // handles the human-like typing delay and this queue supplies
-      // the minimum spacing between accepted Banat replies.
-      await sleep(BANAT_REPLY_DELAY_MS);
+      // A reply that sat in the queue too long may no longer match the
+      // conversation. Drop it instead of answering an old message.
+      if (age > BANAT_STALE_JOB_MS) {
+        console.log("[BANAT] Dropping stale queued reply in " + key);
+        continue;
+      }
 
-      sendBanatReplyWithTyping(
+      const sinceLast = Date.now() - state.lastSentAt;
+      if (state.lastSentAt && sinceLast < BANAT_MIN_INTER_REPLY_GAP_MS) {
+        await sleep(BANAT_MIN_INTER_REPLY_GAP_MS - sinceLast);
+      }
+
+      await sendBanatReplyWithTyping(
         job.api,
         job.message,
         key,
         job.replyToMessageID,
         job.attachMeme,
         job.linkUrl,
-        0
+        0,
+        job.incomingText || ""
       );
 
+      state.lastSentAt = Date.now();
     }
   } finally {
     const current = banatBurstState.get(key);
 
-    if (current === state && state.queue.length === 0) {
-      banatBurstState.delete(key);
+    if (current === state) {
+      if (state.queue.length) {
+        state.running = false;
+        runBanatBurstQueue(key).catch((error) => {
+          console.error("[BANAT] Burst queue continuation failed:", error);
+        });
+      } else {
+        banatBurstState.delete(key);
+      }
     }
   }
 }
@@ -7793,44 +7827,86 @@ function startHumanTyping(api,threadID) {
 }
 
 function sendBanatReplyWithTyping(api,message,threadID,replyToMessageID=null,attachMeme=false,linkUrl=null,replyDelayMs=BANAT_REPLY_DELAY_MS,incomingText="") {
-  const context=humanConversationContext(threadID,incomingText);
-  const requestedDelayMs=Number.isFinite(Number(replyDelayMs))?Math.max(0,Number(replyDelayMs)):0;
-  const generatedDelay=humanTypingDelayMs(message,context);
-  const humanDelayMs=humanClamp(
-    Math.round(requestedDelayMs>0?requestedDelayMs+humanTypingBurstsMs(message,context):generatedDelay),
-    350,BANAT_MAX_HUMAN_DELAY_MS
-  );
-  startHumanTyping(api,threadID);
-  setTimeout(()=>{
-    try {
-      const memePath=attachMeme&&!linkUrl?getRandomMemePath():null;
-      const banatMessage=humanDraftWithCorrection(message);
-      const outgoingMessage=linkUrl
-        ? {body:banatMessage,url:linkUrl}
-        : memePath
-        ? {body:banatMessage,attachment:fs.createReadStream(memePath)}
-        : banatMessage;
-      const sendCallback=(sendError,messageInfo)=>{
-        if(sendError){ console.error("[BANAT] Reply failed:",sendError); return; }
-        const sentMessageID=typeof messageInfo==="string"?messageInfo:messageInfo?.messageID||messageInfo?.messageId||messageInfo?.id||null;
-        if(!sentMessageID){ console.warn("[BANAT] Messenger did not return a message ID; self-reaction skipped."); return; }
-        try {
-          const reactionCallback=reactionError=>{
-            if(reactionError) console.error("[BANAT] Self-reaction failed:",reactionError);
-            else console.log("[BANAT] Reacted to own message:",String(sentMessageID));
-          };
-          if(api&&typeof api.setMessageReactionMqtt==="function") api.setMessageReactionMqtt("😆",String(sentMessageID),String(threadID),reactionCallback);
-          else if(api&&typeof api.setMessageReaction==="function") api.setMessageReaction("😆",String(sentMessageID),reactionCallback,true);
-        } catch(reactionError){ console.error("[BANAT] Self-reaction error:",reactionError); }
-      };
-      trafficSendMessage(api,outgoingMessage,threadID,sendCallback,replyToMessageID||null);
-      if(attachMeme&&linkUrl){
-        const followUpMemePath=getRandomMemePath();
-        if(followUpMemePath) setTimeout(()=>trafficSendMessage(api,{attachment:fs.createReadStream(followUpMemePath)},threadID,sendError=>{if(sendError) console.error("[BANAT] Meme follow-up failed:",sendError);}),400);
+  return new Promise((resolve) => {
+    const context=humanConversationContext(threadID,incomingText);
+    const requestedDelayMs=Number.isFinite(Number(replyDelayMs))?Math.max(0,Number(replyDelayMs)):0;
+    const generatedDelay=humanTypingDelayMs(message,context);
+    const humanDelayMs=humanClamp(
+      Math.round(requestedDelayMs>0?requestedDelayMs+humanTypingBurstsMs(message,context):generatedDelay),
+      350,BANAT_MAX_HUMAN_DELAY_MS
+    );
+
+    // Reaction/reading time happens before typing starts.
+    setTimeout(() => {
+      startHumanTyping(api,threadID);
+
+      try {
+        const memePath=attachMeme&&!linkUrl?getRandomMemePath():null;
+        const banatMessage=humanDraftWithCorrection(message);
+        const outgoingMessage=linkUrl
+          ? {body:banatMessage,url:linkUrl}
+          : memePath
+          ? {body:banatMessage,attachment:fs.createReadStream(memePath)}
+          : banatMessage;
+
+        const sendCallback=(sendError,messageInfo)=>{
+          if(sendError){
+            console.error("[BANAT] Reply failed:",sendError);
+            resolve(false);
+            return;
+          }
+
+          const sentMessageID=typeof messageInfo==="string"
+            ? messageInfo
+            : messageInfo?.messageID||messageInfo?.messageId||messageInfo?.id||null;
+
+          if(sentMessageID){
+            try {
+              const reactionCallback=reactionError=>{
+                if(reactionError) console.error("[BANAT] Self-reaction failed:",reactionError);
+              };
+              if(api&&typeof api.setMessageReactionMqtt==="function") {
+                api.setMessageReactionMqtt("😆",String(sentMessageID),String(threadID),reactionCallback);
+              } else if(api&&typeof api.setMessageReaction==="function") {
+                api.setMessageReaction("😆",String(sentMessageID),reactionCallback,true);
+              }
+            } catch(reactionError){
+              console.error("[BANAT] Self-reaction error:",reactionError);
+            }
+          }
+
+          if(attachMeme&&linkUrl){
+            const followUpMemePath=getRandomMemePath();
+            if(followUpMemePath) {
+              setTimeout(()=>trafficSendMessage(
+                api,
+                {attachment:fs.createReadStream(followUpMemePath)},
+                threadID,
+                sendError=>{
+                  if(sendError) console.error("[BANAT] Meme follow-up failed:",sendError);
+                }
+              ),400);
+            }
+          }
+
+          resolve(true);
+        };
+
+        trafficSendMessage(
+          api,
+          outgoingMessage,
+          threadID,
+          sendCallback,
+          replyToMessageID||null
+        );
+      } catch(sendError){
+        console.error("[BANAT] Reply error:",sendError);
+        resolve(false);
       }
-    } catch(sendError){ console.error("[BANAT] Reply error:",sendError); }
-  },humanDelayMs);
-  if(banatHumanState.size>500) humanCleanupState();
+    },humanDelayMs);
+
+    if(banatHumanState.size>500) humanCleanupState();
+  });
 }
 function sendReplyWithTyping(
   api,
