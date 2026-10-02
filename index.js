@@ -946,16 +946,34 @@ function trafficPruneMap(map, now, windowMs = 60_000) {
 
 function trafficFingerprint(message, threadID) {
   let body = "";
+  let attachment = "";
 
   if (typeof message === "string") {
     body = message;
   } else if (message && typeof message === "object") {
     body = String(message.body || "");
+
+    if (message.attachment) {
+      const value = message.attachment;
+      attachment =
+        typeof value === "string"
+          ? value
+          : String(
+              value?.path ||
+                value?.filename ||
+                value?.name ||
+                value?.fd ||
+                value?.constructor?.name ||
+                "attachment"
+            );
+    }
   }
 
   return crypto
     .createHash("sha1")
-    .update(`${String(threadID)}\n${body.trim()}`)
+    .update(
+      String(threadID) + "\n" + body.trim() + "\n" + attachment
+    )
     .digest("hex");
 }
 
@@ -1223,6 +1241,25 @@ function trafficSafetyStatus() {
 }
 
 function trafficQueueSend(api, message, threadID, callback, replyToMessageID = null) {
+  if (trafficShuttingDown) {
+    trafficTotalRejected++;
+
+    const error = new Error("ECLIPSE is shutting down.");
+    error.code = "ECLIPSE_SHUTTING_DOWN";
+
+    if (typeof callback === "function") {
+      setImmediate(() => {
+        try {
+          callback(error);
+        } catch (callbackError) {
+          console.error("[TRAFFIC] Shutdown callback failed:", callbackError);
+        }
+      });
+    }
+
+    return false;
+  }
+
   if (
     trafficSendQueue.length >=
     TRAFFIC_GOVERNOR.queueMax
@@ -1434,12 +1471,16 @@ function stopTrafficGovernor() {
 }
 
 function trafficStartWorker() {
-  if (trafficGovernorTimer) {
+  if (trafficShuttingDown || trafficGovernorTimer) {
     return;
   }
 
   trafficGovernorTimer = setImmediate(() => {
     trafficGovernorTimer = null;
+
+    if (trafficShuttingDown) {
+      return;
+    }
     trafficProcessQueue().catch((error) => {
       console.error(
         "[TRAFFIC] Queue worker failed:",
@@ -7354,7 +7395,6 @@ function registerActiveThreadCleanup() {
 // ============================================================
 
 
-const BANAT_REPLY_DELAY_MS = 2_000;
 const BANAT_BURST_MAX_REPLIES = Math.max(
   2,
   Math.min(
@@ -7413,7 +7453,24 @@ function acceptBanatBurstMessage(threadID, job) {
       state.coalesceTimer = null;
       runBanatBurstQueue(key).catch((error) => {
         console.error("[BANAT] Burst queue failed:", error);
-        banatBurstState.delete(key);
+
+        const current = banatBurstState.get(key);
+        if (current !== state) return;
+
+        state.running = false;
+
+        if (state.queue.length) {
+          setImmediate(() => {
+            runBanatBurstQueue(key).catch((continuationError) => {
+              console.error(
+                "[BANAT] Burst queue continuation failed:",
+                continuationError
+              );
+            });
+          });
+        } else {
+          banatBurstState.delete(key);
+        }
       });
     }, BANAT_BURST_COALESCE_MS);
   }
@@ -7451,7 +7508,7 @@ async function runBanatBurstQueue(threadID) {
         await sleep(BANAT_MIN_INTER_REPLY_GAP_MS - sinceLast);
       }
 
-      await sendBanatReplyWithTyping(
+      const sent = await sendBanatReplyWithTyping(
         job.api,
         job.message,
         key,
@@ -7462,7 +7519,9 @@ async function runBanatBurstQueue(threadID) {
         job.incomingText || ""
       );
 
-      state.lastSentAt = Date.now();
+      if (sent) {
+        state.lastSentAt = Date.now();
+      }
     }
   } finally {
     const current = banatBurstState.get(key);
