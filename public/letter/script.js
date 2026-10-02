@@ -204,8 +204,8 @@ function resize() {
 
   // Keep the dedicated floating particle field inside the new viewport.
   floatParticles.forEach((p) => {
-    if (!Number.isFinite(p.x) || p.x < -20 || p.x > W + 20) p.x = Math.random() * W;
-    if (!Number.isFinite(p.y) || p.y < -20 || p.y > H + 20) p.y = Math.random() * H;
+    if (!Number.isFinite(p.x) || p.x <= 0 || p.x > W + 20) p.x = Math.random() * W;
+    if (!Number.isFinite(p.y) || p.y <= 0 || p.y > H + 20) p.y = Math.random() * H;
   });
 }
 
