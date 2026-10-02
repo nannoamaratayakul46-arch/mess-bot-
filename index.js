@@ -7342,19 +7342,31 @@ function registerActiveThreadCleanup() {
 
 
 const BANAT_REPLY_DELAY_MS = 2_000;
-const BANAT_BURST_MAX_REPLIES = 2;
-const BANAT_BURST_COALESCE_MS = 750;
-const BANAT_MIN_INTER_REPLY_GAP_MS = 1_600;
-const BANAT_STALE_JOB_MS = 9_000;
+const BANAT_BURST_MAX_REPLIES = Math.max(
+  2,
+  Math.min(
+    4,
+    Number(process.env.ECLIPSE_BANAT_BURST_MAX_REPLIES || 3)
+  )
+);
+const BANAT_BURST_COALESCE_MS = Math.max(
+  250,
+  Number(process.env.ECLIPSE_BANAT_BURST_COALESCE_MS || 750)
+);
+const BANAT_MIN_INTER_REPLY_GAP_MS = Math.max(
+  900,
+  Number(process.env.ECLIPSE_BANAT_MIN_INTER_REPLY_GAP_MS || 1_600)
+);
+const BANAT_STALE_JOB_MS = Math.max(
+  15_000,
+  Number(process.env.ECLIPSE_BANAT_STALE_JOB_MS || 30_000)
+);
 
 // One Banat burst is shared by everyone in the same conversation.
-// At most 2 incoming messages are accepted. Each accepted message waits
-// 2 seconds before its actual send. When the queue empties, the burst
-// state is removed and the next message starts a fresh burst.
+// A small bounded number of incoming messages is accepted per burst.
+// Accepted jobs are serialized so rapid chat activity cannot turn into
+// machine-gun replies. The burst state is removed once the queue drains.
 const banatBurstState = new Map();
-
-const sleep = (ms) =>
-  new Promise((resolve) => setTimeout(resolve, ms));
 
 function acceptBanatBurstMessage(threadID, job) {
   const key = String(threadID || "");
@@ -7396,9 +7408,8 @@ function acceptBanatBurstMessage(threadID, job) {
   return true;
 }
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
-}
+const sleep = (ms) =>
+  new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
 async function runBanatBurstQueue(threadID) {
   const key = String(threadID || "");
