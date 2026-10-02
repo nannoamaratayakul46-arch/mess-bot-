@@ -7675,7 +7675,7 @@ function humanApplySpaceVariation(text) {
     words.splice(index,1);
     return words.join(" ");
   }
-  words[index-1]+=" "+words[index];
+  words[index-1]+="  "+words[index];
   return words.join(" ");
 }
 
