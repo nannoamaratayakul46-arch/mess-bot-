@@ -1454,7 +1454,7 @@ function getNextPublicReply() {
 // RANDOM GENERIC ROAST
 // ============================================================
 
-function getRandomRoastReply() {
+function getRandomRoastReply(threadId = null, incomingText = "") {
   // Occasionally drop a full rap instead of a one-liner.
   if (Math.random() < RAP_DROP_CHANCE) {
     const rap = getRandomRapDrop();
@@ -1482,10 +1482,11 @@ function getRandomRoastReply() {
     return null;
   }
 
-  const reply = pickFreshRandom(
+  const reply = banatContextualPick(
     replies,
-    recentBanatReplies
-  );
+    threadId,
+    incomingText
+  ) || pickFreshRandom(replies, recentBanatReplies);
 
   if (!reply) {
     return null;
