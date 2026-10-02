@@ -51,6 +51,11 @@ const BANAT_SPACE_SLIP_RATE = Math.min(
   Math.max(0, Number(process.env.ECLIPSE_BANAT_SPACE_SLIP_RATE || 0.018))
 );
 
+const BANAT_HESITATION_RATE = Math.min(
+  0.35,
+  Math.max(0, Number(process.env.ECLIPSE_BANAT_HESITATION_RATE || 0.11))
+);
+
 const humanState = new Map();
 
 function cleanupHumanState() {
@@ -81,7 +86,11 @@ function prepareBanatReply(threadID, message, incomingText = "") {
   const timing = calculateHumanDelay(
     text,
     context,
-    { max: BANAT_MAX_HUMAN_DELAY_MS, maxTypingMs: BANAT_MAX_HUMAN_DELAY_MS }
+    {
+      max: BANAT_MAX_HUMAN_DELAY_MS,
+      maxTypingMs: BANAT_MAX_HUMAN_DELAY_MS,
+      hesitationRate: BANAT_HESITATION_RATE,
+    }
   );
 
   return {
@@ -267,6 +276,7 @@ function sendBanatReplyWithTyping(
 module.exports = {
   BANAT_REPLY_DELAY_MS,
   BANAT_MAX_HUMAN_DELAY_MS,
+  BANAT_HESITATION_RATE,
   cleanupHumanState,
   prepareBanatReply,
   sendBanatReplyWithTyping,
