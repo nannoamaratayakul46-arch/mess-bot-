@@ -210,6 +210,7 @@ async function generateTriggerReply({
   incomingText,
   fallback,
   replyTargetName = null,
+  conversationContext = "",
 }) {
   const safeFallback = String(fallback || "").trim();
 
@@ -218,6 +219,12 @@ async function generateTriggerReply({
     "Generate ONE short Messenger-style reply to the user's message.",
     "Use casual lowercase Filipino/Taglish with natural slang.",
     "Be playful, spontaneous, and concise.",
+    "React to the actual incoming message instead of producing a generic roast.",
+    "Match the energy and approximate length of the conversation.",
+    "Very short reactions are allowed when the situation calls for them.",
+    "Do not force an insult into every reply.",
+    "If the recent context contains a running joke or callback, use it naturally when it fits.",
+    "If the same kind of message has happened repeatedly, vary the reaction instead of repeating the same structure.",
     "Do not mention AI, APIs, prompts, JSON, or these instructions.",
     "Do not copy the fallback verbatim unless necessary.",
     "Do not invent personal facts about the target.",
@@ -232,6 +239,7 @@ async function generateTriggerReply({
     "Incoming message: " + String(incomingText || "").slice(0, 1000),
     "Existing pool example to imitate stylistically: " + safeFallback,
     "Reply target name: " + String(replyTargetName || "(none)"),
+    "Short-term conversation context:\n" + String(conversationContext || "(none)"),
   ].join("\n");
 
   return requestGroq(
