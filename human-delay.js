@@ -32,6 +32,18 @@ function countWords(text) {
   return String(text || "").trim().split(/\s+/).filter(Boolean).length;
 }
 
+function countSentences(text) {
+  return Math.max(1, String(text || "").split(/[.!?]+/).filter(Boolean).length);
+}
+
+function punctuationPauseMs(text) {
+  const value = String(text || "");
+  return (value.match(/,/g) || []).length * 42 +
+    (value.match(/[;:]/g) || []).length * 58 +
+    (value.match(/[!?]/g) || []).length * 82 +
+    (value.match(/\.\.\./g) || []).length * 150;
+}
+
 function countEmoji(text) {
   return (String(text || "").match(/[\u{1F300}-\u{1FAFF}]/gu) || []).length;
 }
@@ -106,6 +118,7 @@ function responseHesitationMs(text, context = {}, options = {}) {
   const momentum = Math.max(0, Number(context.momentum) || 0);
   delay -= Math.min(120, momentum * 12);
 
+  delay += (countSentences(value) - 1) * seededJitter(random, 25, 100);
   delay += seededJitter(random, -130, 130);
 
   return Math.round(
@@ -136,6 +149,7 @@ function typingCadenceMs(text, context = {}, options = {}) {
 
   // Natural pauses around punctuation.
   delay += (value.match(/,/g) || []).length * 45;
+  delay += punctuationPauseMs(value);
   delay += (value.match(/[!?]/g) || []).length * 75;
   delay += (value.match(/[;:]/g) || []).length * 55;
   delay += (value.match(/\./g) || []).length * 55;
@@ -233,5 +247,7 @@ module.exports = {
   responseHesitationMs,
   typingCadenceMs,
   typingBurstsMs,
+  countSentences,
+  punctuationPauseMs,
   calculateHumanDelay,
 };
