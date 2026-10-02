@@ -727,6 +727,91 @@ const rapTypes = [
 const recentRapDrops = [];
 const recentBanatReplies = [];
 
+const banatContextState = new Map();
+const BANAT_CONTEXT_TTL_MS = 20 * 60 * 1000;
+
+const BANAT_CONTEXT_RULES = Object.freeze([
+  { name: "question", words: ["why", "what", "how", "who", "where", "when", "bakit", "ano", "paano", "sino", "saan", "kelan", "question", "tanong", "explain"] },
+  { name: "confidence", words: ["confident", "confidence", "yabang", "proud", "right", "tama", "expert", "alam ko", "sure", "obvious", "claim"] },
+  { name: "argument", words: ["argue", "argument", "debate", "logic", "point", "facts", "fact", "evidence", "source", "citation", "resibo", "claim"] },
+  { name: "insult", words: ["gago", "tanga", "bobo", "tukmol", "weak", "trash", "stupid", "patawa", "kalokohan", "kabobohan"] },
+  { name: "drama", words: ["galit", "inis", "naiinis", "drama", "iyak", "umiiyak", "tampo", "serious", "seryoso", "panic"] },
+  { name: "flirty", words: ["cute", "baby", "lambing", "kiss", "halik", "love", "mahal", "miss", "pansin", "attention"] },
+]);
+
+function banatClassifyIncoming(text) {
+  const normalized = normalizeText(text);
+  if (!normalized) return "general";
+
+  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
+  if (wordCount >= 35 || normalized.length >= 240) return "long_message";
+
+  let best = { name: "general", score: 0 };
+  for (const rule of BANAT_CONTEXT_RULES) {
+    let score = 0;
+    for (const word of rule.words) {
+      if (normalized.includes(word)) score++;
+    }
+    if (score > best.score) best = { name: rule.name, score };
+  }
+  return best.name;
+}
+
+function banatReplyFamily(reply) {
+  const text = normalizeText(reply);
+  if (!text) return "general";
+  const body = text.replace(/^baby[, ]+/, "");
+  if (/confidence|yabang|proud|confident/.test(body)) return "confidence";
+  if (/logic|point|argument|evidence|citation|source|facts|claim|sense/.test(body)) return "argument";
+  if (/cute|lambing|kiss|halik|miss|attention|sweet|pout|favorite/.test(body)) return "flirty";
+  if (/dramatic|tampo|panic|calm|relax|behave|breathe|serious/.test(body)) return "drama";
+  if (/speech|paragraph|daldal|reply|sentence/.test(body)) return "long_message";
+  if (/question|tanong|explain|tutorial|sagot/.test(body)) return "question";
+  if (/tanga|kabobohan|silly|nonsense|kalokohan|wrong|mali|sablay/.test(body)) return "insult";
+  return "general";
+}
+
+function banatContextualPick(replies, threadId, incomingText) {
+  if (!Array.isArray(replies) || !replies.length) return null;
+
+  const key = String(threadId || "unknown");
+  const now = Date.now();
+  let state = banatContextState.get(key);
+  if (!state || now - state.at > BANAT_CONTEXT_TTL_MS) {
+    state = { at: now, recentFamilies: [], recentReplies: [] };
+  }
+
+  const category = banatClassifyIncoming(incomingText);
+  const fresh = replies.filter((reply) => !state.recentReplies.includes(reply));
+  const candidates = fresh.length ? fresh : replies;
+
+  const categoryPool = category === "general"
+    ? []
+    : candidates.filter((reply) => banatReplyFamily(reply) === category);
+
+  const selected = pickFreshRandom(
+    categoryPool.length ? categoryPool : candidates,
+    state.recentReplies
+  ) || candidates[Math.floor(Math.random() * candidates.length)];
+
+  const family = banatReplyFamily(selected);
+  state.at = now;
+  state.recentFamilies.push(family);
+  state.recentReplies.push(selected);
+  state.recentFamilies = state.recentFamilies.slice(-4);
+  state.recentReplies = state.recentReplies.slice(-6);
+  banatContextState.set(key, state);
+
+  if (banatContextState.size > 1000) {
+    for (const [thread, value] of banatContextState) {
+      if (now - value.at > BANAT_CONTEXT_TTL_MS) banatContextState.delete(thread);
+    }
+  }
+
+  return selected;
+}
+
+
 function rememberRecent(list, value, limit) {
   list.push(value);
   while (list.length > limit) {
@@ -1152,9 +1237,10 @@ async function getTriggerReply(
         group.name === "public";
 
       const fallbackReply = isFlirtyBanatGroup
-        ? pickFreshRandom(
+        ? banatContextualPick(
             group.replies,
-            recentBanatReplies
+            threadId,
+            rawText
           )
         : getNextReply(group);
 
