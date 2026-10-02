@@ -1,11 +1,5 @@
 const { generateTriggerReply } = require("./ai/provider");
 const { rememberBanatReply, pickBanatReply } = require("./banat-memory");
-const {
-  observeBanatMessage,
-  getBanatContext,
-  contextPrompt,
-  scoreReply,
-} = require("./banat-context");
 
 // ============================================================
 // TRIGGERS / BANAT SYSTEM
@@ -778,6 +772,78 @@ function banatReplyFamily(reply) {
   return "general";
 }
 
+function banatRememberIncoming(threadId, incomingText) {
+  const key = String(threadId || "unknown");
+  const now = Date.now();
+  let state = banatContextState.get(key);
+
+  if (!state || now - state.at > BANAT_CONTEXT_TTL_MS) {
+    state = {
+      at: now,
+      recentFamilies: [],
+      recentReplies: [],
+      recentMessages: [],
+      runningBits: [],
+    };
+  }
+
+  const text = String(incomingText || "").trim();
+  if (!text) return state;
+
+  state.at = now;
+  state.recentMessages.push({
+    text: text.slice(0, 500),
+    category: banatClassifyIncoming(text),
+    at: now,
+  });
+  state.recentMessages = state.recentMessages.slice(-6);
+
+  const cleaned = text
+    .replace(/https?:\/\/\S+/gi, "")
+    .replace(/[^\p{L}\p{N}\s'-]/gu, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (cleaned.length >= 12 && cleaned.length <= 100) {
+    state.runningBits = state.runningBits.filter(
+      (bit) => bit !== cleaned
+    );
+    state.runningBits.push(cleaned);
+    state.runningBits = state.runningBits.slice(-5);
+  }
+
+  banatContextState.set(key, state);
+  return state;
+}
+
+function banatContextPrompt(threadId) {
+  const key = String(threadId || "unknown");
+  const state = banatContextState.get(key);
+
+  if (!state) return "(no recent context)";
+
+  const recent = state.recentMessages
+    .slice(-5)
+    .map(
+      (item) =>
+        "[" +
+        item.category +
+        "] " +
+        item.text
+    )
+    .join("\n");
+
+  return [
+    "Recent conversation:",
+    recent || "(none)",
+    "Running bits/callback material:",
+    state.runningBits.join(" | ") || "(none)",
+    "Recent reply families:",
+    state.recentFamilies.join(", ") || "(none)",
+    "Avoid repeating the same reply shape when possible.",
+  ].join("\n");
+}
+
 function banatContextualPick(replies, threadId, incomingText) {
   if (!Array.isArray(replies) || !replies.length) return null;
 
@@ -785,8 +851,17 @@ function banatContextualPick(replies, threadId, incomingText) {
   const now = Date.now();
   let state = banatContextState.get(key);
   if (!state || now - state.at > BANAT_CONTEXT_TTL_MS) {
-    state = { at: now, recentFamilies: [], recentReplies: [] };
+    state = {
+      at: now,
+      recentFamilies: [],
+      recentReplies: [],
+      recentMessages: [],
+      runningBits: [],
+    };
   }
+
+  const observed = banatRememberIncoming(key, incomingText);
+  state = observed;
 
   const category = banatClassifyIncoming(incomingText);
   const fresh = replies.filter((reply) => !state.recentReplies.includes(reply));
@@ -1210,10 +1285,6 @@ async function getTriggerReply(
   const text =
     normalizeText(rawText);
 
-  // Keep a tiny rolling conversation window so Banat can react to
-  // the current beat instead of treating every message independently.
-  observeBanatMessage(threadId, rawText);
-
   const normalizedSenderId =
     normalizeId(senderId);
 
@@ -1300,9 +1371,7 @@ async function getTriggerReply(
           incomingText: rawText,
           fallback: reply,
           replyTargetName,
-          conversationContext: contextPrompt(
-            getBanatContext(threadId)
-          ),
+          conversationContext: banatContextPrompt(threadId),
         });
 
         if (typeof aiReply === "string" && aiReply.trim()) {
