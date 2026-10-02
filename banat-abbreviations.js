@@ -262,6 +262,50 @@ const BANAT_SHORTHANDS = Object.freeze({
   "see you": ["c u"],
   "see ya": ["cya"],
   "later": ["l8r"],
+
+  // ----------------------------------------------------------
+  // EVERYDAY CHAT / NATURAL CASUALIZATION
+  // ----------------------------------------------------------
+
+  "I am": ["im", "i'm"],
+  "i am": ["im", "i'm"],
+  "I will": ["ill", "i'll"],
+  "i will": ["ill", "i'll"],
+  "I have": ["ive", "i've"],
+  "i have": ["ive", "i've"],
+  "I want to": ["wanna"],
+  "i want to": ["wanna"],
+  "I am going to": ["im gonna"],
+  "i am going to": ["im gonna"],
+  "going to": ["gonna"],
+  "got to": ["gotta"],
+  "kind of": ["kinda"],
+  "sort of": ["sorta"],
+  "let me": ["lemme"],
+  "give me": ["gimme"],
+  "come on": ["cmon"],
+  "alright": ["aight", "alr"],
+  "all right": ["alr", "aight"],
+  "good morning": ["gm"],
+  "good night": ["gn"],
+  "see you later": ["c u l8r"],
+  "talk to you later": ["ttyl"],
+  "take care": ["tc"],
+  "thank you so much": ["tysm"],
+  "congratulations": ["congrats"],
+  "definitely": ["def", "deff"],
+  "especially": ["esp"],
+  "actually": ["acc"],
+  "you know": ["yk"],
+  "you know what": ["yk what"],
+  "for real": ["fr", "frfr"],
+  "right": ["rite"],
+  "probably not": ["prob not"],
+  "I guess": ["ig"],
+  "i guess": ["ig"],
+  "love you": ["ly"],
+  "miss you": ["miss u"],
+
 });
 
 module.exports = {
