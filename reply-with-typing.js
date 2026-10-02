@@ -68,15 +68,20 @@ function sendReplyWithTyping(
               return;
             }
 
+            scheduleFollowUp();
             resolve(true);
           }
         );
 
-        if (
-          attachMeme &&
-          linkUrl &&
-          typeof getRandomMemePath === "function"
-        ) {
+        const scheduleFollowUp = () => {
+          if (
+            !attachMeme ||
+            !linkUrl ||
+            typeof getRandomMemePath !== "function"
+          ) {
+            return;
+          }
+
           const followUpMemePath = getRandomMemePath();
 
           if (followUpMemePath) {
@@ -102,7 +107,7 @@ function sendReplyWithTyping(
               }
             }, 400);
           }
-        }
+        };
       } catch (error) {
         stopTyping(api, threadID);
         console.error("[REPLY] Reply error:", error);
