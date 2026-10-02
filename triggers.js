@@ -1,5 +1,11 @@
 const { generateTriggerReply } = require("./ai/provider");
 const { rememberBanatReply, pickBanatReply } = require("./banat-memory");
+const {
+  observeBanatMessage,
+  getBanatContext,
+  contextPrompt,
+  scoreReply,
+} = require("./banat-context");
 
 // ============================================================
 // TRIGGERS / BANAT SYSTEM
@@ -1204,6 +1210,10 @@ async function getTriggerReply(
   const text =
     normalizeText(rawText);
 
+  // Keep a tiny rolling conversation window so Banat can react to
+  // the current beat instead of treating every message independently.
+  observeBanatMessage(threadId, rawText);
+
   const normalizedSenderId =
     normalizeId(senderId);
 
@@ -1290,6 +1300,9 @@ async function getTriggerReply(
           incomingText: rawText,
           fallback: reply,
           replyTargetName,
+          conversationContext: contextPrompt(
+            getBanatContext(threadId)
+          ),
         });
 
         if (typeof aiReply === "string" && aiReply.trim()) {
@@ -1297,6 +1310,13 @@ async function getTriggerReply(
 
           if (replyTargetName) {
             reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
+          }
+
+          // The generated reply is the actual reply the thread sees, so
+          // remember it too; this prevents AI variation from bypassing
+          // the Banat repetition guard.
+          if (isFlirtyBanatGroup) {
+            rememberBanatReply(threadId, reply);
           }
         }
       } catch (aiError) {
