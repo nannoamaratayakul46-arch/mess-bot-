@@ -13,6 +13,7 @@
  */
 
 const fs = require("fs");
+const { BANAT_SHORTHANDS } = require("./banat-abbreviations");
 const {
   humanize,
   createHumanContext,
@@ -28,6 +29,26 @@ const BANAT_REPLY_DELAY_MS = Math.max(
 const BANAT_MAX_HUMAN_DELAY_MS = Math.max(
   2500,
   Number(process.env.ECLIPSE_BANAT_MAX_HUMAN_DELAY_MS || 6500)
+);
+
+const BANAT_TYPO_RATE = Math.min(
+  0.18,
+  Math.max(0, Number(process.env.ECLIPSE_BANAT_TYPO_RATE || 0.085))
+);
+
+const BANAT_SHORTHAND_RATE = Math.min(
+  0.22,
+  Math.max(0, Number(process.env.ECLIPSE_BANAT_SHORTHAND_RATE || 0.035))
+);
+
+const BANAT_CASE_VARIATION_RATE = Math.min(
+  0.18,
+  Math.max(0, Number(process.env.ECLIPSE_BANAT_CASE_VARIATION_RATE || 0.035))
+);
+
+const BANAT_SPACE_SLIP_RATE = Math.min(
+  0.08,
+  Math.max(0, Number(process.env.ECLIPSE_BANAT_SPACE_SLIP_RATE || 0.018))
 );
 
 const humanState = new Map();
@@ -47,6 +68,11 @@ function prepareBanatReply(threadID, message, incomingText = "") {
   );
 
   const text = humanize(message, {
+    abbreviations: BANAT_SHORTHANDS,
+    abbreviationRate: BANAT_SHORTHAND_RATE,
+    typoRate: BANAT_TYPO_RATE,
+    caseVariationRate: BANAT_CASE_VARIATION_RATE,
+    spaceVariationRate: BANAT_SPACE_SLIP_RATE,
     abbreviate: true,
     typos: true,
     punctuation: true,
