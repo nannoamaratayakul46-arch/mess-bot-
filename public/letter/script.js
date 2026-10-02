@@ -79,6 +79,9 @@ let animationId = 0;
 let phoneLyricsOpen = false;
 let fullLyricsOpen = false;
 
+const FINAL_CINEMATIC_AT = 151.802;
+let finalCinematicActive = false;
+
 function formatTime(value) {
   const t = Math.max(0, Number(value) || 0);
   return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(Math.floor(t % 60)).padStart(2, "0");
@@ -308,6 +311,22 @@ function toggleFullLyrics() {
   }
 }
 
+function resetFinalCinematic() {
+  finalCinematicActive = false;
+  document.body.classList.remove("finalCinematic");
+}
+
+function triggerFinalCinematic() {
+  if (finalCinematicActive) return;
+  finalCinematicActive = true;
+  document.body.classList.add("finalCinematic");
+}
+
+function syncFinalCinematic(t) {
+  if (t >= FINAL_CINEMATIC_AT) triggerFinalCinematic();
+  else if (finalCinematicActive) resetFinalCinematic();
+}
+
 function updatePlayerUI() {
   const t = audio.currentTime || 0;
   const duration = Number.isFinite(audio.duration) ? audio.duration : 162.7;
@@ -368,6 +387,7 @@ phoneLyricsFull.addEventListener("click", toggleFullLyrics);
 restartBtn.addEventListener("click", () => {
   audio.currentTime = 0;
   activeIndex = -1;
+  resetFinalCinematic();
   playAudio();
 });
 
@@ -380,6 +400,7 @@ progress.addEventListener("input", () => {
   const duration = Number.isFinite(audio.duration) ? audio.duration : 162.7;
   audio.currentTime = (Number(progress.value) / 100) * duration;
   updateLyric(audio.currentTime, true);
+  syncFinalCinematic(audio.currentTime);
 });
 
 audio.addEventListener("play", updatePlayerUI);
@@ -387,6 +408,7 @@ audio.addEventListener("pause", updatePlayerUI);
 audio.addEventListener("ended", () => {
   updatePlayerUI();
   document.body.classList.remove("isPlaying");
+  resetFinalCinematic();
   document.body.classList.add("letterFinished");
   startBtn.innerHTML = '<span class="playIcon">↻</span><span>PLAY AGAIN</span>';
   playCaption.textContent = "the letter has finished.";
@@ -398,6 +420,7 @@ audio.addEventListener("loadedmetadata", updatePlayerUI);
 function sync() {
   if (!audio.paused) {
     updateLyric(audio.currentTime);
+    syncFinalCinematic(audio.currentTime);
     updatePlayerUI();
   }
   animationId = requestAnimationFrame(sync);
