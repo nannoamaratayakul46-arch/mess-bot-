@@ -3,9 +3,17 @@
 /**
  * ECLIPSE Human Mimic
  * -------------------
- * Pure text transformation only. No timers, Messenger API calls, or queues.
- * Keep this module deterministic when a seed/random function is supplied so
- * Banat can test it without touching the network.
+ * Pure text transformation only.
+ *
+ * Responsibilities:
+ *   - global/canonical shorthand replacement
+ *   - keyboard-neighbor slips
+ *   - delete/swap/double slips
+ *   - case variation
+ *   - spacing slips
+ *   - casual punctuation
+ *
+ * No timers, Messenger API calls, queues, or Banat state live here.
  */
 
 const DEFAULT_ABBREVIATIONS = Object.freeze([
@@ -46,17 +54,48 @@ const DEFAULT_ABBREVIATIONS = Object.freeze([
 
 const WORD_RE = /[A-Za-z']+/g;
 
+const KEYBOARD_NEIGHBORS = Object.freeze({
+  q: "wa",
+  w: "qase",
+  e: "wsdr",
+  r: "edft",
+  t: "rfgy",
+  y: "tghu",
+  u: "yhji",
+  i: "ujko",
+  o: "iklp",
+  p: "ol",
+  a: "qwsz",
+  s: "awedxz",
+  d: "serfcx",
+  f: "drtgvc",
+  g: "ftyhbv",
+  h: "gyujnb",
+  j: "huikmn",
+  k: "jiolm",
+  l: "kop",
+  z: "asx",
+  x: "zsdc",
+  c: "xdfv",
+  v: "cfgb",
+  b: "vghn",
+  n: "bhjm",
+  m: "njk",
+});
+
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
 }
 
-function pick(random, probability) {
-  return random() < probability;
+function pick(random, array) {
+  if (!Array.isArray(array) || !array.length) return null;
+  return array[Math.floor(random() * array.length)];
 }
 
 function preserveCase(original, replacement) {
+  replacement = String(replacement);
   if (original === original.toUpperCase()) return replacement.toUpperCase();
-  if (original[0] === original[0].toUpperCase()) {
+  if (original && original[0] === original[0].toUpperCase()) {
     return replacement.charAt(0).toUpperCase() + replacement.slice(1);
   }
   return replacement;
@@ -64,7 +103,9 @@ function preserveCase(original, replacement) {
 
 function normalizeAbbreviations(abbreviations) {
   if (Array.isArray(abbreviations)) return abbreviations;
-  if (!abbreviations || typeof abbreviations !== "object") return DEFAULT_ABBREVIATIONS;
+  if (!abbreviations || typeof abbreviations !== "object") {
+    return DEFAULT_ABBREVIATIONS;
+  }
 
   const pairs = [];
   for (const [from, replacements] of Object.entries(abbreviations)) {
@@ -76,61 +117,152 @@ function normalizeAbbreviations(abbreviations) {
 
 function replaceAbbreviations(text, abbreviations, random, rate = 0.08) {
   let output = String(text || "");
-  if (random() >= rate) return output;
+  if (random() >= clamp(Number(rate) || 0, 0, 1)) return output;
 
   const entries = normalizeAbbreviations(abbreviations)
     .filter((entry) => Array.isArray(entry) && entry.length >= 2)
-    .sort((x, y) => String(y[0]).length - String(x[0]).length);
+    .sort((a, b) => String(b[0]).length - String(a[0]).length);
 
   const candidates = [];
   for (const [from, to] of entries) {
-    const escaped = String(from).replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+    const escaped = String(from).replace(/[.*+?^()|[\]\\]/g, "\\$&");
     const pattern = new RegExp("\\b" + escaped + "\\b", "i");
     if (pattern.test(output)) candidates.push({ pattern, to });
   }
 
   if (!candidates.length) return output;
-  const choice = candidates[Math.floor(random() * candidates.length)];
+  const choice = pick(random, candidates);
+  if (!choice) return output;
+
+  const replacement = Array.isArray(choice.to)
+    ? pick(random, choice.to)
+    : choice.to;
 
   return output.replace(choice.pattern, (match) =>
-    preserveCase(match, choice.to)
+    preserveCase(match, replacement == null ? match : replacement)
   );
 }
 
+function keyboardSlip(word, random) {
+  const candidates = [];
 
-function addTypo(text, random, rate = 0.025) {
-  if (random() >= rate) return text;
-
-  return text.replace(WORD_RE, (word) => {
-    if (word.length < 5) return word;
-
-    const mode = Math.floor(random() * 3);
-    if (mode === 0 && word.length > 4) {
-      const i = 1 + Math.floor(random() * (word.length - 2));
-      return word.slice(0, i) + word[i + 1] + word[i] + word.slice(i + 2);
+  for (let i = 0; i < word.length; i += 1) {
+    const neighbors = KEYBOARD_NEIGHBORS[word[i].toLowerCase()];
+    if (neighbors) {
+      candidates.push({
+        index: i,
+        replacement: pick(random, neighbors.split("")),
+      });
     }
+  }
 
-    if (mode === 1 && word.length > 5) {
-      const i = 1 + Math.floor(random() * (word.length - 2));
-      return word.slice(0, i) + word.slice(i + 1);
+  const choice = pick(random, candidates);
+  if (!choice || !choice.replacement) return null;
+
+  return (
+    word.slice(0, choice.index) +
+    preserveCase(word[choice.index], choice.replacement) +
+    word.slice(choice.index + 1)
+  );
+}
+
+function deleteSlip(word, random) {
+  if (word.length < 4) return null;
+  const index = 1 + Math.floor(random() * (word.length - 2));
+  return word.slice(0, index) + word.slice(index + 1);
+}
+
+function doubleSlip(word, random) {
+  if (word.length < 3) return null;
+  const index = 1 + Math.floor(random() * (word.length - 2));
+  return word.slice(0, index) + word[index] + word.slice(index);
+}
+
+function swapSlip(word, random) {
+  if (word.length < 4) return null;
+  const index = 1 + Math.floor(random() * (word.length - 2));
+  if (word[index] === word[index + 1]) return null;
+
+  return (
+    word.slice(0, index) +
+    word[index + 1] +
+    word[index] +
+    word.slice(index + 2)
+  );
+}
+
+function addTypo(text, random, rate = 0.025, options = {}) {
+  const typoRate = clamp(Number(rate) || 0, 0, 1);
+  if (random() >= typoRate) return text;
+
+  const strategies = [
+    "keyboard",
+    "keyboard",
+    "keyboard",
+    "delete",
+    "swap",
+    "double",
+  ];
+
+  const maxAttempts = Math.max(1, Number(options.maxAttempts) || 5);
+
+  const parts = String(text || "").split(/(\s+)/);
+  const eligible = [];
+
+  for (let i = 0; i < parts.length; i += 1) {
+    if (
+      /^\S+$/.test(parts[i]) &&
+      parts[i].replace(/[^a-zA-Z]/g, "").length >= 4
+    ) {
+      eligible.push(i);
     }
+  }
 
-    const i = 1 + Math.floor(random() * (word.length - 2));
-    return word.slice(0, i) + word[i] + word.slice(i);
-  });
+  const index = pick(random, eligible);
+  if (index == null) return text;
+
+  const match = parts[index].match(/^([^a-zA-Z]*)([a-zA-Z]+)([^a-zA-Z]*)$/);
+  if (!match) return text;
+
+  const prefix = match[1];
+  const word = match[2];
+  const suffix = match[3];
+
+  let changed = null;
+
+  for (let attempt = 0; attempt < maxAttempts && !changed; attempt += 1) {
+    const strategy = pick(random, strategies);
+
+    if (strategy === "keyboard") {
+      changed = keyboardSlip(word, random);
+    } else if (strategy === "delete") {
+      changed = deleteSlip(word, random);
+    } else if (strategy === "swap") {
+      changed = swapSlip(word, random);
+    } else {
+      changed = doubleSlip(word, random);
+    }
+  }
+
+  if (!changed || changed === word) return text;
+  parts[index] = prefix + changed + suffix;
+  return parts.join("");
 }
 
 function addCaseVariation(text, random, rate = 0) {
-  if (text.length < 10 || random() >= rate) return text;
+  if (text.length < 10 || random() >= clamp(Number(rate) || 0, 0, 1)) {
+    return text;
+  }
+
   const parts = text.split(/(\s+)/);
   const eligible = parts
     .map((value, index) => /^[A-Za-z]{3,}$/.test(value) ? index : -1)
     .filter((index) => index >= 0);
 
-  if (!eligible.length) return text;
-  const index = eligible[Math.floor(random() * eligible.length)];
-  const word = parts[index];
+  const index = pick(random, eligible);
+  if (index == null) return text;
 
+  const word = parts[index];
   parts[index] = random() < 0.7
     ? word.toLowerCase()
     : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
@@ -139,12 +271,15 @@ function addCaseVariation(text, random, rate = 0) {
 }
 
 function addSpaceVariation(text, random, rate = 0) {
-  if (text.length < 16 || random() >= rate) return text;
+  if (text.length < 16 || random() >= clamp(Number(rate) || 0, 0, 1)) {
+    return text;
+  }
 
   const words = text.split(/\s+/).filter(Boolean);
   if (words.length < 3) return text;
 
   const index = 1 + Math.floor(random() * (words.length - 2));
+
   if (random() < 0.7) {
     words[index - 1] += words[index];
     words.splice(index, 1);
@@ -155,14 +290,14 @@ function addSpaceVariation(text, random, rate = 0) {
   return words.join(" ");
 }
 
-
 function addCasualPunctuation(text, random) {
   let output = String(text || "").trim();
   if (!output) return output;
 
-  if (pick(random, 0.12)) output = output.replace(/\.$/, "");
-  if (pick(random, 0.08) && !/[!?…]$/.test(output)) output += "...";
-  if (pick(random, 0.06)) output = output.replace(/, /g, ",  ");
+  if (random() < 0.12) output = output.replace(/\.$/, "");
+  if (random() < 0.08 && !/[!?…]$/.test(output)) output += "...";
+  if (random() < 0.06) output = output.replace(/, /g, ",  ");
+
   return output;
 }
 
@@ -191,7 +326,10 @@ function humanize(text, options = {}) {
       random,
       Number.isFinite(options.typoRate)
         ? options.typoRate
-        : 0.025
+        : 0.025,
+      {
+        maxAttempts: options.typoMaxAttempts,
+      }
     );
   }
 
@@ -218,19 +356,49 @@ function humanize(text, options = {}) {
   return output;
 }
 
+function humanWordComplexity(word) {
+  const clean = String(word || "").replace(/[^A-Za-z0-9']/g, "");
+  if (!clean) return 0;
+
+  let score = clean.length >= 7 ? 1 : 0;
+  if (/[^aeiou]{4,}/i.test(clean)) score += 0.5;
+  if (/\d/.test(clean)) score += 0.25;
+
+  return score;
+}
 
 function humanizationProfile(text) {
-  const length = String(text || "").length;
-  const words = String(text || "").trim().split(/\s+/).filter(Boolean).length;
+  const value = String(text || "");
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  const complexities = words.map(humanWordComplexity);
+  const complexityTotal = complexities.reduce((sum, value) => sum + value, 0);
+
   return {
-    length,
-    words,
-    complexity: clamp(words * 0.08 + length * 0.006, 0, 1),
+    length: value.length,
+    words: words.length,
+    complexity: clamp(
+      words.length * 0.08 + value.length * 0.006,
+      0,
+      1
+    ),
+    wordComplexity: words.length
+      ? complexityTotal / words.length
+      : 0,
+    emojiCount: (value.match(/[\u{1F300}-\u{1FAFF}]/gu) || []).length,
+    punctuationCount: (value.match(/[,.!?;:]/g) || []).length,
+    ellipsisCount: (value.match(/\.\.\./g) || []).length,
   };
 }
 
 module.exports = {
   DEFAULT_ABBREVIATIONS,
+  KEYBOARD_NEIGHBORS,
+  clamp,
   humanize,
+  humanWordComplexity,
   humanizationProfile,
+  addTypo,
+  addCaseVariation,
+  addSpaceVariation,
+  addCasualPunctuation,
 };
