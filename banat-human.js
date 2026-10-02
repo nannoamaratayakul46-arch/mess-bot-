@@ -20,7 +20,7 @@ const {
   calculateHumanDelay,
   startTyping,
   stopTyping,
-} = require("./human-mimic/index);
+} = require("./human-mimic/index");
 
 const BANAT_REPLY_DELAY_MS = Math.max(
   0,
