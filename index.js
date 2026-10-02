@@ -7521,7 +7521,7 @@ async function handleAutomaticBanatMessage({
   // The same burst queue applies: at most two replies, two seconds
   // apart. This is what makes Banat react to ordinary message bursts
   // instead of depending on a trigger word.
-  const randomRoastReply = getRandomRoastReply();
+  const randomRoastReply = getRandomRoastReply(threadID, body);
 
   if (randomRoastReply) {
     const accepted = acceptBanatBurstMessage(
