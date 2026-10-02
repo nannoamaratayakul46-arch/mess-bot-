@@ -55,24 +55,6 @@ function sendReplyWithTyping(
             }
           : message;
 
-        trafficSendMessage(
-          api,
-          outgoingMessage,
-          threadID,
-          (sendError) => {
-            stopTyping(api, threadID);
-
-            if (sendError) {
-              console.error("[REPLY] Reply failed:", sendError);
-              resolve(false);
-              return;
-            }
-
-            scheduleFollowUp();
-            resolve(true);
-          }
-        );
-
         const scheduleFollowUp = () => {
           if (
             !attachMeme ||
@@ -108,6 +90,24 @@ function sendReplyWithTyping(
             }, 400);
           }
         };
+
+        trafficSendMessage(
+          api,
+          outgoingMessage,
+          threadID,
+          (sendError) => {
+            stopTyping(api, threadID);
+
+            if (sendError) {
+              console.error("[REPLY] Reply failed:", sendError);
+              resolve(false);
+              return;
+            }
+
+            scheduleFollowUp();
+            resolve(true);
+          }
+        );
       } catch (error) {
         stopTyping(api, threadID);
         console.error("[REPLY] Reply error:", error);
