@@ -12,6 +12,7 @@
  */
 
 const fs = require("fs");
+const { startTyping, stopTyping } = require("./human-typing");
 
 const DEFAULT_TYPING_DELAY_MS = Math.max(
   0,
@@ -34,20 +35,7 @@ function sendReplyWithTyping(
   }
 
   return new Promise((resolve) => {
-    try {
-      if (typeof api?.sendTypingIndicator === "function") {
-        api.sendTypingIndicator(threadID, (typingError) => {
-          if (typingError) {
-            console.error(
-              "[REPLY] Typing indicator failed:",
-              typingError
-            );
-          }
-        });
-      }
-    } catch (typingError) {
-      console.error("[REPLY] Typing indicator error:", typingError);
-    }
+    startTyping(api, threadID);
 
     setTimeout(() => {
       try {
@@ -72,6 +60,8 @@ function sendReplyWithTyping(
           outgoingMessage,
           threadID,
           (sendError) => {
+            stopTyping(api, threadID);
+
             if (sendError) {
               console.error("[REPLY] Reply failed:", sendError);
               resolve(false);
@@ -114,6 +104,7 @@ function sendReplyWithTyping(
           }
         }
       } catch (error) {
+        stopTyping(api, threadID);
         console.error("[REPLY] Reply error:", error);
         resolve(false);
       }
