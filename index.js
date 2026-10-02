@@ -759,6 +759,12 @@ const TRAFFIC_GOVERNOR = Object.freeze({
   ),
 });
 
+const TRAFFIC_TEXT_SEND_TIMEOUT_MS = 30_000;
+const TRAFFIC_ATTACHMENT_SEND_TIMEOUT_MS = Math.max(
+  90_000,
+  Number(process.env.ECLIPSE_ATTACHMENT_SEND_TIMEOUT_MS || 120_000)
+);
+
 const trafficSendQueue = [];
 const trafficGlobalSendTimes = [];
 const trafficThreadSendTimes = new Map();
@@ -1328,13 +1334,26 @@ async function trafficProcessQueue() {
             resolve();
           };
 
+          const hasAttachment =
+            Boolean(
+              job.message &&
+                typeof job.message === "object" &&
+                job.message.attachment
+            );
+
+          const sendTimeoutMs = hasAttachment
+            ? TRAFFIC_ATTACHMENT_SEND_TIMEOUT_MS
+            : TRAFFIC_TEXT_SEND_TIMEOUT_MS;
+
           const timeout = setTimeout(() => {
             const error = new Error(
-              "Messenger send timed out; Traffic Governor released the queue."
+              hasAttachment
+                ? "Messenger attachment send timed out; Traffic Governor released the queue."
+                : "Messenger send timed out; Traffic Governor released the queue."
             );
             error.code = "ECLIPSE_SEND_TIMEOUT";
             finish(error);
-          }, 30_000);
+          }, sendTimeoutMs);
 
           try {
             const sendCallback = (error, messageInfo) => {
@@ -7530,6 +7549,156 @@ async function handleAutomaticBanatMessage({
   return false;
 }
 
+// ============================================================
+// BANAT HUMAN MIMICKER
+// ============================================================
+// Natural chat pacing + occasional small typing slips.
+// These are subtle chat-style errors, not platform-enforcement evasion.
+// ============================================================
+
+const BANAT_TYPO_RATE = Math.min(
+  0.18,
+  Math.max(0, Number(process.env.ECLIPSE_BANAT_TYPO_RATE || 0.085))
+);
+
+const BANAT_KEY_NEIGHBORS = Object.freeze({
+  q: "wa", w: "qase", e: "wsdr", r: "edft", t: "rfgy",
+  y: "tghu", u: "yhji", i: "ujko", o: "iklp", p: "ol",
+  a: "qwsz", s: "awedxz", d: "serfcx", f: "drtgvc",
+  g: "ftyhbv", h: "gyujnb", j: "huikmn", k: "jiolm",
+  l: "kop", z: "asx", x: "zsdc", c: "xdfv", v: "cfgb",
+  b: "vghn", n: "bhjm", m: "njk",
+});
+
+function humanPick(array) {
+  if (!array.length) return null;
+  return array[Math.floor(Math.random() * array.length)];
+}
+
+function humanPreserveCase(source, replacement) {
+  if (source === source.toUpperCase()) return replacement.toUpperCase();
+  if (source[0] === source[0].toUpperCase()) return replacement.toUpperCase();
+  return replacement;
+}
+
+function humanKeyboardSlip(word) {
+  const candidates = [];
+
+  for (let i = 0; i < word.length; i++) {
+    const neighbors = BANAT_KEY_NEIGHBORS[word[i].toLowerCase()];
+    if (neighbors) {
+      candidates.push({
+        index: i,
+        replacement: humanPick(neighbors.split("")),
+      });
+    }
+  }
+
+  const choice = humanPick(candidates);
+  if (!choice) return null;
+
+  const replacement = humanPreserveCase(
+    word[choice.index],
+    choice.replacement
+  );
+
+  return (
+    word.slice(0, choice.index) +
+    replacement +
+    word.slice(choice.index + 1)
+  );
+}
+
+function humanDeleteSlip(word) {
+  if (word.length < 4) return null;
+  const index = 1 + Math.floor(Math.random() * (word.length - 2));
+  return word.slice(0, index) + word.slice(index + 1);
+}
+
+function humanDoubleSlip(word) {
+  if (word.length < 3) return null;
+  const index = 1 + Math.floor(Math.random() * (word.length - 2));
+  return word.slice(0, index) + word[index] + word.slice(index);
+}
+
+function humanSwapSlip(word) {
+  if (word.length < 4) return null;
+  const index = 1 + Math.floor(Math.random() * (word.length - 2));
+  if (word[index] === word[index + 1]) return null;
+
+  return (
+    word.slice(0, index) +
+    word[index + 1] +
+    word[index] +
+    word.slice(index + 2)
+  );
+}
+
+function humanApplySingleSlip(text) {
+  const parts = text.split(/(\s+)/);
+  const eligible = [];
+
+  for (let i = 0; i < parts.length; i++) {
+    if (
+      /^\S+$/.test(parts[i]) &&
+      parts[i].replace(/[^a-zA-Z]/g, "").length >= 4
+    ) {
+      eligible.push(i);
+    }
+  }
+
+  if (!eligible.length) return text;
+
+  const index = humanPick(eligible);
+  const original = parts[index];
+
+  const match = original.match(
+    /^([^a-zA-Z]*)([a-zA-Z]+)([^a-zA-Z]*)$/
+  );
+
+  if (!match) return text;
+
+  const prefix = match[1];
+  const word = match[2];
+  const suffix = match[3];
+
+  const strategies = [
+    "keyboard", "keyboard", "keyboard",
+    "delete", "swap", "double",
+  ];
+
+  let changed = null;
+
+  for (let attempt = 0; attempt < 4 && !changed; attempt++) {
+    const strategy = humanPick(strategies);
+
+    if (strategy === "keyboard") {
+      changed = humanKeyboardSlip(word);
+    } else if (strategy === "delete") {
+      changed = humanDeleteSlip(word);
+    } else if (strategy === "swap") {
+      changed = humanSwapSlip(word);
+    } else {
+      changed = humanDoubleSlip(word);
+    }
+  }
+
+  if (!changed || changed === word) return text;
+
+  parts[index] = prefix + changed + suffix;
+  return parts.join("");
+}
+
+function humanizeBanatText(message) {
+  const text = String(message || "");
+
+  if (text.length < 8 || Math.random() >= BANAT_TYPO_RATE) {
+    return text;
+  }
+
+  return humanApplySingleSlip(text);
+}
+
 function humanTypingDelayMs(message) {
   const text = String(message || "").trim();
 
@@ -7537,17 +7706,23 @@ function humanTypingDelayMs(message) {
 
   const words = text.split(/\s+/).filter(Boolean).length;
   const chars = text.length;
+  const punctuationPauses =
+    (text.match(/[,.!?]/g) || []).length * 70;
 
-  // Human-like range: short replies are quick; longer replies take
-  // proportionally longer, with jitter so timing is never identical.
-  const base = 300 + words * 95 + chars * 5.5;
+  const base =
+    280 +
+    words * 92 +
+    chars * 5.2 +
+    punctuationPauses;
+
   const jitter = Math.floor(
-    (Math.random() * 2 - 1) * Math.min(700, 180 + base * 0.18)
+    (Math.random() * 2 - 1) *
+      Math.min(850, 180 + base * 0.22)
   );
 
   return Math.max(
     350,
-    Math.min(3500, Math.round(base + jitter))
+    Math.min(4200, Math.round(base + jitter))
   );
 }
 
@@ -7599,21 +7774,24 @@ function sendBanatReplyWithTyping(
           ? getRandomMemePath()
           : null;
 
+      const banatMessage =
+        humanizeBanatText(message);
+
       const outgoingMessage =
         linkUrl
           ? {
-              body: message,
+              body: banatMessage,
               url: linkUrl,
             }
           : memePath
           ? {
-              body: message,
+              body: banatMessage,
               attachment:
                 fs.createReadStream(
                   memePath
                 ),
             }
-          : message;
+          : banatMessage;
 
       const sendCallback = (
         sendError,
@@ -8117,7 +8295,6 @@ setInterval(() => {
       `Music: ${music.activeDownloads}/${MUSIC_MAX_GLOBAL_DOWNLOADS} downloads`
   );
 }, 60_000);
-
 
 
 
