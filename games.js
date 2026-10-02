@@ -353,6 +353,11 @@ function getPlayerName(event) {
 // MESSAGE HELPERS
 // ============================================================
 
+const GAME_SEND_TIMEOUT_MS = Math.max(
+  35_000,
+  Number(process.env.ECLIPSE_GAME_SEND_TIMEOUT_MS || 35_000)
+);
+
 function sendMessageAsync(api, threadID, text) {
   return new Promise((resolve, reject) => {
     let finished = false;
@@ -360,6 +365,7 @@ function sendMessageAsync(api, threadID, text) {
     const finish = (error, messageInfo) => {
       if (finished) return;
       finished = true;
+      clearTimeout(timeout);
 
       if (error) {
         reject(error);
@@ -368,6 +374,10 @@ function sendMessageAsync(api, threadID, text) {
 
       resolve(messageInfo || null);
     };
+
+    const timeout = setTimeout(() => {
+      finish(new Error("game message send timed out"));
+    }, GAME_SEND_TIMEOUT_MS);
 
     try {
       api.sendMessage(text, threadID, (error, messageInfo) =>
