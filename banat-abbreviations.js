@@ -161,6 +161,66 @@ const BANAT_SHORTHANDS = Object.freeze({
   "everyone": ["every1"],
 
   // ----------------------------------------------------------
+  // FILIPINO / TAGLISH BANAT VOCABULARY
+  //
+  // Level 1 = very natural chat shorthand.
+  // Level 2 = occasional shorthand; the humanizer should keep these rare.
+  // Level 3 words are intentionally omitted when shortening would look forced.
+  // ----------------------------------------------------------
+
+  // Level 1 — very natural
+  "hindi": ["di"],
+  "bakit": ["bkt"],
+  "parang": ["prang"],
+  "talaga": ["tlga"],
+  "para": ["pra"],
+  "kapag": ["kpg"],
+  "walang": ["wlang"],
+  "lang": ["lng"],
+  "ikaw": ["u"],
+
+  // Level 2 — occasional / context-dependent
+  "ganyan": ["gnyan"],
+  "kailangan": ["kylngn"],
+  "muna": ["mna"],
+  "tuloy": ["tly"],
+  "gusto": ["gsto"],
+  "bang": ["bng"],
+  "maintindihan": ["mntindihan"],
+  "nakakatuwa": ["nkakatuwa"],
+  "makulit": ["mkulit"],
+  "magsalita": ["mgsalita"],
+  "sinasabi": ["snbbi"],
+  "saglit": ["sglit"],
+  "sobrang": ["sbrng"],
+  "marami": ["mrmi"],
+  "ganun": ["gnun"],
+  "ganoon": ["gnoon"],
+  "ngayon": ["ngyn"],
+  "mamaya": ["mmya"],
+  "bago": ["bgo"],
+  "ulit": ["ult"],
+  "siguro": ["sguro"],
+  "kasi": ["ksi"],
+  "naman": ["nmn"],
+  "rin": ["rn"],
+  "din": ["dn"],
+  "dahil": ["dhl"],
+  "pero": ["pro"],
+  "saan": ["san"],
+  "anong": ["anong"],
+  "itong": ["itng"],
+  "iyon": ["yn"],
+  "iyonang": ["ynang"],
+  "maganda": ["mgnda"],
+  "magaling": ["mglng"],
+  "tama": ["tm"],
+  "mali": ["mli"],
+  "sagot": ["sgot"],
+  "tanong": ["tnong"],
+  "point": ["pt"],
+
+  // ----------------------------------------------------------
   // REACTION / SHORT CHAT PHRASES
   // ----------------------------------------------------------
 
