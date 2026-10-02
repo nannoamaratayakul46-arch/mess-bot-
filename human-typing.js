@@ -11,7 +11,11 @@ function startTyping(api, threadID) {
   if (!api || !threadID) return false;
   try {
     if (typeof api.sendTypingIndicator === "function") {
-      api.sendTypingIndicator(threadID);
+      api.sendTypingIndicator(threadID, (error) => {
+        if (error) {
+          console.warn("[HUMAN-TYPING] Typing indicator failed:", error?.message || error);
+        }
+      });
       return true;
     }
     if (typeof api.sendTyping === "function") {
@@ -42,7 +46,7 @@ function withTyping(api, threadID, durationMs, send) {
   startTyping(api, threadID);
 
   return new Promise((resolve, reject) => {
-    const timer = setTimeout(async () => {
+    setTimeout(async () => {
       try {
         const result = await send();
         stopTyping(api, threadID);
@@ -52,9 +56,6 @@ function withTyping(api, threadID, durationMs, send) {
         reject(error);
       }
     }, duration);
-
-    // Do not keep Node alive solely for cosmetic typing.
-    if (typeof timer.unref === "function") timer.unref();
   });
 }
 
