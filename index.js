@@ -123,6 +123,19 @@ const {
 } = require("./triggers");
 
 // ============================================================
+// HUMAN / BANAT MODULES
+// ============================================================
+
+const {
+  sendBanatReplyWithTyping: sendBanatReplyWithTypingModule,
+  BANAT_REPLY_DELAY_MS,
+} = require("./banat-human");
+
+const {
+  sendReplyWithTyping: sendReplyWithTypingModule,
+} = require("./reply-with-typing");
+
+// ============================================================
 // CONFIGURATION
 // ============================================================
 
@@ -7603,346 +7616,39 @@ async function handleAutomaticBanatMessage({
 }
 
 // ============================================================
+// HUMAN / BANAT WIRING
 // ============================================================
-// BANAT HUMAN MIMICKER
-// ============================================================
-// Multi-dimensional human-chat simulation for the project demo:
-// hesitation, cadence, bursts, complexity, momentum, typos, casing,
-// spacing, shorthand, and an internal false-start/correction pass.
-// Corrections are never sent as extra messages.
-// ============================================================
+//
+// The human system lives in dedicated modules.
+// index.js only preserves the legacy call signatures and injects
+// the existing Traffic Governor + meme helper dependencies.
 
-const BANAT_TYPO_RATE = Math.min(0.18, Math.max(0, Number(process.env.ECLIPSE_BANAT_TYPO_RATE || 0.085)));
-const BANAT_SHORTHAND_RATE = Math.min(0.22, Math.max(0, Number(process.env.ECLIPSE_BANAT_SHORTHAND_RATE || 0.035)));
-const BANAT_CASE_VARIATION_RATE = Math.min(0.18, Math.max(0, Number(process.env.ECLIPSE_BANAT_CASE_VARIATION_RATE || 0.035)));
-const BANAT_SPACE_SLIP_RATE = Math.min(0.08, Math.max(0, Number(process.env.ECLIPSE_BANAT_SPACE_SLIP_RATE || 0.018)));
-const BANAT_HESITATION_RATE = Math.min(0.35, Math.max(0, Number(process.env.ECLIPSE_BANAT_HESITATION_RATE || 0.11)));
-const BANAT_MAX_HUMAN_DELAY_MS = Math.max(2500, Number(process.env.ECLIPSE_BANAT_MAX_HUMAN_DELAY_MS || 6500));
-const banatHumanState = new Map();
-
-const BANAT_KEY_NEIGHBORS = Object.freeze({
-  q:"wa",w:"qase",e:"wsdr",r:"edft",t:"rfgy",y:"tghu",u:"yhji",i:"ujko",o:"iklp",p:"ol",
-  a:"qwsz",s:"awedxz",d:"serfcx",f:"drtgvc",g:"ftyhbv",h:"gyujnb",j:"huikmn",k:"jiolm",l:"kop",
-  z:"asx",x:"zsdc",c:"xdfv",v:"cfgb",b:"vghn",n:"bhjm",m:"njk",
-});
-
-const { BANAT_SHORTHANDS } = require("./banat-abbreviations");
-
-function humanPick(array) {
-  if (!array.length) return null;
-  return array[Math.floor(Math.random() * array.length)];
-}
-
-function humanClamp(value,min,max) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function humanPreserveCase(source,replacement) {
-  if (source === source.toUpperCase()) return replacement.toUpperCase();
-  if (source && source[0] === source[0].toUpperCase()) {
-    return replacement.charAt(0).toUpperCase() + replacement.slice(1);
-  }
-  return replacement;
-}
-
-function humanKeyboardSlip(word) {
-  const candidates = [];
-  for (let i=0;i<word.length;i++) {
-    const neighbors = BANAT_KEY_NEIGHBORS[word[i].toLowerCase()];
-    if (neighbors) candidates.push({index:i,replacement:humanPick(neighbors.split(""))});
-  }
-  const choice=humanPick(candidates);
-  if (!choice) return null;
-  const replacement=humanPreserveCase(word[choice.index],choice.replacement);
-  return word.slice(0,choice.index)+replacement+word.slice(choice.index+1);
-}
-
-function humanDeleteSlip(word) {
-  if (word.length<4) return null;
-  const index=1+Math.floor(Math.random()*(word.length-2));
-  return word.slice(0,index)+word.slice(index+1);
-}
-
-function humanDoubleSlip(word) {
-  if (word.length<3) return null;
-  const index=1+Math.floor(Math.random()*(word.length-2));
-  return word.slice(0,index)+word[index]+word.slice(index);
-}
-
-function humanSwapSlip(word) {
-  if (word.length<4) return null;
-  const index=1+Math.floor(Math.random()*(word.length-2));
-  if (word[index]===word[index+1]) return null;
-  return word.slice(0,index)+word[index+1]+word[index]+word.slice(index+2);
-}
-
-function humanApplySingleSlip(text) {
-  const parts=text.split(/(\s+)/);
-  const eligible=[];
-  for(let i=0;i<parts.length;i++) {
-    if(/^\S+$/.test(parts[i]) && parts[i].replace(/[^a-zA-Z]/g,"").length>=4) eligible.push(i);
-  }
-  if(!eligible.length) return text;
-  const index=humanPick(eligible);
-  const match=parts[index].match(/^([^a-zA-Z]*)([a-zA-Z]+)([^a-zA-Z]*)$/);
-  if(!match) return text;
-  const prefix=match[1],word=match[2],suffix=match[3];
-  const strategies=["keyboard","keyboard","keyboard","delete","swap","double"];
-  let changed=null;
-  for(let attempt=0;attempt<5&&!changed;attempt++) {
-    const strategy=humanPick(strategies);
-    if(strategy==="keyboard") changed=humanKeyboardSlip(word);
-    else if(strategy==="delete") changed=humanDeleteSlip(word);
-    else if(strategy==="swap") changed=humanSwapSlip(word);
-    else changed=humanDoubleSlip(word);
-  }
-  if(!changed||changed===word) return text;
-  parts[index]=prefix+changed+suffix;
-  return parts.join("");
-}
-
-function humanApplyCaseVariation(text) {
-  if(text.length<10||Math.random()>=BANAT_CASE_VARIATION_RATE) return text;
-  const parts=text.split(/(\s+)/);
-  const eligible=parts.map((v,i)=>/^[A-Za-z]{3,}$/.test(v)?i:-1).filter(i=>i>=0);
-  const index=humanPick(eligible);
-  if(index==null) return text;
-  const word=parts[index];
-  parts[index]=Math.random()<0.7?word.toLowerCase():word.charAt(0).toUpperCase()+word.slice(1).toLowerCase();
-  return parts.join("");
-}
-
-function humanApplySpaceVariation(text) {
-  if(text.length<16||Math.random()>=BANAT_SPACE_SLIP_RATE) return text;
-  const words=text.split(/\s+/).filter(Boolean);
-  if(words.length<3) return text;
-  const index=1+Math.floor(Math.random()*(words.length-2));
-  if(Math.random()<0.7) {
-    words[index-1]+=words[index];
-    words.splice(index,1);
-    return words.join(" ");
-  }
-  words[index-1]+="  "+words[index];
-  return words.join(" ");
-}
-
-function humanEscapeRegExp(value) {
-  return String(value).replace(/[.*+?^()|[\]\\]/g,"\\$&");
-}
-
-function humanApplyShorthand(text) {
-  if(text.length<12||Math.random()>=BANAT_SHORTHAND_RATE) return text;
-  const candidates=[];
-  for(const [phrase,replacements] of Object.entries(BANAT_SHORTHANDS)) {
-    const pattern=new RegExp("\\b"+humanEscapeRegExp(phrase)+"\\b","i");
-    if(pattern.test(text)) candidates.push({pattern,replacements});
-  }
-  const choice=humanPick(candidates);
-  if(!choice) return text;
-  const replacement=humanPick(choice.replacements);
-  return text.replace(choice.pattern,match=>humanPreserveCase(match,replacement));
-}
-
-function humanizeBanatText(message) {
-  let text=String(message||"");
-  if(text.length<8) return text;
-  if(Math.random()<BANAT_TYPO_RATE) text=humanApplySingleSlip(text);
-  text=humanApplyCaseVariation(text);
-  text=humanApplySpaceVariation(text);
-  text=humanApplyShorthand(text);
-  return text;
-}
-
-function humanWordComplexity(word) {
-  const clean=String(word||"").replace(/[^A-Za-z0-9']/g,"");
-  if(!clean) return 0;
-  let score=clean.length>=7?1:0;
-  if(/[^aeiou]{4,}/i.test(clean)) score+=0.5;
-  if(/\d/.test(clean)) score+=0.25;
-  return score;
-}
-
-function humanConversationContext(threadID,incomingText="") {
-  const key=String(threadID||"unknown");
-  const now=Date.now();
-  let state=banatHumanState.get(key);
-  if(!state||now-state.lastAt>45000) state={lastAt:now,count:1,mode:"chill"};
-  else {
-    state.count=Math.min(8,state.count+1);
-    state.lastAt=now;
-    state.mode=state.count>=5?"rushed":state.count>=3?"normal":"chill";
-  }
-  banatHumanState.set(key,state);
-  return {mode:state.mode,momentum:state.count,incomingWords:String(incomingText||"").trim().split(/\s+/).filter(Boolean).length};
-}
-
-function humanResponseHesitationMs(message,context={}) {
-  const text=String(message||"").trim();
-  const words=text?text.split(/\s+/).length:0;
-  let delay=220+Math.min(900,words*35);
-  if(context.mode==="chill") delay+=120;
-  if(context.mode==="rushed") delay-=90;
-  if(context.incomingWords>=18) delay+=90;
-  if(text.length>12&&Math.random()<BANAT_HESITATION_RATE) delay+=humanPick([120,180,240,320,450,600]);
-  return humanClamp(Math.round(delay+Math.random()*260-130),120,1500);
-}
-
-function humanTypingCadenceMs(message,context={}) {
-  const text=String(message||"").trim();
-  if(!text) return 350;
-  const words=text.split(/\s+/).filter(Boolean);
-  let delay=300+words.length*82+text.length*4.4;
-  for(const word of words) delay+=humanWordComplexity(word)*55;
-  delay+=(text.match(/,/g)||[]).length*45;
-  delay+=(text.match(/[!?\.]/g)||[]).length*75;
-  delay+=(text.match(/\.{3}/g)||[]).length*120;
-  delay+=Math.min(6,(text.match(/[\u{1F300}-\u{1FAFF}]/gu)||[]).length)*12;
-  if(context.mode==="chill") delay*=1.12;
-  if(context.mode==="rushed") delay*=0.78;
-  if(context.momentum>=4) delay*=0.88;
-  delay+=(Math.random()*2-1)*Math.min(900,180+delay*0.28);
-  return humanClamp(Math.round(delay),350,BANAT_MAX_HUMAN_DELAY_MS);
-}
-
-function humanTypingBurstsMs(message,context={}) {
-  const words=String(message||"").trim().split(/\s+/).filter(Boolean).length;
-  if(words<4) return humanPick([0,0,70,110,160]);
-  let chance=0.24;
-  if(context.mode==="chill") chance+=0.08;
-  if(context.mode==="rushed") chance-=0.06;
-  return Math.random()<chance?humanPick([80,110,140,180,220,260,320]):0;
-}
-
-function humanTypingDelayMs(message,context={}) {
-  return humanResponseHesitationMs(message,context)+humanTypingCadenceMs(message,context)+humanTypingBurstsMs(message,context);
-}
-
-function humanDraftWithCorrection(message) {
-  const original=String(message||"");
-  if(original.length>=14&&Math.random()<Math.min(0.16,BANAT_TYPO_RATE*1.35)) {
-    const falseStart=humanApplySingleSlip(original);
-    void falseStart;
-  }
-  return humanizeBanatText(original);
-}
-
-function humanCleanupState() {
-  const cutoff=Date.now()-30*60*1000;
-  for(const [threadID,state] of banatHumanState) if(state.lastAt<cutoff) banatHumanState.delete(threadID);
-}
-
-function startHumanTyping(api,threadID) {
-  try {
-    if(api&&typeof api.sendTypingIndicator==="function") {
-      api.sendTypingIndicator(threadID,typingError=>{
-        if(typingError) console.error("[BANAT] Human typing indicator failed:",typingError);
-      });
+function sendBanatReplyWithTyping(
+  api,
+  message,
+  threadID,
+  replyToMessageID = null,
+  attachMeme = false,
+  linkUrl = null,
+  replyDelayMs = BANAT_REPLY_DELAY_MS,
+  incomingText = ""
+) {
+  return sendBanatReplyWithTypingModule(
+    api,
+    message,
+    threadID,
+    replyToMessageID,
+    attachMeme,
+    linkUrl,
+    replyDelayMs,
+    incomingText,
+    {
+      trafficSendMessage,
+      getRandomMemePath,
     }
-  } catch(typingError) {
-    console.error("[BANAT] Human typing indicator error:",typingError);
-  }
+  );
 }
 
-function sendBanatReplyWithTyping(api,message,threadID,replyToMessageID=null,attachMeme=false,linkUrl=null,replyDelayMs=BANAT_REPLY_DELAY_MS,incomingText="") {
-  return new Promise((resolve) => {
-    const context=humanConversationContext(threadID,incomingText);
-    const requestedDelayMs=Number.isFinite(Number(replyDelayMs))?Math.max(0,Number(replyDelayMs)):0;
-
-    // Split the human delay into two real phases:
-    // 1) reaction/reading time before typing starts
-    // 2) actual typing time while the Messenger typing indicator is active
-    const reactionDelayMs=humanClamp(
-      Math.round(
-        requestedDelayMs>0
-          ? requestedDelayMs
-          : humanResponseHesitationMs(message,context)
-      ),
-      120,
-      1800
-    );
-
-    const typingDelayMs=humanClamp(
-      Math.round(
-        humanTypingCadenceMs(message,context)+
-        humanTypingBurstsMs(message,context)
-      ),
-      350,
-      BANAT_MAX_HUMAN_DELAY_MS
-    );
-
-    setTimeout(() => {
-      startHumanTyping(api,threadID);
-
-      setTimeout(() => {
-        try {
-          const memePath=attachMeme&&!linkUrl?getRandomMemePath():null;
-          const banatMessage=humanDraftWithCorrection(message);
-          const outgoingMessage=linkUrl
-            ? {body:banatMessage,url:linkUrl}
-            : memePath
-            ? {body:banatMessage,attachment:fs.createReadStream(memePath)}
-            : banatMessage;
-
-          const sendCallback=(sendError,messageInfo)=>{
-            if(sendError){
-              console.error("[BANAT] Reply failed:",sendError);
-              resolve(false);
-              return;
-            }
-
-            const sentMessageID=typeof messageInfo==="string"
-              ? messageInfo
-              : messageInfo?.messageID||messageInfo?.messageId||messageInfo?.id||null;
-
-            if(sentMessageID){
-              try {
-                const reactionCallback=reactionError=>{
-                  if(reactionError) console.error("[BANAT] Self-reaction failed:",reactionError);
-                };
-                if(api&&typeof api.setMessageReactionMqtt==="function") {
-                  api.setMessageReactionMqtt("😆",String(sentMessageID),String(threadID),reactionCallback);
-                } else if(api&&typeof api.setMessageReaction==="function") {
-                  api.setMessageReaction("😆",String(sentMessageID),reactionCallback,true);
-                }
-              } catch(reactionError){
-                console.error("[BANAT] Self-reaction error:",reactionError);
-              }
-            }
-
-            if(attachMeme&&linkUrl){
-              const followUpMemePath=getRandomMemePath();
-              if(followUpMemePath) {
-                setTimeout(()=>trafficSendMessage(
-                  api,
-                  {attachment:fs.createReadStream(followUpMemePath)},
-                  threadID,
-                  sendError=>{
-                    if(sendError) console.error("[BANAT] Meme follow-up failed:",sendError);
-                  }
-                ),400);
-              }
-            }
-
-            resolve(true);
-          };
-
-          trafficSendMessage(
-            api,
-            outgoingMessage,
-            threadID,
-            sendCallback,
-            replyToMessageID||null
-          );
-        } catch(sendError){
-          console.error("[BANAT] Reply error:",sendError);
-          resolve(false);
-        }
-      },typingDelayMs);
-    },reactionDelayMs);
-
-    if(banatHumanState.size>500) humanCleanupState();
-  });
-}
 function sendReplyWithTyping(
   api,
   message,
@@ -7950,120 +7656,16 @@ function sendReplyWithTyping(
   attachMeme = false,
   linkUrl = null
 ) {
-  const typingDelayMs =
-    1200;
-
-  try {
-    if (
-      typeof api.sendTypingIndicator ===
-      "function"
-    ) {
-      api.sendTypingIndicator(
-        threadID,
-        (typingError) => {
-          if (
-            typingError
-          ) {
-            console.error(
-              "Typing indicator failed:",
-              typingError
-            );
-          }
-        }
-      );
+  return sendReplyWithTypingModule(
+    api,
+    message,
+    threadID,
+    attachMeme,
+    linkUrl,
+    {
+      trafficSendMessage,
+      getRandomMemePath,
     }
-  } catch (typingError) {
-    console.error(
-      "Typing indicator error:",
-      typingError
-    );
-  }
-
-  setTimeout(
-    () => {
-      try {
-        const memePath =
-          attachMeme && !linkUrl
-            ? getRandomMemePath()
-            : null;
-
-        const outgoingMessage =
-          linkUrl
-            ? {
-                body: message,
-                url: linkUrl,
-              }
-            : memePath
-            ? {
-                body: message,
-                attachment:
-                  fs.createReadStream(
-                    memePath
-                  ),
-              }
-            : message;
-
-        trafficSendMessage(
-          api,
-          outgoingMessage,
-          threadID,
-          (sendError) => {
-            if (
-              sendError
-            ) {
-              console.error(
-                "Reply failed:",
-                sendError
-              );
-            }
-          }
-        );
-
-        if (
-          attachMeme &&
-          linkUrl
-        ) {
-          const followUpMemePath =
-            getRandomMemePath();
-
-          if (
-            followUpMemePath
-          ) {
-            setTimeout(
-              () => {
-                trafficSendMessage(
-                  api,
-                  {
-                    attachment:
-                      fs.createReadStream(
-                        followUpMemePath
-                      ),
-                  },
-                  threadID,
-                  (sendError) => {
-                    if (
-                      sendError
-                    ) {
-                      console.error(
-                        "Meme follow-up failed:",
-                        sendError
-                      );
-                    }
-                  }
-                );
-              },
-              400
-            );
-          }
-        }
-      } catch (sendError) {
-        console.error(
-          "Reply error:",
-          sendError
-        );
-      }
-    },
-    typingDelayMs
   );
 }
 
