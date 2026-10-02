@@ -290,14 +290,54 @@ function addSpaceVariation(text, random, rate = 0) {
   return words.join(" ");
 }
 
-function addCasualPunctuation(text, random) {
+function addCasualPunctuation(text, random, options = {}) {
+  const styleRate = clamp(Number(options.styleRate ?? 1), 0, 1);
   let output = String(text || "").trim();
   if (!output) return output;
 
-  if (random() < 0.12) output = output.replace(/\.$/, "");
-  if (random() < 0.08 && !/[!?…]$/.test(output)) output += "...";
-  if (random() < 0.06) output = output.replace(/, /g, ",  ");
+  if (random() < 0.12 * styleRate) output = output.replace(/\.$/, "");
+  if (random() < 0.08 * styleRate && !/[!?…]$/.test(output)) output += "...";
+  if (random() < 0.06 * styleRate) output = output.replace(/, /g, ",  ");
 
+  return output;
+}
+
+
+
+function normalizeTextingPunctuation(text, random) {
+  let output = String(text || "");
+  if (!output) return output;
+
+  if (random() < 0.14) output = output.replace(/\.(?=\s*$)/, "");
+  output = output.replace(/!{3,}/g, (m) => random() < 0.45 ? "!!" : m);
+  output = output.replace(/\?{3,}/g, (m) => random() < 0.45 ? "??" : m);
+  if (random() < 0.035) output = output.replace(/, /g, ",");
+  return output;
+}
+
+function addRepeatedLetterStyle(text, random, rate = 0.012) {
+  if (!text || random() >= clamp(Number(rate) || 0, 0, 1)) return text;
+  const parts = String(text).split(/(\s+)/);
+  const eligible = [];
+  for (let i = 0; i < parts.length; i += 1) {
+    if (/^[A-Za-z]{3,8}$/.test(parts[i])) eligible.push(i);
+  }
+  const index = pick(random, eligible);
+  if (index == null) return text;
+  const word = parts[index];
+  const pos = Math.max(1, Math.min(word.length - 1, Math.floor(random() * word.length)));
+  parts[index] = word.slice(0, pos) + word[pos] + word.slice(pos);
+  return parts.join("");
+}
+
+function addReactionStyle(text, random, rate = 0.02) {
+  if (!text || random() >= clamp(Number(rate) || 0, 0, 1)) return text;
+  let output = String(text);
+  output = output.replace(/\b(?:haha)+\b/gi, (m) => random() < 0.5 ? "HAHA" : m);
+  output = output.replace(/\b(?:lol)+\b/gi, (m) => random() < 0.45 ? "lolll" : m);
+  if (random() < 0.35 && /\b(?:lol|lmao|haha)\b/i.test(output) && !/[!?]$/.test(output)) {
+    output += random() < 0.5 ? " 😭" : " 💀";
+  }
   return output;
 }
 
@@ -350,8 +390,12 @@ function humanize(text, options = {}) {
   );
 
   if (options.punctuation !== false) {
-    output = addCasualPunctuation(output, random);
+    output = addCasualPunctuation(output, random, options);
   }
+
+  output = normalizeTextingPunctuation(output, random);
+  output = addRepeatedLetterStyle(output, random, options.repeatedLetterRate ?? 0.012);
+  output = addReactionStyle(output, random, options.reactionStyleRate ?? 0.02);
 
   return output;
 }
@@ -401,4 +445,7 @@ module.exports = {
   addCaseVariation,
   addSpaceVariation,
   addCasualPunctuation,
+  normalizeTextingPunctuation,
+  addRepeatedLetterStyle,
+  addReactionStyle,
 };
