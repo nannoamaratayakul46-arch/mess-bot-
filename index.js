@@ -219,6 +219,11 @@ const WATCHDOG_LISTENER_STALE_MS = Math.max(
   )
 );
 
+const WATCHDOG_LISTENER_STALE_ENABLED =
+  /^(1|true|yes|on)$/i.test(
+    process.env.ECLIPSE_WATCHDOG_LISTENER_STALE_ENABLED || ""
+  );
+
 const WATCHDOG_LISTENER_STALE_FAILURE_LIMIT = 2;
 
 let watchdogLastListenerActivityAt = Date.now();
@@ -505,7 +510,7 @@ function runWatchdogCheck() {
   }
 
   const eventLoopHealthy =
-    eventLoopDelay <=
+    elapsedSinceTick <=
     WATCHDOG_EVENT_LOOP_TIMEOUT_MS;
 
   const messengerConnectionHealthy =
@@ -572,6 +577,7 @@ function runWatchdogCheck() {
   // Facebook can keep the session valid while MQTT has silently died.
   // Require two consecutive stale checks before restarting.
   if (
+    WATCHDOG_LISTENER_STALE_ENABLED &&
     watchdogMessengerConnected &&
     listenerActivityAgeMs >= WATCHDOG_LISTENER_STALE_MS
   ) {
@@ -7830,80 +7836,98 @@ function sendBanatReplyWithTyping(api,message,threadID,replyToMessageID=null,att
   return new Promise((resolve) => {
     const context=humanConversationContext(threadID,incomingText);
     const requestedDelayMs=Number.isFinite(Number(replyDelayMs))?Math.max(0,Number(replyDelayMs)):0;
-    const generatedDelay=humanTypingDelayMs(message,context);
-    const humanDelayMs=humanClamp(
-      Math.round(requestedDelayMs>0?requestedDelayMs+humanTypingBurstsMs(message,context):generatedDelay),
-      350,BANAT_MAX_HUMAN_DELAY_MS
+
+    // Split the human delay into two real phases:
+    // 1) reaction/reading time before typing starts
+    // 2) actual typing time while the Messenger typing indicator is active
+    const reactionDelayMs=humanClamp(
+      Math.round(
+        requestedDelayMs>0
+          ? requestedDelayMs
+          : humanResponseHesitationMs(message,context)
+      ),
+      120,
+      1800
     );
 
-    // Reaction/reading time happens before typing starts.
+    const typingDelayMs=humanClamp(
+      Math.round(
+        humanTypingCadenceMs(message,context)+
+        humanTypingBurstsMs(message,context)
+      ),
+      350,
+      BANAT_MAX_HUMAN_DELAY_MS
+    );
+
     setTimeout(() => {
       startHumanTyping(api,threadID);
 
-      try {
-        const memePath=attachMeme&&!linkUrl?getRandomMemePath():null;
-        const banatMessage=humanDraftWithCorrection(message);
-        const outgoingMessage=linkUrl
-          ? {body:banatMessage,url:linkUrl}
-          : memePath
-          ? {body:banatMessage,attachment:fs.createReadStream(memePath)}
-          : banatMessage;
+      setTimeout(() => {
+        try {
+          const memePath=attachMeme&&!linkUrl?getRandomMemePath():null;
+          const banatMessage=humanDraftWithCorrection(message);
+          const outgoingMessage=linkUrl
+            ? {body:banatMessage,url:linkUrl}
+            : memePath
+            ? {body:banatMessage,attachment:fs.createReadStream(memePath)}
+            : banatMessage;
 
-        const sendCallback=(sendError,messageInfo)=>{
-          if(sendError){
-            console.error("[BANAT] Reply failed:",sendError);
-            resolve(false);
-            return;
-          }
-
-          const sentMessageID=typeof messageInfo==="string"
-            ? messageInfo
-            : messageInfo?.messageID||messageInfo?.messageId||messageInfo?.id||null;
-
-          if(sentMessageID){
-            try {
-              const reactionCallback=reactionError=>{
-                if(reactionError) console.error("[BANAT] Self-reaction failed:",reactionError);
-              };
-              if(api&&typeof api.setMessageReactionMqtt==="function") {
-                api.setMessageReactionMqtt("😆",String(sentMessageID),String(threadID),reactionCallback);
-              } else if(api&&typeof api.setMessageReaction==="function") {
-                api.setMessageReaction("😆",String(sentMessageID),reactionCallback,true);
-              }
-            } catch(reactionError){
-              console.error("[BANAT] Self-reaction error:",reactionError);
+          const sendCallback=(sendError,messageInfo)=>{
+            if(sendError){
+              console.error("[BANAT] Reply failed:",sendError);
+              resolve(false);
+              return;
             }
-          }
 
-          if(attachMeme&&linkUrl){
-            const followUpMemePath=getRandomMemePath();
-            if(followUpMemePath) {
-              setTimeout(()=>trafficSendMessage(
-                api,
-                {attachment:fs.createReadStream(followUpMemePath)},
-                threadID,
-                sendError=>{
-                  if(sendError) console.error("[BANAT] Meme follow-up failed:",sendError);
+            const sentMessageID=typeof messageInfo==="string"
+              ? messageInfo
+              : messageInfo?.messageID||messageInfo?.messageId||messageInfo?.id||null;
+
+            if(sentMessageID){
+              try {
+                const reactionCallback=reactionError=>{
+                  if(reactionError) console.error("[BANAT] Self-reaction failed:",reactionError);
+                };
+                if(api&&typeof api.setMessageReactionMqtt==="function") {
+                  api.setMessageReactionMqtt("😆",String(sentMessageID),String(threadID),reactionCallback);
+                } else if(api&&typeof api.setMessageReaction==="function") {
+                  api.setMessageReaction("😆",String(sentMessageID),reactionCallback,true);
                 }
-              ),400);
+              } catch(reactionError){
+                console.error("[BANAT] Self-reaction error:",reactionError);
+              }
             }
-          }
 
-          resolve(true);
-        };
+            if(attachMeme&&linkUrl){
+              const followUpMemePath=getRandomMemePath();
+              if(followUpMemePath) {
+                setTimeout(()=>trafficSendMessage(
+                  api,
+                  {attachment:fs.createReadStream(followUpMemePath)},
+                  threadID,
+                  sendError=>{
+                    if(sendError) console.error("[BANAT] Meme follow-up failed:",sendError);
+                  }
+                ),400);
+              }
+            }
 
-        trafficSendMessage(
-          api,
-          outgoingMessage,
-          threadID,
-          sendCallback,
-          replyToMessageID||null
-        );
-      } catch(sendError){
-        console.error("[BANAT] Reply error:",sendError);
-        resolve(false);
-      }
-    },humanDelayMs);
+            resolve(true);
+          };
+
+          trafficSendMessage(
+            api,
+            outgoingMessage,
+            threadID,
+            sendCallback,
+            replyToMessageID||null
+          );
+        } catch(sendError){
+          console.error("[BANAT] Reply error:",sendError);
+          resolve(false);
+        }
+      },typingDelayMs);
+    },reactionDelayMs);
 
     if(banatHumanState.size>500) humanCleanupState();
   });
