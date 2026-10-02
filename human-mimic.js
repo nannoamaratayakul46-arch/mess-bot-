@@ -62,44 +62,99 @@ function preserveCase(original, replacement) {
   return replacement;
 }
 
-function replaceAbbreviations(text, abbreviations, random) {
-  let output = String(text || "");
-  const entries = [...abbreviations].sort((a, b) => b[0].length - a[0].length);
+function normalizeAbbreviations(abbreviations) {
+  if (Array.isArray(abbreviations)) return abbreviations;
+  if (!abbreviations || typeof abbreviations !== "object") return DEFAULT_ABBREVIATIONS;
 
-  for (const [from, to] of entries) {
-    if (!pick(random, 0.08)) continue;
-    const escaped = from.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    output = output.replace(new RegExp(`\\b${escaped}\\b`, "gi"), (match) =>
-      preserveCase(match, to)
-    );
+  const pairs = [];
+  for (const [from, replacements] of Object.entries(abbreviations)) {
+    const values = Array.isArray(replacements) ? replacements : [replacements];
+    for (const to of values) pairs.push([from, to]);
   }
-
-  return output;
+  return pairs;
 }
 
-function addTypo(text, random) {
+function replaceAbbreviations(text, abbreviations, random, rate = 0.08) {
+  let output = String(text || "");
+  if (random() >= rate) return output;
+
+  const entries = normalizeAbbreviations(abbreviations)
+    .filter((entry) => Array.isArray(entry) && entry.length >= 2)
+    .sort((x, y) => String(y[0]).length - String(x[0]).length);
+
+  const candidates = [];
+  for (const [from, to] of entries) {
+    const escaped = String(from).replace(/[.*+?^\${}()|[\]\\]/g, "\\$&");
+    const pattern = new RegExp("\\b" + escaped + "\\b", "i");
+    if (pattern.test(output)) candidates.push({ pattern, to });
+  }
+
+  if (!candidates.length) return output;
+  const choice = candidates[Math.floor(random() * candidates.length)];
+
+  return output.replace(choice.pattern, (match) =>
+    preserveCase(match, choice.to)
+  );
+}
+
+
+function addTypo(text, random, rate = 0.025) {
+  if (random() >= rate) return text;
+
   return text.replace(WORD_RE, (word) => {
-    if (word.length < 5 || !pick(random, 0.025)) return word;
+    if (word.length < 5) return word;
 
     const mode = Math.floor(random() * 3);
-
-    // Transposition: "teh"-style human typo.
     if (mode === 0 && word.length > 4) {
       const i = 1 + Math.floor(random() * (word.length - 2));
       return word.slice(0, i) + word[i + 1] + word[i] + word.slice(i + 2);
     }
 
-    // Missing character.
     if (mode === 1 && word.length > 5) {
       const i = 1 + Math.floor(random() * (word.length - 2));
       return word.slice(0, i) + word.slice(i + 1);
     }
 
-    // Repeated character.
     const i = 1 + Math.floor(random() * (word.length - 2));
     return word.slice(0, i) + word[i] + word.slice(i);
   });
 }
+
+function addCaseVariation(text, random, rate = 0) {
+  if (text.length < 10 || random() >= rate) return text;
+  const parts = text.split(/(\s+)/);
+  const eligible = parts
+    .map((value, index) => /^[A-Za-z]{3,}$/.test(value) ? index : -1)
+    .filter((index) => index >= 0);
+
+  if (!eligible.length) return text;
+  const index = eligible[Math.floor(random() * eligible.length)];
+  const word = parts[index];
+
+  parts[index] = random() < 0.7
+    ? word.toLowerCase()
+    : word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+
+  return parts.join("");
+}
+
+function addSpaceVariation(text, random, rate = 0) {
+  if (text.length < 16 || random() >= rate) return text;
+
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length < 3) return text;
+
+  const index = 1 + Math.floor(random() * (words.length - 2));
+  if (random() < 0.7) {
+    words[index - 1] += words[index];
+    words.splice(index, 1);
+  } else {
+    words[index - 1] += "  " + words[index];
+  }
+
+  return words.join(" ");
+}
+
 
 function addCasualPunctuation(text, random) {
   let output = String(text || "").trim();
@@ -112,7 +167,10 @@ function addCasualPunctuation(text, random) {
 }
 
 function humanize(text, options = {}) {
-  const random = typeof options.random === "function" ? options.random : Math.random;
+  const random = typeof options.random === "function"
+    ? options.random
+    : Math.random;
+
   let output = String(text || "").trim();
   if (!output) return output;
 
@@ -120,15 +178,46 @@ function humanize(text, options = {}) {
     output = replaceAbbreviations(
       output,
       options.abbreviations || DEFAULT_ABBREVIATIONS,
-      random
+      random,
+      Number.isFinite(options.abbreviationRate)
+        ? options.abbreviationRate
+        : 0.08
     );
   }
 
-  if (options.typos !== false) output = addTypo(output, random);
-  if (options.punctuation !== false) output = addCasualPunctuation(output, random);
+  if (options.typos !== false) {
+    output = addTypo(
+      output,
+      random,
+      Number.isFinite(options.typoRate)
+        ? options.typoRate
+        : 0.025
+    );
+  }
+
+  output = addCaseVariation(
+    output,
+    random,
+    Number.isFinite(options.caseVariationRate)
+      ? options.caseVariationRate
+      : 0
+  );
+
+  output = addSpaceVariation(
+    output,
+    random,
+    Number.isFinite(options.spaceVariationRate)
+      ? options.spaceVariationRate
+      : 0
+  );
+
+  if (options.punctuation !== false) {
+    output = addCasualPunctuation(output, random);
+  }
 
   return output;
 }
+
 
 function humanizationProfile(text) {
   const length = String(text || "").length;
