@@ -79,6 +79,96 @@ let animationId = 0;
 let phoneLyricsOpen = false;
 let fullLyricsOpen = false;
 
+// Floating/burst particle layer used by the phone → headphone transition.
+const floatParticles = [];
+const burstParticles = [];
+const FLOAT_COUNT = 140;
+
+const PARTICLE_COLORS = [
+  "#3b82f6",
+  "#93c5fd",
+  "#bfdbfe",
+  "#60a5fa",
+  "#2563eb",
+  "#1d4ed8"
+];
+
+function randomParticleColor() {
+  return PARTICLE_COLORS[Math.floor(Math.random() * PARTICLE_COLORS.length)];
+}
+
+class Particle {
+  constructor(x, y, type = "float") {
+    this.x = x;
+    this.y = y;
+    this.type = type;
+    this.vx = (Math.random() - 0.5) * (type === "burst" ? 5.5 : 0.45);
+    this.vy = type === "burst"
+      ? (Math.random() - 0.5) * 5.5
+      : -(0.15 + Math.random() * 0.55);
+    this.size = type === "burst"
+      ? 1.2 + Math.random() * 3.2
+      : 0.7 + Math.random() * 2.2;
+    this.maxLife = type === "burst"
+      ? 700 + Math.random() * 900
+      : 7000 + Math.random() * 9000;
+    this.life = type === "float" ? Math.random() * this.maxLife : 0;
+    this.alpha = type === "burst" ? 0.9 : 0.25 + Math.random() * 0.4;
+    this.color = randomParticleColor();
+  }
+
+  update(dt) {
+    this.life += dt;
+
+    if (this.type === "burst") {
+      this.vx *= 0.992;
+      this.vy *= 0.992;
+      this.vy += 0.0025 * dt;
+    } else {
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+      if (this.y < -10) this.y = H + 10;
+      if (this.x < -10) this.x = W + 10;
+      if (this.x > W + 10) this.x = -10;
+      return this.life < this.maxLife;
+    }
+
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    return this.life < this.maxLife;
+  }
+
+  draw() {
+    const lifeRatio = Math.max(0, Math.min(1, this.life / this.maxLife));
+    const fade = this.type === "burst"
+      ? Math.sin(Math.PI * lifeRatio)
+      : 1;
+
+    ctx.save();
+    ctx.globalAlpha = this.alpha * fade;
+    ctx.fillStyle = this.color;
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur = this.type === "burst" ? 12 : 6;
+    ctx.beginPath();
+    ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+for (let i = 0; i < FLOAT_COUNT; i++) {
+  const p = new Particle(Math.random() * W, Math.random() * H, "float");
+  p.life = Math.random() * p.maxLife;
+  floatParticles.push(p);
+}
+
+function spawnHeartBurst(x, y, count = 140) {
+  for (let i = 0; i < count; i++) {
+    burstParticles.push(new Particle(x, y, "burst"));
+  }
+}
+
+
 const FINAL_CINEMATIC_AT = 151.802;
 let finalCinematicActive = false;
 
@@ -111,6 +201,12 @@ function resize() {
     vx: (Math.random() - 0.5) * 0.04,
     vy: (Math.random() - 0.5) * 0.04
   }));
+
+  // Keep the dedicated floating particle field inside the new viewport.
+  floatParticles.forEach((p) => {
+    if (!Number.isFinite(p.x) || p.x < -20 || p.x > W + 20) p.x = Math.random() * W;
+    if (!Number.isFinite(p.y) || p.y < -20 || p.y > H + 20) p.y = Math.random() * H;
+  });
 }
 
 function setupAudio() {
@@ -208,6 +304,19 @@ function drawBackground(t, energy) {
 
   ctx.fillStyle = vignette;
   ctx.fillRect(0, 0, W, H);
+
+  // Blue particle field: subtle while idle, brighter during the transition.
+  const dt = 1 / 60;
+  for (let i = floatParticles.length - 1; i >= 0; i--) {
+    const p = floatParticles[i];
+    if (p.update(dt)) p.draw();
+  }
+
+  for (let i = burstParticles.length - 1; i >= 0; i--) {
+    const p = burstParticles[i];
+    if (p.update(dt)) p.draw();
+    else burstParticles.splice(i, 1);
+  }
 }
 
 
@@ -320,6 +429,9 @@ function triggerFinalCinematic() {
   if (finalCinematicActive) return;
   finalCinematicActive = true;
   document.body.classList.add("finalCinematic");
+
+  // Burst from the phone's former center as it dissolves into the headphones.
+  spawnHeartBurst(W * 0.5, H * 0.49, 140);
 }
 
 function syncFinalCinematic(t) {
