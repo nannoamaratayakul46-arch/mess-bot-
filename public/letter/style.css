@@ -1677,3 +1677,33 @@ body.finalCinematic .playerCaption {
     opacity: .15;
   }
 }
+
+
+/* ============================================================
+   HEADPHONE TRANSITION FIX — PHONE EXITS, HEADPHONES TAKE OVER
+   ============================================================ */
+body.finalCinematic .phone {
+  transform: translateY(-3vh) scale(.34) rotateX(4deg) rotateZ(-2deg);
+  opacity: 0;
+  filter: blur(9px) saturate(.72) brightness(.55);
+  pointer-events: none;
+}
+
+body.finalCinematic .headphoneStage {
+  z-index: 12;
+  opacity: 1;
+  transform: translate(-50%, -43%) scale(1);
+  filter: blur(0);
+}
+
+@media (max-width: 560px) {
+  body.finalCinematic .phone {
+    transform: translateY(-3vh) scale(.30) rotateX(4deg) rotateZ(-1.5deg);
+    opacity: 0;
+    filter: blur(8px) saturate(.72) brightness(.55);
+  }
+
+  body.finalCinematic .headphoneStage {
+    transform: translate(-50%, -45%) scale(.96);
+  }
+}
