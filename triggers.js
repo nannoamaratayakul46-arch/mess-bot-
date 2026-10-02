@@ -1,4 +1,5 @@
 const { generateTriggerReply } = require("./ai/provider");
+const { rememberBanatReply, pickBanatReply } = require("./banat-memory");
 
 // ============================================================
 // TRIGGERS / BANAT SYSTEM
@@ -789,15 +790,20 @@ function banatContextualPick(replies, threadId, incomingText) {
     ? []
     : candidates.filter((reply) => banatReplyFamily(reply) === category);
 
-  const selected = pickFreshRandom(
-    categoryPool.length ? categoryPool : candidates,
-    state.recentReplies
-  ) || candidates[Math.floor(Math.random() * candidates.length)];
+  const selectedPool = categoryPool.length ? categoryPool : candidates;
+  const selected =
+    pickBanatReply(
+      key,
+      selectedPool,
+      state.recentReplies
+    ) ||
+    selectedPool[Math.floor(Math.random() * selectedPool.length)];
 
   const family = banatReplyFamily(selected);
   state.at = now;
   state.recentFamilies.push(family);
   state.recentReplies.push(selected);
+  rememberBanatReply(key, selected);
   state.recentFamilies = state.recentFamilies.slice(-4);
   state.recentReplies = state.recentReplies.slice(-6);
   banatContextState.set(key, state);
@@ -1425,9 +1431,17 @@ async function getTriggerReply(
         );
 
       if (targetGroup) {
-        return getNextReply(
-          targetGroup
-        );
+        const targetReply = pickBanatReply(
+          normalizedSenderId,
+          targetGroup.replies,
+          []
+        ) || getNextReply(targetGroup);
+
+        if (targetReply) {
+          rememberBanatReply(normalizedSenderId, targetReply);
+        }
+
+        return targetReply;
       }
     }
   }
@@ -1486,6 +1500,10 @@ function getRandomRoastReply(threadId = null, incomingText = "") {
     replies,
     threadId,
     incomingText
+  ) || pickBanatReply(
+    String(threadId || "unknown"),
+    replies,
+    recentBanatReplies
   ) || pickFreshRandom(replies, recentBanatReplies);
 
   if (!reply) {
@@ -1497,6 +1515,7 @@ function getRandomRoastReply(threadId = null, incomingText = "") {
     reply,
     12
   );
+  rememberBanatReply(String(threadId || "unknown"), reply);
 
   return reply;
 }
