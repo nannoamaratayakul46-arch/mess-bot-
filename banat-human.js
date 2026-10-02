@@ -56,6 +56,97 @@ const BANAT_HESITATION_RATE = Math.min(
   Math.max(0, Number(process.env.ECLIPSE_BANAT_HESITATION_RATE || 0.11))
 );
 
+// Keep response length/style varied. Short reactions are intentionally
+// favored for short incoming messages so Banat does not answer everything
+// with a full sentence.
+const BANAT_SHORT_REPLY_RATE = Math.min(
+  0.65,
+  Math.max(0, Number(process.env.ECLIPSE_BANAT_SHORT_REPLY_RATE || 0.24))
+);
+
+const BANAT_MINIMAL_REACTION_RATE = Math.min(
+  0.30,
+  Math.max(0, Number(process.env.ECLIPSE_BANAT_MINIMAL_REACTION_RATE || 0.07))
+);
+
+const SHORT_REACTION_RE = /^(?:bro|bruh|nah|wtf|what|wait|okay|ok|fr|real|damn|pls|please|😭+|💀+|\?+|!+|lol+|lmao+|lmfao+)$/i;
+
+function countReplyWords(text) {
+  return String(text || "").trim().split(/\s+/).filter(Boolean).length;
+}
+
+function isShortIncoming(text) {
+  const value = String(text || "").trim();
+  const words = countReplyWords(value);
+  return words <= 7 || value.length <= 42;
+}
+
+function incomingEnergy(text) {
+  const value = String(text || "");
+  let score = 0;
+
+  if (/[!?]{2,}/.test(value)) score += 1;
+  if (/\b(?:HAHA+|LMFAO+|LMAO+)\b/i.test(value)) score += 1;
+  if (/[😭💀🤣]/u.test(value)) score += 1;
+  if (/\b(?:bro|bruh|wtf|nah)\b/i.test(value)) score += 1;
+  if (value === value.toUpperCase() && /[A-Z]/.test(value)) score += 1;
+
+  return Math.min(5, score);
+}
+
+function chooseReplyShape(text, incomingText, context = {}) {
+  const incomingShort = isShortIncoming(incomingText);
+  const energy = incomingEnergy(incomingText);
+  const words = countReplyWords(text);
+  const random = Math.random();
+
+  if (!text || words <= 2) return text;
+
+  // Short incoming messages should often get a quick reaction instead of
+  // a polished paragraph.
+  if (
+    incomingShort &&
+    random < BANAT_MINIMAL_REACTION_RATE
+  ) {
+    const reactions = energy >= 2
+      ? ["😭", "💀", "bro 😭", "nah 😭", "LMFAO"]
+      : ["bro", "nah", "wait", "😭", "💀"];
+
+    return reactions[Math.floor(Math.random() * reactions.length)];
+  }
+
+  if (
+    incomingShort &&
+    random < BANAT_SHORT_REPLY_RATE &&
+    words >= 4
+  ) {
+    const parts = String(text).trim().split(/\s+/);
+    const target = Math.min(
+      parts.length,
+      energy >= 2 ? 5 : 7
+    );
+
+    // Prefer a natural front-loaded reaction rather than chopping a
+    // sentence at a random point.
+    if (/^(?:baby|bro|bruh|nah|wait|okay|lmao|lmfao|haha)/i.test(text)) {
+      return parts.slice(0, target).join(" ").replace(/[,.]$/, "");
+    }
+  }
+
+  // Very short conversational momentum: occasionally keep a response
+  // short even when the candidate itself is longer.
+  if (
+    context.momentum >= 4 &&
+    words >= 8 &&
+    random < 0.12
+  ) {
+    const parts = String(text).trim().split(/\s+/);
+    return parts.slice(0, 6).join(" ").replace(/[,.]$/, "");
+  }
+
+  return text;
+}
+
 const humanState = new Map();
 
 function cleanupHumanState() {
@@ -72,7 +163,7 @@ function prepareBanatReply(threadID, message, incomingText = "") {
     humanState
   );
 
-  const text = humanize(message, {
+  let text = humanize(message, {
     abbreviations: BANAT_SHORTHANDS,
     abbreviationRate: BANAT_SHORTHAND_RATE,
     typoRate: BANAT_TYPO_RATE,
@@ -82,6 +173,8 @@ function prepareBanatReply(threadID, message, incomingText = "") {
     typos: true,
     punctuation: true,
   });
+
+  text = chooseReplyShape(text, incomingText, context);
 
   const timing = calculateHumanDelay(
     text,
