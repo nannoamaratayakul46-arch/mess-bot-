@@ -1490,6 +1490,21 @@ function trafficStartWorker() {
   });
 }
 
+const trafficGovernorProxies = new WeakSet();
+
+function assertTrafficGovernorApi(api, handlerName = "unknown handler") {
+  if (!api || (typeof api !== "object" && typeof api !== "function") || !trafficGovernorProxies.has(api)) {
+    const error = new Error(
+      '[TRAFFIC] Traffic Governor guard violation: handler "' +
+      String(handlerName) +
+      '" received the raw Messenger API. Pass the guarded API returned by installTrafficGovernor(api).'
+    );
+    error.code = "ECLIPSE_RAW_MESSENGER_API";
+    throw error;
+  }
+  return api;
+}
+
 function installTrafficGovernor(api) {
   if (!api || typeof api.sendMessage !== "function") {
     return api || null;
@@ -1540,6 +1555,7 @@ function installTrafficGovernor(api) {
   });
 
   trafficGovernorInstalled = true;
+  trafficGovernorProxies.add(guardedApi);
 
   console.log(
     "[TRAFFIC] ECLIPSE VEIL Traffic Governor installed (proxy mode)."
@@ -5262,6 +5278,8 @@ async function handleMessage(
   // DEBUG
   // ==========================================================
 
+  assertTrafficGovernorApi(api, "DEBUG");
+
   try {
     if (
       await handleDebugCommand(
@@ -6263,6 +6281,8 @@ async function handleMessage(
   // MODERATION
   // ==========================================================
 
+  assertTrafficGovernorApi(api, "MODERATION");
+
   try {
     if (
       await handleModerationMessage(
@@ -6285,6 +6305,8 @@ async function handleMessage(
   // AI
   // ==========================================================
 
+  assertTrafficGovernorApi(api, "AI");
+
   try {
     if (
       await handleAiMessage(
@@ -6306,6 +6328,8 @@ async function handleMessage(
   // ==========================================================
   // RPG CHARACTER AI
   // ==========================================================
+
+  assertTrafficGovernorApi(api, "RPG character");
 
   try {
     if (
@@ -6362,6 +6386,8 @@ async function handleMessage(
   // ==========================================================
   // GAME RESPONSE
   // ==========================================================
+
+  assertTrafficGovernorApi(api, "GAME RESPONSE");
 
   try {
     if (
@@ -6686,6 +6712,8 @@ async function handleMessage(
         ? debateMatch[1].trim().split(/\s+/)
         : [];
 
+      assertTrafficGovernorApi(api, "DEBATE");
+
       try {
         if (
           await handleDebateCommand(
@@ -6727,6 +6755,8 @@ async function handleMessage(
         ? examMatch[1].trim().split(/\s+/)
         : [];
 
+      assertTrafficGovernorApi(api, "EXAM");
+
       try {
         if (await handleExam(api, event, examArgs)) {
           return;
@@ -6765,6 +6795,8 @@ async function handleMessage(
       const investigationArgs = investigationMatch[2]
         ? investigationMatch[2].trim().split(/\s+/)
         : [];
+
+      assertTrafficGovernorApi(api, "INVESTIGATIONS");
 
       try {
         if (
