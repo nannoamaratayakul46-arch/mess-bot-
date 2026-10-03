@@ -52,6 +52,8 @@ const DEFAULT_ABBREVIATIONS = Object.freeze([
   ["laughing", "lmao"],
 ]);
 
+const { isLikelyEnglishWord } = require("./english-vocabulary");
+
 const WORD_RE = /[A-Za-z']+/g;
 
 const KEYBOARD_NEIGHBORS = Object.freeze({
@@ -245,6 +247,13 @@ function addTypo(text, random, rate = 0.025, options = {}) {
   }
 
   if (!changed || changed === word) return text;
+
+  // Only keep a typo when the result still looks like a real English word
+  // once the full vocabulary snapshot is available. Before syncing, the
+  // vocabulary layer intentionally fails open so existing typo behavior stays
+  // intact.
+  if (!isLikelyEnglishWord(changed)) return text;
+
   parts[index] = prefix + changed + suffix;
   return parts.join("");
 }
