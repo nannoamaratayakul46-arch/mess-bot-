@@ -14,6 +14,7 @@
 
 const fs = require("fs");
 const { BANAT_SHORTHANDS } = require("./banat-abbreviations");
+const { chooseSocialResponse, socialTimingMultiplier } = require("./banat-social");
 const {
   humanize,
   createHumanContext,
@@ -176,9 +177,20 @@ function prepareBanatReply(threadID, message, incomingText = "") {
 
   text = chooseReplyShape(text, incomingText, context);
 
+  const social = chooseSocialResponse(
+    incomingText,
+    text,
+    context
+  );
+
+  const socialContext = {
+    ...context,
+    social,
+  };
+
   const timing = calculateHumanDelay(
     text,
-    context,
+    socialContext,
     {
       max: BANAT_MAX_HUMAN_DELAY_MS,
       maxTypingMs: BANAT_MAX_HUMAN_DELAY_MS,
@@ -186,19 +198,25 @@ function prepareBanatReply(threadID, message, incomingText = "") {
     }
   );
 
+  const timingMultiplier = socialTimingMultiplier(social);
+
   return {
     text,
-    context,
+    context: socialContext,
+    social,
     reactionMs: Math.max(
       120,
       Math.min(
         1800,
-        Number(timing.reactionMs) || BANAT_REPLY_DELAY_MS
+        (Number(timing.reactionMs) || BANAT_REPLY_DELAY_MS) * timingMultiplier
       )
     ),
     typingMs: Math.max(
       350,
-      Math.min(BANAT_MAX_HUMAN_DELAY_MS, Number(timing.typingMs) || 350)
+      Math.min(
+        BANAT_MAX_HUMAN_DELAY_MS,
+        (Number(timing.typingMs) || 350) * timingMultiplier
+      )
     ),
   };
 }
