@@ -73,6 +73,8 @@
       <div class="stat"><span>Mode</span><b id="mode">—</b></div>
       <div class="stat"><span>Momentum</span><b id="momentum">—</b></div>
       <div class="stat"><span>Incoming words</span><b id="words">—</b></div>
+      <div class="stat"><span>Decision</span><b id="decision">—</b></div>
+      <div class="stat"><span>Energy</span><b id="energy">—</b></div>
     </div>
     <details>
       <summary>Context JSON</summary>
@@ -137,6 +139,8 @@ $("simulate").addEventListener("click", async () => {
     $("mode").textContent = data.context?.mode || "—";
     $("momentum").textContent = data.context?.momentum ?? "—";
     $("words").textContent = data.context?.incomingWords ?? "—";
+    $("decision").textContent = data.context?.social?.type || "—";
+    $("energy").textContent = data.context?.social?.energy ?? "—";
     $("context").textContent = JSON.stringify(data.context, null, 2);
     $("result").classList.add("show");
     $("status").textContent = "Done.";
