@@ -95,6 +95,30 @@ function acceptBanatBurstMessage(threadID, job) {
   return true;
 }
 
+function clearBanatBurstState(threadID) {
+  const key = String(threadID || "");
+  const state = banatBurstState.get(key);
+
+  if (!state) return false;
+
+  if (state.coalesceTimer) clearTimeout(state.coalesceTimer);
+  if (state.cleanupTimer) clearTimeout(state.cleanupTimer);
+  if (state.decisionTimer) clearTimeout(state.decisionTimer);
+
+  state.queue.length = 0;
+  state.coalesceTimer = null;
+  state.cleanupTimer = null;
+  state.decisionTimer = null;
+
+  // If a reply is already being sent, do not interrupt the Messenger API
+  // call; just prevent any queued continuation from surviving the toggle.
+  if (!state.running) {
+    banatBurstState.delete(key);
+  }
+
+  return true;
+}
+
 const sleep = (ms) =>
   new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
