@@ -7,7 +7,8 @@
     "start": "node -r ./repo-hotfix -r ./rpg-help-preload -r ./broadcast-runtime-fix bootstrap.js",
     "test": "node --test",
     "sync:english": "node scripts/sync-english-words.js",
-    "check:syntax": "node --check index.js && node --check triggers.js && node --check ai/index.js && node --check ai/prompt.js && node --check youtube.js"
+    "check:syntax": "node --check index.js && node --check triggers.js && node --check ai/index.js && node --check ai/prompt.js && node --check youtube.js",
+    "postinstall": "node repo-hotfix.js"
   },
   "engines": {
     "node": ">=22.0.0"
