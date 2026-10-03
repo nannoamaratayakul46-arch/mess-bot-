@@ -53,8 +53,8 @@
     <label for="incoming">Incoming message</label>
     <textarea id="incoming" placeholder="bro why 😭"></textarea>
 
-    <label for="candidate">Candidate reply</label>
-    <textarea id="candidate" placeholder="what did i even do"></textarea>
+    <label for="candidate">Candidate reply <span style="opacity:.65">(optional)</span></label>
+    <textarea id="candidate" placeholder="Leave empty and ECLIPSE will answer it"></textarea>
 
     <div class="row">
       <button id="simulate">SIMULATE</button>
@@ -101,8 +101,8 @@ $("simulate").addEventListener("click", async () => {
   const incomingText = $("incoming").value;
   const candidate = $("candidate").value;
 
-  if (!apiUrl || !apiKey || !candidate.trim()) {
-    $("status").textContent = "Enter the API URL, API key, and candidate reply.";
+  if (!apiUrl || !apiKey || !incomingText.trim()) {
+    $("status").textContent = "Enter the API URL, API key, and incoming message.";
     return;
   }
 
