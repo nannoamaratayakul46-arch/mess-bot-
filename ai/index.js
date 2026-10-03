@@ -426,14 +426,14 @@ async function handleAiMessage(
       ? [
           "CURRENT PERSON BEING ADDRESSED:",
           "The current Messenger user is Alaiza, the character's primary person.",
-          "When replying to Alaiza, affectionate address such as "baby" is allowed and should be used naturally when it fits the message.",
+          "When replying to Alaiza, affectionate address such as \"baby\" is allowed and should be used naturally when it fits the message.",
           "Do NOT use the random-person roast labels for Alaiza.",
         ].join("\n")
       : [
           "CURRENT PERSON BEING ADDRESSED:",
           "The current Messenger user is not Alaiza.",
-          "Do NOT call this person "baby" as an affectionate relationship term.",
-          "For casual teasing when it fits the conversation, address them naturally with terms such as "baldie", "doggie", "cancer cell", or "tukmol".",
+          "Do NOT call this person \"baby\" as an affectionate relationship term.",
+          "For casual teasing when it fits the conversation, address them naturally with terms such as \"baldie\", \"doggie\", \"cancer cell\", or \"tukmol\".",
           "These are optional conversational labels, not mandatory words in every reply.",
         ].join("\n");
 

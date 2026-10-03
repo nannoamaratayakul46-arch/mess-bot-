@@ -214,6 +214,7 @@ const { RECIPES, forge } = require("./crafting");
 const { formatLootTable } = require("./loot");
 const specialAccess = require("./special-access");
 const worldBoss = require("./world-boss");
+const warCampaigns = require("./war-campaigns");
 const {
   getActiveWorldEvents,
   getWorldEventState,
@@ -4022,6 +4023,138 @@ async function handleRpgCommand(
       cleanText
         .split(/\s+/)
         .slice(1);
+  }
+
+  /* =====================================================
+     SIEGE CAMPAIGN
+     Formerly injected by rpg-help-preload.js. Keep it in the
+     real router so startup no longer depends on Module._load hooks.
+  ===================================================== */
+
+  if (action === "siege") {
+    const subcommand = normalizeKey(args[0] || "status");
+
+    try {
+      if (subcommand === "prepare") {
+        const amount = Math.max(
+          1,
+          Math.min(
+            25,
+            Number(args[1] || 1)
+          )
+        );
+
+        if (!Number.isFinite(amount)) {
+          throw new Error(
+            "Preparation amount must be a number."
+          );
+        }
+
+        const result =
+          await warCampaigns.prepareSiege(
+            event.threadID,
+            event.senderID,
+            amount
+          );
+
+        await send(
+          api,
+          event.threadID,
+          [
+            "🏰 SIEGE PREPARATION",
+            "",
+            "Preparations: " + amount,
+            "⚔️ Siege points gained: +" +
+              Number(
+                result.siegePoints ||
+                  result.points ||
+                  0
+              ).toLocaleString(),
+            result.cost
+              ? "💰 Cost: " +
+                Number(result.cost).toLocaleString() +
+                " coins"
+              : "",
+            "",
+            "The existing campaign will consume siege points during assaults.",
+          ]
+            .filter(Boolean)
+            .join("\n")
+        );
+
+        return true;
+      }
+
+      if (subcommand === "status") {
+        const campaign =
+          await warCampaigns.getCampaign(
+            event.threadID,
+            event.senderID
+          );
+
+        if (!campaign) {
+          await send(
+            api,
+            event.threadID,
+            "🏰 SIEGE STATUS\n\nNo active campaign."
+          );
+
+          return true;
+        }
+
+        await send(
+          api,
+          event.threadID,
+          [
+            "🏰 SIEGE STATUS",
+            "",
+            "Target: " +
+              campaign.target_location_id,
+            "⚔️ Siege points: " +
+              Number(
+                campaign.siege_points || 0
+              ).toLocaleString(),
+            "🧱 Preparations: " +
+              Number(
+                campaign.siege_preparations || 0
+              ).toLocaleString(),
+            "🛡️ Battles: " +
+              Number(
+                campaign.battles || 0
+              ).toLocaleString(),
+            "Status: " +
+              campaign.status,
+          ].join("\n")
+        );
+
+        return true;
+      }
+
+      await send(
+        api,
+        event.threadID,
+        [
+          "🏰 SIEGE COMMANDS",
+          "",
+          "!rpg siege prepare <1-25>",
+          "!rpg siege status",
+        ].join("\n")
+      );
+
+      return true;
+    } catch (error) {
+      await send(
+        api,
+        event.threadID,
+        "❌ " +
+          (
+            error?.message ||
+            "The siege command could not be completed."
+          )
+      );
+
+      return true;
+    }
   }
 
   /* =====================================================

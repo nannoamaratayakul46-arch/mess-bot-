@@ -52,3 +52,18 @@ test("games exposes shutdown hook instead of leaving timers orphaned", () => {
   assert.equal(typeof games.shutdownGames, "function");
   games.shutdownGames();
 });
+
+
+test("startup does not mutate source or patch the Node module loader", () => {
+  const packageJson = read("package.json");
+  const index = read("index.js");
+
+  assert.match(packageJson, /"start": "node bootstrap\\.js"/);
+  assert.doesNotMatch(packageJson, /repo-hotfix|rpg-help-preload|broadcast-runtime-fix/);
+  assert.doesNotMatch(packageJson, /postinstall.*repo-hotfix/);
+
+  assert.match(index, /assertTrafficGovernorApi\\(api, "MESSAGE ROUTER"\\)/);
+  assert.match(index, /function getBroadcastImageAttachment\\(event\\)/);
+  assert.match(index, /AbortSignal\\.timeout\\(30_000\\)/);
+  assert.match(index, /getRandomRoastReply\\(threadID, body, senderId\\)/);
+});

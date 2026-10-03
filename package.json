@@ -4,11 +4,10 @@
   "description": "Facebook Messenger bot using saved session cookies",
   "main": "index.js",
   "scripts": {
-    "start": "node -r ./repo-hotfix -r ./rpg-help-preload -r ./broadcast-runtime-fix bootstrap.js",
+    "start": "node bootstrap.js",
     "test": "node --test",
     "sync:english": "node scripts/sync-english-words.js",
-    "check:syntax": "node repo-hotfix.js && node --check index.js && node --check triggers.js && node --check ai/index.js && node --check ai/prompt.js && node --check youtube.js",
-    "postinstall": "node repo-hotfix.js"
+    "check:syntax": "node --check index.js && node --check triggers.js && node --check ai/index.js && node --check ai/prompt.js && node --check youtube.js"
   },
   "engines": {
     "node": ">=22.0.0"
@@ -17,7 +16,7 @@
     "express": "^4.19.2",
     "ffmpeg-static": "^5.2.0",
     "pg": "^8.11.5",
-    "yt-search": "latest",
+    "yt-search": "2.13.1",
     "youtube-dl-exec": "3.0.10",
     "ws3-fca": "2.0.1"
   }

@@ -4412,6 +4412,7 @@ async function handleMessage(
   api,
   event
 ) {
+  assertTrafficGovernorApi(api, "MESSAGE ROUTER");
   watchdogHeartbeat();
 
   const {
@@ -7229,83 +7230,199 @@ const pendingBroadcastComposers = new Map();
 const BROADCAST_COMPOSER_TIMEOUT_MS = 2 * 60_000;
 
 function getBroadcastImageAttachment(event) {
+  const candidates = [];
+
+  const pushCandidate = (value) => {
+    if (value && typeof value === "object") {
+      candidates.push(value);
+    }
+  };
+
   const attachments = Array.isArray(event?.attachments)
     ? event.attachments
     : [];
 
-  return (
-    attachments.find((attachment) => {
-      const type = String(attachment?.type || "").toLowerCase();
-      return (
-        type === "photo" ||
-        type === "image" ||
-        type === "animated_image"
-      );
-    }) || null
-  );
+  for (const attachment of attachments) {
+    pushCandidate(attachment);
+
+    if (Array.isArray(attachment?.attachments)) {
+      for (const nested of attachment.attachments) {
+        pushCandidate(nested);
+      }
+    }
+  }
+
+  pushCandidate(event?.attachment);
+  pushCandidate(event?.message?.attachment);
+  pushCandidate(event?.messageReply?.attachment);
+
+  const hasUsableUrl = (attachment) =>
+    [
+      attachment?.url,
+      attachment?.payload?.url,
+      attachment?.payload?.source,
+      attachment?.source,
+      attachment?.href,
+      attachment?.downloadUrl,
+      attachment?.download_url,
+      attachment?.imageUrl,
+      attachment?.image_url,
+      attachment?.metadata?.url,
+      attachment?.metadata?.source,
+    ].some(
+      (value) =>
+        typeof value === "string" &&
+        /^https?:\/\//i.test(value.trim())
+    );
+
+  const isImage = (attachment) => {
+    if (!hasUsableUrl(attachment)) {
+      return false;
+    }
+
+    const type = String(
+      attachment?.type ||
+        attachment?.mimeType ||
+        attachment?.mime_type ||
+        attachment?.payload?.type ||
+        ""
+    ).toLowerCase();
+
+    return (
+      !type ||
+      type === "photo" ||
+      type === "image" ||
+      type === "picture" ||
+      type === "animated_image"
+    );
+  };
+
+  return candidates.find(isImage) || null;
 }
 
 async function stageBroadcastImage(attachment) {
-  const imageUrl = String(
-    attachment?.url ||
-      attachment?.payload?.url ||
-      ""
-  ).trim();
+  const candidates = [
+    attachment?.url,
+    attachment?.payload?.url,
+    attachment?.payload?.source,
+    attachment?.source,
+    attachment?.href,
+    attachment?.downloadUrl,
+    attachment?.download_url,
+    attachment?.imageUrl,
+    attachment?.image_url,
+    attachment?.metadata?.url,
+    attachment?.metadata?.source,
+  ];
+
+  const imageUrl = candidates
+    .map((value) =>
+      typeof value === "string"
+        ? value.trim()
+        : ""
+    )
+    .find((value) =>
+      /^https?:\/\//i.test(value)
+    );
 
   if (!imageUrl) {
-    return null;
+    throw new Error("broadcast image has no usable URL");
   }
 
-  const response = await fetch(imageUrl);
-
-  if (!response.ok) {
-    throw new Error(
-      `image download returned HTTP ${response.status}`
-    );
-  }
-
-  const contentType = String(
-    response.headers.get("content-type") || ""
-  ).toLowerCase();
-
-  if (
-    !contentType.startsWith("image/")
-  ) {
-    throw new Error(
-      `attachment is not an image (${contentType || "unknown content type"})`
-    );
-  }
-
-  const buffer = Buffer.from(
-    await response.arrayBuffer()
-  );
-
-  if (!buffer.length) {
-    throw new Error("image attachment was empty");
-  }
-
-  const extensionMap = {
-    "image/jpeg": ".jpg",
-    "image/jpg": ".jpg",
-    "image/png": ".png",
-    "image/gif": ".gif",
-    "image/webp": ".webp",
-  };
-
-  const extension =
-    extensionMap[contentType] || ".jpg";
-
-  const tempPath = path.join(
+  const temporaryBase = path.join(
     os.tmpdir(),
-    `eclipse-broadcast-${Date.now()}-${crypto.randomBytes(6).toString("hex")}${extension}`
+    `eclipse-broadcast-${crypto.randomUUID()}`
   );
 
-  await fsp.writeFile(
-    tempPath,
-    buffer
-  );
+  let finalPath = temporaryBase;
 
-  return tempPath;
+  try {
+    if (typeof fetch !== "function") {
+      throw new Error(
+        "Global fetch is unavailable on this Node runtime."
+      );
+    }
+
+    const response = await fetch(
+      imageUrl,
+      {
+        redirect: "follow",
+        signal: AbortSignal.timeout(30_000),
+        headers: {
+          "User-Agent": "ECLIPSE Messenger Bot",
+        },
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(
+        `HTTP ${response.status} while downloading broadcast image.`
+      );
+    }
+
+    const contentType = String(
+      response.headers.get("content-type") || ""
+    ).toLowerCase();
+
+    if (!contentType.startsWith("image/")) {
+      throw new Error(
+        `attachment is not an image (${contentType || "unknown content type"})`
+      );
+    }
+
+    const buffer = Buffer.from(
+      await response.arrayBuffer()
+    );
+
+    if (!buffer.length) {
+      throw new Error(
+        "Downloaded broadcast image is empty."
+      );
+    }
+
+    const extensionMap = {
+      "image/jpeg": ".jpg",
+      "image/jpg": ".jpg",
+      "image/png": ".png",
+      "image/gif": ".gif",
+      "image/webp": ".webp",
+    };
+
+    const extension =
+      extensionMap[contentType] || ".img";
+
+    finalPath =
+      temporaryBase + extension;
+
+    await fsp.writeFile(
+      finalPath,
+      buffer
+    );
+
+    const stat = await fsp.stat(
+      finalPath
+    );
+
+    if (
+      !stat.isFile() ||
+      stat.size <= 0
+    ) {
+      throw new Error(
+        "Broadcast image file was not written correctly."
+      );
+    }
+
+    return finalPath;
+  } catch (error) {
+    try {
+      await fsp.rm(
+        finalPath,
+        { force: true }
+      );
+    } catch {}
+
+    throw error;
+  }
 }
 
 function broadcastFingerprint(message, attachment) {
@@ -7805,7 +7922,7 @@ async function handleAutomaticBanatMessage({
     return false;
   }
 
-  const randomRoastReply = getRandomRoastReply(threadID, body);
+  const randomRoastReply = getRandomRoastReply(threadID, body, senderId);
 
   if (randomRoastReply) {
     const accepted = acceptBanatBurstMessage(

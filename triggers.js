@@ -1591,7 +1591,7 @@ function enforceBanatAddressStyle(reply, senderId) {
       Math.floor(Math.random() * NON_PRIMARY_BANAT_ADDRESSES.length)
     ];
 
-  return reply.replace(/\\bbaby\\b/gi, replacement);
+  return reply.replace(/\bbaby\b/gi, replacement);
 }
 
 
