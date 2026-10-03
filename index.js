@@ -5314,6 +5314,13 @@ async function handleMessage(
       await db.setRoastEnabled(threadId, enabled);
       setBanatConversationMode(threadId, enabled, senderId);
 
+      // Turning Banat off must also kill any delayed/randomized burst that
+      // was already queued before the toggle. Otherwise an old reply can
+      // fire after / has disabled the mode and make the toggle look broken.
+      if (!enabled && typeof clearBanatBurstState === "function") {
+        clearBanatBurstState(threadId);
+      }
+
       if (!enabled) {
         lastRandomRoastByThread.delete(threadId);
         sendReplyWithTyping(
