@@ -1611,6 +1611,73 @@ function getRandomRoastReply(threadId = null, incomingText = "") {
 
 
 // ============================================================
+// CONTINUOUS CONVERSATION MODE
+// ============================================================
+
+async function getBanatConversationReply(
+  rawText,
+  senderId,
+  threadId,
+  api,
+  event
+) {
+  const fallback = getRandomRoastReply(threadId, rawText);
+
+  if (!fallback) {
+    return null;
+  }
+
+  let replyTargetName = null;
+
+  try {
+    replyTargetName = await resolveReplyTargetName(api, event);
+  } catch (error) {
+    replyTargetName = null;
+  }
+
+  let reply = fallback;
+
+  try {
+    const aiReply = await generateTriggerReply({
+      trigger: "continuous conversation",
+      groupName: "conversation",
+      incomingText: rawText,
+      fallback,
+      replyTargetName,
+      conversationContext: banatContextPrompt(threadId),
+    });
+
+    if (typeof aiReply === "string" && aiReply.trim()) {
+      reply = aiReply.trim().slice(0, 1200);
+
+      if (replyTargetName) {
+        reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
+      }
+    }
+  } catch (error) {
+    console.warn(
+      "[TRIGGERS] Continuous conversation AI unavailable; using contextual pool:",
+      error?.status || error?.message || error
+    );
+  }
+
+  rememberBanatReply(String(threadId || "unknown"), reply);
+
+  const state = banatContextState.get(String(threadId || "unknown"));
+  if (state) {
+    state.recentReplies.push(reply);
+    state.recentReplies = state.recentReplies.slice(-6);
+    state.recentFamilies.push(banatReplyFamily(reply));
+    state.recentFamilies = state.recentFamilies.slice(-4);
+    state.at = Date.now();
+    banatContextState.set(String(threadId || "unknown"), state);
+  }
+
+  return reply;
+}
+
+
+// ============================================================
 // SEQUENTIAL REPLY
 // ============================================================
 
@@ -1686,6 +1753,7 @@ module.exports = {
   getTriggerReply,
   getRandomRoastReply,
   getNextPublicReply,
+  getBanatConversationReply,
 
   normalizeText,
   normalizeId,
