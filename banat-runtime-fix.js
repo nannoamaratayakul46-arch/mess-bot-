@@ -1,9 +1,9 @@
 "use strict";
 
 const Module = require("module");
+const { calculateBanatDecisionDelay } = require("./banat-human");
 
 const GAP_MS = 5_000;
-const COALESCE_MS = 750;
 const PENDING_PER_THREAD = 16;
 
 const originalLoader = Module._extensions[".js"];
@@ -30,6 +30,7 @@ function acceptBanatBurstMessage(threadID, job) {
       lastSentAt: 0,
       coalesceTimer: null,
       cleanupTimer: null,
+      decisionTimer: null,
     };
     banatBurstState.set(key, state);
   }
@@ -71,18 +72,24 @@ function acceptBanatBurstMessage(threadID, job) {
     state.queue.splice(0, state.queue.length - PENDING_PER_THREAD);
   }
 
-  if (!state.running && !state.coalesceTimer) {
+  if (!state.running && !state.coalesceTimer && !state.decisionTimer) {
     const sinceLast = Date.now() - state.lastSentAt;
-    const waitMs = state.lastSentAt
+    const cooldownMs = state.lastSentAt
       ? Math.max(0, GAP_MS - sinceLast)
-      : COALESCE_MS;
+      : 0;
 
-    state.coalesceTimer = setTimeout(() => {
-      state.coalesceTimer = null;
+    const latest = state.queue[state.queue.length - 1];
+    const decisionMs = calculateBanatDecisionDelay(
+      latest?.incomingText || latest?.message || "",
+      state.queue.length
+    );
+
+    state.decisionTimer = setTimeout(() => {
+      state.decisionTimer = null;
       runBanatBurstQueue(key).catch((error) => {
         console.error("[BANAT] Burst queue failed:", error);
       });
-    }, waitMs);
+    }, cooldownMs + decisionMs);
   }
 
   return true;
@@ -160,13 +167,19 @@ async function runBanatBurstQueue(threadID) {
         ? Math.max(0, GAP_MS - sinceLast)
         : COALESCE_MS;
 
-      if (!state.coalesceTimer) {
-        state.coalesceTimer = setTimeout(() => {
-          state.coalesceTimer = null;
+      if (!state.decisionTimer) {
+        const latest = state.queue[state.queue.length - 1];
+        const decisionMs = calculateBanatDecisionDelay(
+          latest?.incomingText || latest?.message || "",
+          state.queue.length
+        );
+
+        state.decisionTimer = setTimeout(() => {
+          state.decisionTimer = null;
           runBanatBurstQueue(key).catch((error) => {
             console.error("[BANAT] Burst queue continuation failed:", error);
           });
-        }, waitMs);
+        }, waitMs + decisionMs);
       }
       return;
     }
