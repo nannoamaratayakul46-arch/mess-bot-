@@ -5290,15 +5290,17 @@ async function handleMessage(
 
   if (banatControlMatch) {
     if (!isAdmin(senderId)) {
+      const unauthorizedSlashReplies = [
+        "pota bawal panget gumamit command hoy",
+        "sabi ko ayoko kalbo",
+        "aaaaaa bingi ka? sabi bawal moka paa gumamit command",
+      ];
+
       sendReplyWithTyping(
         api,
-        [
-          "╭────── 🎀  BANAT CONTROL  🎀 ──────╮",
-          "",
-          "🔒 ADMIN ONLY",
-          "",
-          "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
-        ].join("\n"),
+        unauthorizedSlashReplies[
+          Math.floor(Math.random() * unauthorizedSlashReplies.length)
+        ],
         threadID
       );
 

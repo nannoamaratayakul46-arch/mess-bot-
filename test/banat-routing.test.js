@@ -69,3 +69,15 @@ test("runtime hotfix files are no longer part of the source tree", () => {
     );
   }
 });
+
+test("unauthorized slash uses the Banat roast replies instead of the admin-only panel", () => {
+  const source = read("index.js");
+  const toggle = source.indexOf("const banatControlMatch");
+  const automatic = source.indexOf("const banatHandled = await handleAutomaticBanatMessage");
+  const toggleBlock = source.slice(toggle, automatic);
+
+  assert.match(toggleBlock, /pota bawal panget gumamit command hoy/);
+  assert.match(toggleBlock, /sabi ko ayoko kalbo/);
+  assert.match(toggleBlock, /aaaaaa bingi ka\? sabi bawal moka paa gumamit command/);
+  assert.doesNotMatch(toggleBlock, /🔒 ADMIN ONLY/);
+});
