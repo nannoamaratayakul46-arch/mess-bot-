@@ -4,7 +4,7 @@
   "description": "Facebook Messenger bot using saved session cookies",
   "main": "index.js",
   "scripts": {
-    "start": "node bootstrap.js",
+    "start": "node -r ./banat-runtime-fix bootstrap.js",
     "test": "node --test",
     "sync:english": "node scripts/sync-english-words.js",
     "check:syntax": "node --check index.js && node --check triggers.js && node --check ai/index.js && node --check ai/prompt.js && node --check youtube.js"
