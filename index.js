@@ -133,6 +133,8 @@ const {
   prepareBanatReply,
 } = require("./banat-human");
 
+const { classifyBanatTarget } = require("./banat-targeting");
+
 const {
   sendReplyWithTyping: sendReplyWithTypingModule,
 } = require("./reply-with-typing");
@@ -7676,15 +7678,27 @@ async function handleAutomaticBanatMessage({
     return false;
   }
 
-  // The owner is Banat-immune: their messages may still receive the
-  // separate 😆 owner reaction, but Banat must never generate a roast
-  // targeting the owner. Other members remain fully eligible.
+  // Never let ECLIPSE react to its own incoming self-listen event.
+  if (
+    eclipseUserID &&
+    String(senderId || "") === String(eclipseUserID)
+  ) {
+    return false;
+  }
+
   if (isOwner(senderId)) {
     console.log(
       "[BANAT] Owner message skipped for roast targeting: " + senderId
     );
     return false;
   }
+
+  const target = classifyBanatTarget({
+    api,
+    event,
+    body,
+    eclipseUserID,
+  });
 
   try {
     const triggerReply = await getTriggerReply(
@@ -7695,6 +7709,7 @@ async function handleAutomaticBanatMessage({
       event
     );
 
+    // Explicit triggers remain opt-in and can bypass ordinary target gating.
     if (triggerReply) {
       let banatLinkEnabled = false;
       let banatMemeEnabled = false;
@@ -7752,10 +7767,19 @@ async function handleAutomaticBanatMessage({
     );
   }
 
-  // No explicit trigger matched, so use the expanded/public pool.
-  // The same burst queue applies: at most two replies, two seconds
-  // apart. This is what makes Banat react to ordinary message bursts
-  // instead of depending on a trigger word.
+  // Ordinary Banat replies require a clear conversational reason to address
+  // ECLIPSE. This stops it from jumping into two other people talking.
+  if (!target.shouldRespond) {
+    console.log(
+      "[BANAT] Ignoring undirected message in " +
+        threadID +
+        " (" +
+        target.reason +
+        ")"
+    );
+    return false;
+  }
+
   const randomRoastReply = getRandomRoastReply(threadID, body);
 
   if (randomRoastReply) {
