@@ -221,6 +221,25 @@ function prepareBanatReply(threadID, message, incomingText = "") {
   };
 }
 
+
+function calculateBanatDecisionDelay(incomingText = "", candidateCount = 1) {
+  const text = String(incomingText || "").trim();
+  const length = text.length;
+  const candidates = Math.max(1, Number(candidateCount) || 1);
+  const base = 850 + Math.min(900, length * 12);
+  const crowdPause = Math.min(700, (candidates - 1) * 140);
+  const hesitation = Math.random() < BANAT_HESITATION_RATE
+    ? humanPick([120, 180, 240, 320, 450, 600])
+    : 0;
+  return Math.max(
+    700,
+    Math.min(
+      2800,
+      Math.round(base + crowdPause + hesitation + (Math.random() * 360 - 180))
+    )
+  );
+}
+
 function sendBanatReplyWithTyping(
   api,
   message,
@@ -390,5 +409,6 @@ module.exports = {
   BANAT_HESITATION_RATE,
   cleanupHumanState,
   prepareBanatReply,
+  calculateBanatDecisionDelay,
   sendBanatReplyWithTyping,
 };
