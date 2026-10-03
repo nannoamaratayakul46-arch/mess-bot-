@@ -5,7 +5,8 @@
   "main": "index.js",
   "scripts": {
     "start": "node -r ./rpg-help-preload -r ./broadcast-runtime-fix bootstrap.js",
-    "test": "node --test"
+    "test": "node --test",
+    "sync:english": "node scripts/sync-english-words.js"
   },
   "engines": {
     "node": ">=18.18.0"
