@@ -16,6 +16,57 @@ const DIRECT_ADDRESS_PATTERNS = [
 const QUESTION_OPENERS =
   /^(?:who|what|why|when|where|how|can|could|would|will|do|does|did|is|are|am|should|shouldn't|may|might)\b/i;
 
+const CONVERSATION_TTL_MS = Math.max(
+  10 * 60 * 1000,
+  Number(process.env.ECLIPSE_BANAT_CONVERSATION_TTL_MS || 60 * 60 * 1000)
+);
+
+const conversationStates = new Map();
+
+function setBanatConversationMode(threadID, enabled, activatedBy = null) {
+  const key = String(threadID || "").trim();
+  if (!key) return false;
+
+  if (!enabled) {
+    conversationStates.delete(key);
+    return false;
+  }
+
+  conversationStates.set(key, {
+    active: true,
+    activatedBy: activatedBy ? String(activatedBy) : null,
+    activatedAt: Date.now(),
+    lastActivityAt: Date.now(),
+  });
+
+  return true;
+}
+
+function isBanatConversationModeActive(threadID) {
+  const key = String(threadID || "").trim();
+  const state = conversationStates.get(key);
+
+  if (!state || !state.active) return false;
+
+  if (Date.now() - state.lastActivityAt > CONVERSATION_TTL_MS) {
+    conversationStates.delete(key);
+    return false;
+  }
+
+  return true;
+}
+
+function touchBanatConversation(threadID) {
+  const key = String(threadID || "").trim();
+  const state = conversationStates.get(key);
+
+  if (!state || !isBanatConversationModeActive(key)) return false;
+
+  state.lastActivityAt = Date.now();
+  conversationStates.set(key, state);
+  return true;
+}
+
 function normalize(value) {
   return String(value || "")
     .replace(/\s+/g, " ")
@@ -84,6 +135,7 @@ function classifyBanatTarget({
       mentionedBot: false,
       directAddress: false,
       question: false,
+      conversationActive: false,
     };
   }
 
@@ -100,6 +152,23 @@ function classifyBanatTarget({
 
   const directAddress = isDirectAddress(text);
   const question = looksLikeQuestion(text);
+  const conversationActive = isBanatConversationModeActive(event?.threadID);
+
+  if (conversationActive) {
+    touchBanatConversation(event?.threadID);
+
+    return {
+      shouldRespond: true,
+      reason: "active-conversation",
+      directed: true,
+      via: "conversation",
+      replyToBot,
+      mentionedBot,
+      directAddress,
+      question,
+      conversationActive: true,
+    };
+  }
 
   if (replyToBot) {
     return {
@@ -111,6 +180,7 @@ function classifyBanatTarget({
       mentionedBot,
       directAddress,
       question,
+      conversationActive: false,
     };
   }
 
@@ -124,6 +194,7 @@ function classifyBanatTarget({
       mentionedBot: true,
       directAddress,
       question,
+      conversationActive: false,
     };
   }
 
@@ -137,6 +208,7 @@ function classifyBanatTarget({
       mentionedBot,
       directAddress: true,
       question,
+      conversationActive: false,
     };
   }
 
@@ -151,9 +223,13 @@ function classifyBanatTarget({
     mentionedBot,
     directAddress,
     question,
+    conversationActive: false,
   };
 }
 
 module.exports = {
   classifyBanatTarget,
+  setBanatConversationMode,
+  isBanatConversationModeActive,
+  touchBanatConversation,
 };
