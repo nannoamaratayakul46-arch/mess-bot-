@@ -9,6 +9,15 @@
  */
 
 const db = require("./db");
+const {
+  installBroadcastCommand,
+  shutdownBroadcastCommand,
+} = require("./broadcast-command");
+
+installBroadcastCommand();
+
+process.once("SIGTERM", shutdownBroadcastCommand);
+process.once("SIGINT", shutdownBroadcastCommand);
 
 async function boot() {
   try {
