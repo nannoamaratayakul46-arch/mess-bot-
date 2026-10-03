@@ -165,7 +165,7 @@ async function runBanatBurstQueue(threadID) {
       const sinceLast = Date.now() - state.lastSentAt;
       const waitMs = state.lastSentAt
         ? Math.max(0, GAP_MS - sinceLast)
-        : COALESCE_MS;
+        : 0;
 
       if (!state.decisionTimer) {
         const latest = state.queue[state.queue.length - 1];
