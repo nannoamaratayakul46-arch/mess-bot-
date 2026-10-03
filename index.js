@@ -1460,6 +1460,26 @@ async function trafficProcessQueue() {
 function stopTrafficGovernor() {
   trafficShuttingDown = true;
 
+  if (trafficEditTimer) {
+    clearTimeout(trafficEditTimer);
+    trafficEditTimer = null;
+  }
+
+  const editError = new Error("ECLIPSE is shutting down.");
+  editError.code = "ECLIPSE_SHUTTING_DOWN";
+
+  while (trafficEditQueue.length) {
+    const job = trafficEditQueue.shift();
+
+    if (typeof job?.callback === "function") {
+      try {
+        job.callback(editError);
+      } catch {}
+    }
+  }
+
+  trafficEditWorkerRunning = false;
+
   if (trafficGovernorTimer) {
     clearImmediate(trafficGovernorTimer);
     trafficGovernorTimer = null;
@@ -1514,6 +1534,201 @@ function assertTrafficGovernorApi(api, handlerName = "unknown handler") {
   return api;
 }
 
+const TRAFFIC_EDIT_GAP_MS = Math.max(
+  250,
+  Number(process.env.ECLIPSE_EDIT_GAP_MS || 400)
+);
+
+const TRAFFIC_EDIT_QUEUE_MAX = Math.max(
+  50,
+  Number(process.env.ECLIPSE_EDIT_QUEUE_MAX || 300)
+);
+
+const trafficEditQueue = [];
+let trafficEditWorkerRunning = false;
+let trafficEditTimer = null;
+let trafficLastEditAt = 0;
+
+function trafficQueueEdit(api, text, messageID, callback) {
+  const rawApi =
+    api && api.__eclipseTrafficRawApi
+      ? api.__eclipseTrafficRawApi
+      : api;
+
+  if (
+    trafficShuttingDown ||
+    !rawApi ||
+    typeof rawApi.editMessage !== "function" ||
+    !messageID
+  ) {
+    const error = new Error(
+      trafficShuttingDown
+        ? "ECLIPSE is shutting down."
+        : "Messenger editMessage is unavailable."
+    );
+
+    if (typeof callback === "function") {
+      setImmediate(() => callback(error));
+    }
+
+    return false;
+  }
+
+  if (trafficEditQueue.length >= TRAFFIC_EDIT_QUEUE_MAX) {
+    const error = new Error(
+      "ECLIPSE edit queue is full."
+    );
+    error.code = "ECLIPSE_EDIT_QUEUE_FULL";
+
+    if (typeof callback === "function") {
+      setImmediate(() => callback(error));
+    }
+
+    return false;
+  }
+
+  trafficEditQueue.push({
+    api: rawApi,
+    text,
+    messageID: String(messageID),
+    callback,
+    enqueuedAt: Date.now(),
+  });
+
+  trafficStartEditWorker();
+  return true;
+}
+
+function trafficStartEditWorker() {
+  if (
+    trafficShuttingDown ||
+    trafficEditWorkerRunning ||
+    trafficEditTimer ||
+    !trafficEditQueue.length
+  ) {
+    return;
+  }
+
+  const waitMs = Math.max(
+    0,
+    TRAFFIC_EDIT_GAP_MS -
+      (Date.now() - trafficLastEditAt)
+  );
+
+  trafficEditTimer = setTimeout(() => {
+    trafficEditTimer = null;
+    trafficProcessEditQueue().catch((error) => {
+      console.error(
+        "[TRAFFIC] Edit worker failed:",
+        error
+      );
+    });
+  }, waitMs);
+}
+
+async function trafficProcessEditQueue() {
+  if (
+    trafficEditWorkerRunning ||
+    trafficShuttingDown
+  ) {
+    return;
+  }
+
+  trafficEditWorkerRunning = true;
+
+  try {
+    while (
+      trafficEditQueue.length &&
+      !trafficShuttingDown
+    ) {
+      const job = trafficEditQueue.shift();
+
+      const waitMs = Math.max(
+        0,
+        TRAFFIC_EDIT_GAP_MS -
+          (Date.now() - trafficLastEditAt)
+      );
+
+      if (waitMs > 0) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, waitMs)
+        );
+      }
+
+      await new Promise((resolve) => {
+        let settled = false;
+
+        const finish = (error, info = null) => {
+          if (settled) return;
+          settled = true;
+
+          trafficLastEditAt = Date.now();
+
+          if (typeof job.callback === "function") {
+            try {
+              job.callback(
+                error || null,
+                info || null
+              );
+            } catch (callbackError) {
+              console.error(
+                "[TRAFFIC] Edit callback failed:",
+                callbackError
+              );
+            }
+          }
+
+          resolve();
+        };
+
+        const timeout = setTimeout(() => {
+          const error = new Error(
+            "Messenger edit timed out; Traffic Governor released the edit queue."
+          );
+          error.code = "ECLIPSE_EDIT_TIMEOUT";
+          finish(error);
+        }, 10_000);
+
+        const done = (error, info) => {
+          clearTimeout(timeout);
+          finish(error, info);
+        };
+
+        try {
+          const result =
+            job.api.editMessage(
+              job.text,
+              job.messageID,
+              done
+            );
+
+          if (
+            result &&
+            typeof result.then === "function"
+          ) {
+            result.then(
+              (info) => done(null, info),
+              (error) => done(error)
+            );
+          }
+        } catch (error) {
+          clearTimeout(timeout);
+          finish(error);
+        }
+      });
+    }
+  } finally {
+    trafficEditWorkerRunning = false;
+
+    if (
+      trafficEditQueue.length &&
+      !trafficShuttingDown
+    ) {
+      trafficStartEditWorker();
+    }
+  }
+}
+
 function installTrafficGovernor(api) {
   if (!api || typeof api.sendMessage !== "function") {
     return api || null;
@@ -1549,6 +1764,21 @@ function installTrafficGovernor(api) {
             threadID,
             callback,
             messageID
+          );
+        };
+      }
+
+      if (property === "editMessage") {
+        return function guardedEditMessage(
+          text,
+          messageID,
+          callback
+        ) {
+          return trafficQueueEdit(
+            rawApi,
+            text,
+            messageID,
+            callback
           );
         };
       }
@@ -7667,22 +7897,42 @@ const BANAT_STALE_JOB_MS = Math.max(
 // A small bounded number of incoming messages is accepted per burst.
 // Accepted jobs are serialized so rapid chat activity cannot turn into
 // machine-gun replies. The burst state is removed once the queue drains.
+const BANAT_PENDING_PER_THREAD = Math.max(
+  4,
+  Math.min(
+    32,
+    Number(process.env.ECLIPSE_BANAT_PENDING_PER_THREAD || 16)
+  )
+);
+
+const BANAT_DECISION_MIN_MS = Math.max(
+  500,
+  Number(process.env.ECLIPSE_BANAT_DECISION_MIN_MS || 700)
+);
+
+// One Banat queue per conversation.
+// Messages are coalesced per sender, then one sender is selected at random
+// for each turn. The queue survives the 5s inter-reply gap, so Banat does
+// not reset into an immediate reply every time someone talks.
 const banatBurstState = new Map();
 
 function acceptBanatBurstMessage(threadID, job) {
   const key = String(threadID || "");
+  if (!key || !job || !job.api || !job.message) {
+    return false;
+  }
+
   let state = banatBurstState.get(key);
 
   if (!state) {
     state = {
-      accepted: 0,
       queue: [],
       running: false,
       lastSentAt: 0,
-      senderIds: new Set(),
-      coalesceTimer: null,
+      decisionTimer: null,
       cleanupTimer: null,
     };
+
     banatBurstState.set(key, state);
   }
 
@@ -7691,52 +7941,93 @@ function acceptBanatBurstMessage(threadID, job) {
     state.cleanupTimer = null;
   }
 
-  if (state.accepted >= BANAT_BURST_MAX_REPLIES) {
-    return false;
-  }
-
-  const senderKey = String(job.senderId || "");
-  if (senderKey && state.senderIds.has(senderKey)) {
-    return false;
-  }
+  const senderKey = String(job.senderId || "").trim();
 
   if (senderKey) {
-    state.senderIds.add(senderKey);
+    const existingIndex = state.queue.findIndex(
+      (candidate) =>
+        String(candidate.senderId || "").trim() === senderKey
+    );
+
+    const queuedJob = {
+      ...job,
+      senderId: senderKey,
+      queuedAt: Date.now(),
+    };
+
+    if (existingIndex >= 0) {
+      state.queue[existingIndex] = queuedJob;
+    } else {
+      state.queue.push(queuedJob);
+    }
+  } else {
+    state.queue.push({
+      ...job,
+      queuedAt: Date.now(),
+    });
   }
 
-  state.accepted++;
-  state.queue.push({
-    ...job,
-    queuedAt: Date.now(),
-  });
+  if (state.queue.length > BANAT_PENDING_PER_THREAD) {
+    state.queue.splice(
+      0,
+      state.queue.length - BANAT_PENDING_PER_THREAD
+    );
+  }
 
-  // Let a rapid cluster of messages settle before starting the first
-  // reply. This prevents A -> bot -> B -> bot machine-gun behavior.
-  if (!state.running && !state.coalesceTimer) {
-    state.coalesceTimer = setTimeout(() => {
-      state.coalesceTimer = null;
+  if (!state.running && !state.decisionTimer) {
+    const sinceLast = Date.now() - state.lastSentAt;
+    const cooldownMs = state.lastSentAt
+      ? Math.max(0, BANAT_MIN_INTER_REPLY_GAP_MS - sinceLast)
+      : 0;
+
+    const latest = state.queue[state.queue.length - 1];
+
+    const decisionMs = Math.max(
+      BANAT_DECISION_MIN_MS,
+      typeof calculateBanatDecisionDelay === "function"
+        ? calculateBanatDecisionDelay(
+            latest?.incomingText || latest?.message || "",
+            state.queue.length
+          )
+        : 1000
+    );
+
+    state.decisionTimer = setTimeout(() => {
+      state.decisionTimer = null;
+
       runBanatBurstQueue(key).catch((error) => {
         console.error("[BANAT] Burst queue failed:", error);
-
-        const current = banatBurstState.get(key);
-        if (current !== state) return;
-
-        state.running = false;
-
-        if (state.queue.length) {
-          setImmediate(() => {
-            runBanatBurstQueue(key).catch((continuationError) => {
-              console.error(
-                "[BANAT] Burst queue continuation failed:",
-                continuationError
-              );
-            });
-          });
-        } else {
-          banatBurstState.delete(key);
-        }
       });
-    }, BANAT_BURST_COALESCE_MS);
+    }, cooldownMs + decisionMs);
+  }
+
+  return true;
+}
+
+function clearBanatBurstState(threadID) {
+  const key = String(threadID || "").trim();
+  const state = banatBurstState.get(key);
+
+  if (!state) {
+    return false;
+  }
+
+  if (state.decisionTimer) {
+    clearTimeout(state.decisionTimer);
+  }
+
+  if (state.cleanupTimer) {
+    clearTimeout(state.cleanupTimer);
+  }
+
+  state.decisionTimer = null;
+  state.cleanupTimer = null;
+  state.queue.length = 0;
+
+  // If a reply is already in flight, leave its API call alone but prevent
+  // any queued continuation from surviving the / toggle.
+  if (!state.running) {
+    banatBurstState.delete(key);
   }
 
   return true;
@@ -7746,101 +8037,146 @@ const sleep = (ms) =>
   new Promise((resolve) => setTimeout(resolve, Math.max(0, ms)));
 
 async function runBanatBurstQueue(threadID) {
-  const key = String(threadID || "");
+  const key = String(threadID || "").trim();
   const state = banatBurstState.get(key);
 
-  if (!state || state.running) {
+  if (!state || state.running || !state.queue.length) {
     return;
   }
 
   state.running = true;
 
   try {
-    while (state.queue.length) {
-      // Once the first person has been answered, randomly choose one of
-      // the other people waiting. Never answer the same sender twice in
-      // the same Banat burst.
-      let job;
+    const sinceLast = Date.now() - state.lastSentAt;
 
-      if (state.lastSentAt) {
-        const eligible = state.queue.filter(
-          (candidate) =>
-            String(candidate.senderId || "") !== ""
-        );
-
-        if (!eligible.length) {
-          state.queue.length = 0;
-          break;
-        }
-
-        const selected =
-          eligible[
-            Math.floor(Math.random() * eligible.length)
-          ];
-
-        const selectedIndex =
-          state.queue.indexOf(selected);
-
-        job = state.queue.splice(selectedIndex, 1)[0];
-      } else {
-        job = state.queue.shift();
-      }
-      const age = Date.now() - Number(job.queuedAt || Date.now());
-
-      // A reply that sat in the queue too long may no longer match the
-      // conversation. Drop it instead of answering an old message.
-      if (age > BANAT_STALE_JOB_MS) {
-        console.log("[BANAT] Dropping stale queued reply in " + key);
-        continue;
-      }
-
-      const sinceLast = Date.now() - state.lastSentAt;
-      if (state.lastSentAt && sinceLast < BANAT_MIN_INTER_REPLY_GAP_MS) {
-        await sleep(BANAT_MIN_INTER_REPLY_GAP_MS - sinceLast);
-      }
-
-      const sent = await sendBanatReplyWithTyping(
-        job.api,
-        job.message,
-        key,
-        job.replyToMessageID,
-        job.attachMeme,
-        job.linkUrl,
-        0,
-        job.incomingText || ""
+    if (
+      state.lastSentAt &&
+      sinceLast < BANAT_MIN_INTER_REPLY_GAP_MS
+    ) {
+      await sleep(
+        BANAT_MIN_INTER_REPLY_GAP_MS - sinceLast
       );
+    }
 
-      if (sent) {
-        state.lastSentAt = Date.now();
+    if (!state.queue.length) {
+      return;
+    }
+
+    const now = Date.now();
+
+    // Drop stale jobs before selecting a target.
+    state.queue = state.queue.filter((candidate) => {
+      const age = now - Number(candidate.queuedAt || now);
+
+      if (age > BANAT_STALE_JOB_MS) {
+        console.log(
+          "[BANAT] Dropping stale queued reply in " + key
+        );
+        return false;
       }
+
+      return true;
+    });
+
+    if (!state.queue.length) {
+      return;
+    }
+
+    // Prefer jobs with a sender ID. The fallback keeps malformed legacy
+    // events from blocking the queue forever.
+    const eligible = state.queue.filter(
+      (candidate) =>
+        String(candidate.senderId || "").trim()
+    );
+
+    const pool = eligible.length
+      ? eligible
+      : state.queue;
+
+    const selected =
+      pool[Math.floor(Math.random() * pool.length)];
+
+    const selectedIndex =
+      state.queue.indexOf(selected);
+
+    const job =
+      selectedIndex >= 0
+        ? state.queue.splice(selectedIndex, 1)[0]
+        : null;
+
+    if (!job) {
+      return;
+    }
+
+    const sent = await sendBanatReplyWithTyping(
+      job.api,
+      job.message,
+      key,
+      job.replyToMessageID,
+      job.attachMeme,
+      job.linkUrl,
+      0,
+      job.incomingText || ""
+    );
+
+    if (sent) {
+      state.lastSentAt = Date.now();
     }
   } finally {
     const current = banatBurstState.get(key);
 
-    if (current === state) {
-      if (state.queue.length) {
-        state.running = false;
-        runBanatBurstQueue(key).catch((error) => {
-          console.error("[BANAT] Burst queue continuation failed:", error);
-        });
-      } else {
-        // Keep the burst state alive through the 5-second cooldown so a
-        // person who starts talking during that window is queued and
-        // receives the next randomized turn instead of starting a fresh
-        // burst and getting an immediate reply.
-        if (!state.cleanupTimer) {
-          state.cleanupTimer = setTimeout(() => {
-            const currentState = banatBurstState.get(key);
-            if (
-              currentState === state &&
-              !state.running &&
-              !state.queue.length
-            ) {
-              banatBurstState.delete(key);
-            }
-          }, BANAT_MIN_INTER_REPLY_GAP_MS);
-        }
+    if (current !== state) {
+      return;
+    }
+
+    state.running = false;
+
+    if (state.queue.length) {
+      const sinceLast = Date.now() - state.lastSentAt;
+      const cooldownMs = state.lastSentAt
+        ? Math.max(0, BANAT_MIN_INTER_REPLY_GAP_MS - sinceLast)
+        : 0;
+
+      if (!state.decisionTimer) {
+        const latest = state.queue[state.queue.length - 1];
+
+        const decisionMs = Math.max(
+          BANAT_DECISION_MIN_MS,
+          typeof calculateBanatDecisionDelay === "function"
+            ? calculateBanatDecisionDelay(
+                latest?.incomingText || latest?.message || "",
+                state.queue.length
+              )
+            : 1000
+        );
+
+        state.decisionTimer = setTimeout(() => {
+          state.decisionTimer = null;
+
+          runBanatBurstQueue(key).catch((error) => {
+            console.error(
+              "[BANAT] Burst queue continuation failed:",
+              error
+            );
+          });
+        }, cooldownMs + decisionMs);
       }
+
+      return;
+    }
+
+    if (!state.cleanupTimer) {
+      state.cleanupTimer = setTimeout(() => {
+        const currentState = banatBurstState.get(key);
+
+        if (
+          currentState === state &&
+          !state.running &&
+          !state.queue.length
+        ) {
+          banatBurstState.delete(key);
+        }
+      }, BANAT_MIN_INTER_REPLY_GAP_MS);
     }
   }
 }
@@ -8169,7 +8505,8 @@ let shuttingDown =
   false;
 
 async function gracefulShutdown(
-  signal
+  signal,
+  exitCode = 0
 ) {
   if (shuttingDown) {
     return;
@@ -8261,17 +8598,19 @@ async function gracefulShutdown(
     console.error("[SYSTEM] Database shutdown failed:", error);
   }
 
-  process.exit(0);
+  process.exit(
+    Number.isInteger(exitCode) ? exitCode : 0
+  );
 }
 
 process.once("uncaughtException", (error) => {
   console.error("[SYSTEM] Uncaught exception:", error);
-  void gracefulShutdown("uncaughtException");
+  void gracefulShutdown("uncaughtException", 1);
 });
 
 process.once("unhandledRejection", (reason) => {
   console.error("[SYSTEM] Unhandled rejection:", reason);
-  void gracefulShutdown("unhandledRejection");
+  void gracefulShutdown("unhandledRejection", 1);
 });
 
 process.once(
