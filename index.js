@@ -7508,15 +7508,8 @@ function broadcastToAllThreads(
   );
 
   const broadcastMessage =
-    [
-      "╭─────── ୨୧ ♡ ୨୧ ───────╮",
-      "        🎀 ANNOUNCEMENT",
-      "╰─────── ୨୧ ♡ ୨୧ ───────╯",
-      "",
-      message.trim(),
-      "",
-      "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
-    ].join("\n");
+    "makinig kayong mga gago kayo sa talata ko: " +
+    message.trim();
 
   let remainingSends = threads.length;
 

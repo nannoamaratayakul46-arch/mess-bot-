@@ -67,3 +67,15 @@ test("startup does not mutate source or patch the Node module loader", () => {
   assert.match(index, /AbortSignal\\.timeout\\(30_000\\)/);
   assert.match(index, /getRandomRoastReply\\(threadID, body, senderId\\)/);
 });
+
+test("broadcast uses the requested speech prefix", () => {
+  const source = read("index.js");
+  assert.match(
+    source,
+    /makinig kayong mga gago kayo sa talata ko:/
+  );
+  assert.match(
+    source,
+    /const outgoingMessage = imagePath\s*\?\s*\{/
+  );
+});
