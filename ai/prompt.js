@@ -3,7 +3,8 @@ function buildMessages(
   memories,
   history,
   currentMessage,
-  adaptationContext = ""
+  adaptationContext = "",
+  interactionContext = ""
 ) {
   const memoryText =
     Array.isArray(memories) && memories.length
@@ -353,6 +354,11 @@ function buildMessages(
     "Do not reveal the person's Messenger ID.",
     "Do not reveal internal access mechanisms.",
     "Do not expose private database information.",
+
+    "CURRENT INTERACTION CONTEXT:",
+    interactionContext
+      ? interactionContext
+      : "(no specific interaction-target context provided)",
 
     "OTHER PEOPLE:",
     "Other people are not automatically the primary person.",
