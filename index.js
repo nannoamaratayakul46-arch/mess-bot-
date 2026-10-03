@@ -129,6 +129,7 @@ const {
 const {
   sendBanatReplyWithTyping: sendBanatReplyWithTypingModule,
   BANAT_REPLY_DELAY_MS,
+  prepareBanatReply,
 } = require("./banat-human");
 
 const {
@@ -3084,6 +3085,62 @@ function requireDashboardAccess(req, res, next) {
 }
 
 app.use(dashboardCors);
+
+// ============================================================
+// ECLIPSE LAB / BANAT SIMULATOR API
+// ============================================================
+// Developer-only endpoint used by the local Chrome extension.
+// It runs the existing Banat humanization + timing pipeline without
+// sending anything to Messenger. Authentication reuses the existing
+// dashboard API key; no separate secret is stored in the bot.
+// ============================================================
+
+app.post(
+  "/api/dev/banat/simulate",
+  requireDashboardAccess,
+  (req, res) => {
+    try {
+      const threadID = String(req.body?.threadID || "eclipse-lab").trim();
+      const incomingText = String(req.body?.incomingText || "").slice(0, 4000);
+      const candidate = String(req.body?.candidate || "").slice(0, 4000);
+
+      if (!candidate.trim()) {
+        return res.status(400).json({
+          ok: false,
+          error: "candidate is required.",
+        });
+      }
+
+      const prepared = prepareBanatReply(
+        threadID || "eclipse-lab",
+        candidate,
+        incomingText
+      );
+
+      return res.json({
+        ok: true,
+        input: {
+          incomingText,
+          candidate,
+        },
+        output: {
+          text: prepared.text,
+          reactionMs: prepared.reactionMs,
+          typingMs: prepared.typingMs,
+          totalMs: prepared.reactionMs + prepared.typingMs,
+        },
+        context: prepared.context,
+        timestamp: new Date().toISOString(),
+      });
+    } catch (error) {
+      console.error("[ECLIPSE LAB] Banat simulation failed:", error);
+      return res.status(500).json({
+        ok: false,
+        error: "Banat simulation failed.",
+      });
+    }
+  }
+);
 
 app.get(
   "/api/dashboard/status",
