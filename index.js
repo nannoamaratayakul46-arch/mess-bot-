@@ -7995,6 +7995,7 @@ async function handleAutomaticBanatMessage({
         attachMeme: false,
         linkUrl: null,
         incomingText: body,
+        senderId,
       }
     );
 
