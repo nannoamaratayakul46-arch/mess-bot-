@@ -1707,3 +1707,55 @@ body.finalCinematic .headphoneStage {
     transform: translate(-50%, -45%) scale(.96);
   }
 }
+
+
+/* ============================================================
+   ANIMATED COVER — SPOTIFY/CANVAS STYLE
+   ============================================================ */
+
+.coverWrap {
+  overflow: hidden;
+  isolation: isolate;
+}
+
+.coverWrap .coverVideo {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center;
+  background: #080706;
+  border-radius: inherit;
+  transform: scale(1.002);
+  opacity: .94;
+  filter: saturate(.9) contrast(1.03);
+  transition: opacity .5s ease, transform .8s cubic-bezier(.16,1,.3,1), filter .8s ease;
+}
+
+.coverWrap .coverVideo.isPlaying {
+  opacity: 1;
+  transform: scale(1.015);
+  filter: saturate(1) contrast(1.05);
+}
+
+.coverWrap .coverShine {
+  z-index: 4;
+  pointer-events: none;
+}
+
+.coverWrap .coverNowPlaying {
+  z-index: 5;
+  pointer-events: none;
+}
+
+body.isPlaying .coverWrap .coverVideo {
+  box-shadow: inset 0 0 45px rgba(0,0,0,.2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .coverWrap .coverVideo,
+  .coverWrap .coverVideo.isPlaying {
+    transition: none;
+    transform: none;
+  }
+}
