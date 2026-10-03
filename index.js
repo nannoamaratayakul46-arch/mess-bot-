@@ -136,8 +136,6 @@ const {
 
 const {
   classifyBanatTarget,
-  setBanatConversationMode,
-  isBanatConversationModeActive,
 } = require("./banat-targeting");
 
 const {
@@ -4465,37 +4463,7 @@ async function handleMessage(
   // ==========================================================
 
   const adminControlAttempt =
-    /^(?:!owner(?:\\s+(?:bot|automated|economy|rpg|music|moderation|system))?|!pause(?:\\s+status)?|!resume|!(?:bot(?:\\s+(?:off|on|status))?|shutdown|startup)|!watchdog(?:\\s+(?:status|restart))?|!cleanup(?:\\s+(?:status|disk|run|repair|optimize|full))?|!gcstatus|!broadcast(?:\\s|$)|!game(?:\\s+(?:on|off|status))?|!mod(?:\\s|$)|!automod(?:\\s|$)|!economy(?:\\s|$)|!debug(?:\\s|$)|!lucien(?:\\s|$)|!warn(?:\\s|$)|!ban(?:\\s|$)|!kick(?:\\s|$)|!unban(?:\\s|$)|!modlog(?:\\s|$)|!banat(?:\\s|$)|!music\\s+(?:pause|resume|play))$/i.test(originalText) ||
-    originalText === "/";
-
-  if (
-    originalText === "/" &&
-    senderIsAdmin
-  ) {
-    const currentlyActive =
-      isBanatConversationModeActive(threadId);
-
-    const enabled =
-      !currentlyActive;
-
-    setBanatConversationMode(
-      threadId,
-      enabled,
-      senderId
-    );
-
-    sendReplyWithTyping(
-      api,
-      enabled
-        ? "eclipse is in the convo now. talk normally, he\'ll follow the conversation even if nobody mentions him."
-        : "alr, eclipse is out of the convo now.",
-      threadID
-    );
-
-    return;
-  }
-
-  if (
+    /^(?:!owner(?:\\s+(?:bot|automated|economy|rpg|music|moderation|system))?|!pause(?:\\s+status)?|!resume|!(?:bot(?:\\s+(?:off|on|status))?|shutdown|startup)|!watchdog(?:\\s+(?:status|restart))?|!cleanup(?:\\s+(?:status|disk|run|repair|optimize|full))?|!gcstatus|!broadcast(?:\\s|$)|!game(?:\\s+(?:on|off|status))?|!mod(?:\\s|$)|!automod(?:\\s|$)|!economy(?:\\s|$)|!debug(?:\\s|$)|!lucien(?:\\s|$)|!warn(?:\\s|$)|!ban(?:\\s|$)|!kick(?:\\s|$)|!unban(?:\\s|$)|!modlog(?:\\s|$)|!banat(?:\\s|$)|!music\\s+(?:pause|resume|play))$/i.test(originalText);  if (
     adminControlAttempt &&
     !senderIsAdmin
   ) {
@@ -7694,9 +7662,6 @@ async function handleAutomaticBanatMessage({
 }) {
   const threadID = threadId;
 
-  const conversationActive =
-    isBanatConversationModeActive(threadId);
-
   let roastEnabled = false;
 
   try {
@@ -7712,7 +7677,7 @@ async function handleAutomaticBanatMessage({
     }
   }
 
-  if (!roastEnabled && !conversationActive) {
+  if (!roastEnabled) {
     return false;
   }
 
@@ -7725,8 +7690,7 @@ async function handleAutomaticBanatMessage({
   }
 
   if (
-    isOwner(senderId) &&
-    !conversationActive
+    isOwner(senderId)
   ) {
     console.log(
       "[BANAT] Owner message skipped for roast targeting: " + senderId
@@ -7806,54 +7770,6 @@ async function handleAutomaticBanatMessage({
       "Trigger system failed:",
       error
     );
-  }
-
-  // In continuous conversation mode, ECLIPSE is already a participant.
-  // Every ordinary incoming message is therefore eligible, even when
-  // nobody mentions or replies to him.
-  if (
-    conversationActive &&
-    target.conversationActive
-  ) {
-    let conversationReply = null;
-
-    try {
-      conversationReply = await getBanatConversationReply(
-        body,
-        senderId,
-        threadId,
-        api,
-        event
-      );
-    } catch (error) {
-      console.error(
-        "[BANAT] Continuous conversation reply failed:",
-        error
-      );
-    }
-
-    if (conversationReply) {
-      const accepted = acceptBanatBurstMessage(
-        threadID,
-        {
-          api,
-          message: conversationReply,
-          replyToMessageID: event.messageID,
-          attachMeme: false,
-          linkUrl: null,
-          incomingText: body,
-        }
-      );
-
-      if (!accepted) {
-        console.log(
-          "[BANAT] Continuous conversation reply dropped by burst guard in " +
-            threadID
-        );
-      }
-
-      return true;
-    }
   }
 
   // Ordinary Banat replies require a clear conversational reason to address
