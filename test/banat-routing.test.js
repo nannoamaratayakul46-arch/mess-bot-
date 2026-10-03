@@ -61,6 +61,7 @@ test("runtime hotfix files are no longer part of the source tree", () => {
     "repo-hotfix.js",
     "broadcast-runtime-fix.js",
     "rpg-help-preload.js",
+    "banat-runtime-fix.js",
   ]) {
     assert.equal(
       fs.existsSync(path.join(root, file)),
@@ -82,7 +83,7 @@ test("unauthorized slash uses the Banat roast replies instead of the admin-only 
   assert.doesNotMatch(toggleBlock, /🔒 ADMIN ONLY/);
 });
 
-test("Banat burst replies are spaced 5 seconds apart and limited to one reply per sender", () => {
+test("Banat burst replies are spaced 5 seconds apart and randomize one eligible sender", () => {
   const source = read("index.js");
   assert.match(
     source,
@@ -90,11 +91,11 @@ test("Banat burst replies are spaced 5 seconds apart and limited to one reply pe
   );
   assert.match(
     source,
-    /state\.senderIds\.has\(senderKey\)/
+    /state\.queue\.findIndex\(\s*\(candidate\) =>\s*String\(candidate\.senderId \|\| ""\)\.trim\(\) === senderKey/
   );
   assert.match(
     source,
-    /Math\.floor\(Math\.random\(\) \* eligible\.length\)/
+    /Math\.floor\(Math\.random\(\) \* pool\.length\)/
   );
 });
 
