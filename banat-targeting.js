@@ -9,8 +9,8 @@
  */
 
 const DIRECT_ADDRESS_PATTERNS = [
-  /^(?:hey|hi|hello|yo|sup|oi|ayy|bro|bruh)?\s*(?:eclipse|ecl|bot)\b/i,
-  /\b(?:hey|hi|hello|yo|sup)\s+(?:eclipse|ecl|bot)\b/i,
+  /^(?:hey|hi|hello|yo|sup|oi|ayy|bro|bruh)?\s*(?:eclipse|ecl|bot|hev)\b/i,
+  /\b(?:hey|hi|hello|yo|sup)\s+(?:eclipse|ecl|bot|hev)\b/i,
 ];
 
 const QUESTION_OPENERS =
@@ -56,7 +56,7 @@ function isDirectAddress(body) {
 
   return (
     DIRECT_ADDRESS_PATTERNS.some((pattern) => pattern.test(text)) ||
-    /^@?(?:eclipse|ecl|bot)\b/i.test(text)
+    /^@?(?:eclipse|ecl|bot|hev)\b/i.test(text)
   );
 }
 
