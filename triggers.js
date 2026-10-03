@@ -1,4 +1,5 @@
 const { generateTriggerReply } = require("./ai/provider");
+const { isPrimaryUser } = require("./ai/access");
 const { rememberBanatReply, pickBanatReply } = require("./banat-memory");
 
 // ============================================================
@@ -1346,6 +1347,10 @@ async function getTriggerReply(
       let reply = fallbackReply;
       let replyTargetName = null;
 
+      if (isFlirtyBanatGroup) {
+        reply = enforceBanatAddressStyle(reply, senderId);
+      }
+
       if (
         String(fallbackReply).trim().toLowerCase() ===
         "jaiden na naman"
@@ -1376,6 +1381,10 @@ async function getTriggerReply(
 
         if (typeof aiReply === "string" && aiReply.trim()) {
           reply = aiReply.trim().slice(0, 1200);
+
+          if (isFlirtyBanatGroup) {
+            reply = enforceBanatAddressStyle(reply, senderId);
+          }
 
           if (replyTargetName) {
             reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
@@ -1554,10 +1563,43 @@ function getNextPublicReply() {
 
 
 // ============================================================
+// BANAT ADDRESS STYLE
+// ============================================================
+// Alaiza may naturally be addressed as "baby". Other people must
+// never receive "baby" as an affectionate relationship address.
+// They can still get ordinary Banat teasing labels instead.
+// ============================================================
+
+const NON_PRIMARY_BANAT_ADDRESSES = [
+  "baldie",
+  "doggie",
+  "cancer cell",
+  "tukmol",
+];
+
+function enforceBanatAddressStyle(reply, senderId) {
+  if (typeof reply !== "string" || !reply.trim()) {
+    return reply;
+  }
+
+  if (isPrimaryUser(senderId)) {
+    return reply;
+  }
+
+  const replacement =
+    NON_PRIMARY_BANAT_ADDRESSES[
+      Math.floor(Math.random() * NON_PRIMARY_BANAT_ADDRESSES.length)
+    ];
+
+  return reply.replace(/\\bbaby\\b/gi, replacement);
+}
+
+
+// ============================================================
 // RANDOM GENERIC ROAST
 // ============================================================
 
-function getRandomRoastReply(threadId = null, incomingText = "") {
+function getRandomRoastReply(threadId = null, incomingText = "", senderId = null) {
   // Occasionally drop a full rap instead of a one-liner.
   if (Math.random() < RAP_DROP_CHANCE) {
     const rap = getRandomRapDrop();
@@ -1599,14 +1641,19 @@ function getRandomRoastReply(threadId = null, incomingText = "") {
     return null;
   }
 
+  const styledReply = enforceBanatAddressStyle(
+    reply,
+    senderId
+  );
+
   rememberRecent(
     recentBanatReplies,
-    reply,
+    styledReply,
     12
   );
-  rememberBanatReply(String(threadId || "unknown"), reply);
+  rememberBanatReply(String(threadId || "unknown"), styledReply);
 
-  return reply;
+  return styledReply;
 }
 
 
@@ -1621,7 +1668,7 @@ async function getBanatConversationReply(
   api,
   event
 ) {
-  const fallback = getRandomRoastReply(threadId, rawText);
+  const fallback = getRandomRoastReply(threadId, rawText, senderId);
 
   if (!fallback) {
     return null;
@@ -1649,6 +1696,8 @@ async function getBanatConversationReply(
 
     if (typeof aiReply === "string" && aiReply.trim()) {
       reply = aiReply.trim().slice(0, 1200);
+
+      reply = enforceBanatAddressStyle(reply, senderId);
 
       if (replyTargetName) {
         reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
