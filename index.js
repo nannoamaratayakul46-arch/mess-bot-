@@ -121,6 +121,7 @@ const {
   getTriggerReply,
   getNextPublicReply,
   getRandomRoastReply,
+  getBanatConversationReply,
 } = require("./triggers");
 
 // ============================================================
@@ -133,7 +134,11 @@ const {
   prepareBanatReply,
 } = require("./banat-human");
 
-const { classifyBanatTarget } = require("./banat-targeting");
+const {
+  classifyBanatTarget,
+  setBanatConversationMode,
+  isBanatConversationModeActive,
+} = require("./banat-targeting");
 
 const {
   sendReplyWithTyping: sendReplyWithTypingModule,
@@ -4464,6 +4469,33 @@ async function handleMessage(
     originalText === "/";
 
   if (
+    originalText === "/" &&
+    senderIsAdmin
+  ) {
+    const currentlyActive =
+      isBanatConversationModeActive(threadId);
+
+    const enabled =
+      !currentlyActive;
+
+    setBanatConversationMode(
+      threadId,
+      enabled,
+      senderId
+    );
+
+    sendReplyWithTyping(
+      api,
+      enabled
+        ? "eclipse is in the convo now. talk normally, he\'ll follow the conversation even if nobody mentions him."
+        : "alr, eclipse is out of the convo now.",
+      threadID
+    );
+
+    return;
+  }
+
+  if (
     adminControlAttempt &&
     !senderIsAdmin
   ) {
@@ -7662,6 +7694,9 @@ async function handleAutomaticBanatMessage({
 }) {
   const threadID = threadId;
 
+  const conversationActive =
+    isBanatConversationModeActive(threadId);
+
   let roastEnabled = false;
 
   try {
@@ -7671,10 +7706,13 @@ async function handleAutomaticBanatMessage({
       "[BANAT] Failed to check roast status:",
       error
     );
-    return false;
+
+    if (!conversationActive) {
+      return false;
+    }
   }
 
-  if (!roastEnabled) {
+  if (!roastEnabled && !conversationActive) {
     return false;
   }
 
@@ -7686,7 +7724,10 @@ async function handleAutomaticBanatMessage({
     return false;
   }
 
-  if (isOwner(senderId)) {
+  if (
+    isOwner(senderId) &&
+    !conversationActive
+  ) {
     console.log(
       "[BANAT] Owner message skipped for roast targeting: " + senderId
     );
@@ -7765,6 +7806,54 @@ async function handleAutomaticBanatMessage({
       "Trigger system failed:",
       error
     );
+  }
+
+  // In continuous conversation mode, ECLIPSE is already a participant.
+  // Every ordinary incoming message is therefore eligible, even when
+  // nobody mentions or replies to him.
+  if (
+    conversationActive &&
+    target.conversationActive
+  ) {
+    let conversationReply = null;
+
+    try {
+      conversationReply = await getBanatConversationReply(
+        body,
+        senderId,
+        threadId,
+        api,
+        event
+      );
+    } catch (error) {
+      console.error(
+        "[BANAT] Continuous conversation reply failed:",
+        error
+      );
+    }
+
+    if (conversationReply) {
+      const accepted = acceptBanatBurstMessage(
+        threadID,
+        {
+          api,
+          message: conversationReply,
+          replyToMessageID: event.messageID,
+          attachMeme: false,
+          linkUrl: null,
+          incomingText: body,
+        }
+      );
+
+      if (!accepted) {
+        console.log(
+          "[BANAT] Continuous conversation reply dropped by burst guard in " +
+            threadID
+        );
+      }
+
+      return true;
+    }
   }
 
   // Ordinary Banat replies require a clear conversational reason to address
