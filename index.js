@@ -7674,8 +7674,14 @@ function acceptBanatBurstMessage(threadID, job) {
       lastSentAt: 0,
       senderIds: new Set(),
       coalesceTimer: null,
+      cleanupTimer: null,
     };
     banatBurstState.set(key, state);
+  }
+
+  if (state.cleanupTimer) {
+    clearTimeout(state.cleanupTimer);
+    state.cleanupTimer = null;
   }
 
   if (state.accepted >= BANAT_BURST_MAX_REPLIES) {
@@ -7811,7 +7817,22 @@ async function runBanatBurstQueue(threadID) {
           console.error("[BANAT] Burst queue continuation failed:", error);
         });
       } else {
-        banatBurstState.delete(key);
+        // Keep the burst state alive through the 5-second cooldown so a
+        // person who starts talking during that window is queued and
+        // receives the next randomized turn instead of starting a fresh
+        // burst and getting an immediate reply.
+        if (!state.cleanupTimer) {
+          state.cleanupTimer = setTimeout(() => {
+            const currentState = banatBurstState.get(key);
+            if (
+              currentState === state &&
+              !state.running &&
+              !state.queue.length
+            ) {
+              banatBurstState.delete(key);
+            }
+          }, BANAT_MIN_INTER_REPLY_GAP_MS);
+        }
       }
     }
   }

@@ -97,3 +97,16 @@ test("Banat burst replies are spaced 5 seconds apart and limited to one reply pe
     /Math\.floor\(Math\.random\(\) \* eligible\.length\)/
   );
 });
+
+test("Banat keeps burst state alive during the 5-second cooldown", () => {
+  const source = read("index.js");
+  assert.match(source, /cleanupTimer/);
+  assert.match(
+    source,
+    /state\.cleanupTimer = setTimeout\(\(\) => \{/
+  );
+  assert.match(
+    source,
+    /}, BANAT_MIN_INTER_REPLY_GAP_MS\);/
+  );
+});
