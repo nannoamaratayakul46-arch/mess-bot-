@@ -2,6 +2,10 @@ const canvas = document.getElementById("visualizer");
 const ctx = canvas.getContext("2d", { alpha: true });
 
 const audio = document.getElementById("audio");
+const coverVideo = document.getElementById("coverVideo");
+const COVER_VIDEO_DURATION_FALLBACK = 80;
+let coverVideoReady = false;
+let lastCoverVideoSync = -1;
 const startBtn = document.getElementById("startBtn");
 const playPauseBtn = document.getElementById("playPauseBtn");
 const restartBtn = document.getElementById("restartBtn");
@@ -439,6 +443,47 @@ function syncFinalCinematic(t) {
   else if (finalCinematicActive) resetFinalCinematic();
 }
 
+function getCoverVideoDuration() {
+  return Number.isFinite(coverVideo?.duration) && coverVideo.duration > 0
+    ? coverVideo.duration
+    : COVER_VIDEO_DURATION_FALLBACK;
+}
+
+function syncCoverVideo(force = false) {
+  if (!coverVideo) return;
+
+  const songTime = Number(audio.currentTime) || 0;
+  const visualDuration = getCoverVideoDuration();
+  const target = ((songTime % visualDuration) + visualDuration) % visualDuration;
+
+  if (force || Math.abs((coverVideo.currentTime || 0) - target) > 0.18) {
+    try {
+      coverVideo.currentTime = target;
+      lastCoverVideoSync = target;
+    } catch (error) {
+      console.warn("[LETTER] Cover video seek failed:", error);
+    }
+  }
+}
+
+async function playCoverVideo() {
+  if (!coverVideo) return;
+  coverVideo.muted = true;
+  try {
+    await coverVideo.play();
+    coverVideoReady = true;
+  } catch (error) {
+    // Muted autoplay is normally allowed, but keep the letter functional if
+    // a browser blocks the visual layer.
+    console.warn("[LETTER] Cover video playback blocked:", error);
+  }
+}
+
+function pauseCoverVideo() {
+  if (!coverVideo) return;
+  coverVideo.pause();
+}
+
 function updatePlayerUI() {
   const t = audio.currentTime || 0;
   const duration = Number.isFinite(audio.duration) ? audio.duration : 162.7;
@@ -469,6 +514,9 @@ async function playAudio() {
     if (audioCtx.state === "suspended") await audioCtx.resume();
     await audio.play();
 
+    syncCoverVideo(true);
+    await playCoverVideo();
+
     started = true;
     document.body.classList.add("isPlaying");
     startBtn.innerHTML = '<span class="playIcon">❚❚</span><span>PLAYING</span>';
@@ -487,7 +535,10 @@ async function playAudio() {
 
 function togglePlay() {
   if (!started || audio.paused) playAudio();
-  else audio.pause();
+  else {
+    audio.pause();
+    pauseCoverVideo();
+  }
 }
 
 startBtn.addEventListener("click", togglePlay);
@@ -498,6 +549,7 @@ phoneLyricsFull.addEventListener("click", toggleFullLyrics);
 
 restartBtn.addEventListener("click", () => {
   audio.currentTime = 0;
+  syncCoverVideo(true);
   activeIndex = -1;
   resetFinalCinematic();
   playAudio();
@@ -511,13 +563,27 @@ muteBtn.addEventListener("click", () => {
 progress.addEventListener("input", () => {
   const duration = Number.isFinite(audio.duration) ? audio.duration : 162.7;
   audio.currentTime = (Number(progress.value) / 100) * duration;
+  syncCoverVideo(true);
   updateLyric(audio.currentTime, true);
   syncFinalCinematic(audio.currentTime);
 });
 
-audio.addEventListener("play", updatePlayerUI);
-audio.addEventListener("pause", updatePlayerUI);
+audio.addEventListener("play", async () => {
+  updatePlayerUI();
+  syncCoverVideo(true);
+  await playCoverVideo();
+});
+audio.addEventListener("pause", () => {
+  pauseCoverVideo();
+  updatePlayerUI();
+});
 audio.addEventListener("ended", () => {
+  pauseCoverVideo();
+  if (coverVideo) {
+    try {
+      coverVideo.currentTime = 0;
+    } catch {}
+  }
   updatePlayerUI();
   document.body.classList.remove("isPlaying");
   resetFinalCinematic();
@@ -527,7 +593,22 @@ audio.addEventListener("ended", () => {
   closePhoneLyrics();
   document.getElementById("archiveEnd")?.scrollIntoView({behavior:"smooth",block:"center"});
 });
-audio.addEventListener("loadedmetadata", updatePlayerUI);
+audio.addEventListener("loadedmetadata", () => {
+  updatePlayerUI();
+  syncCoverVideo(true);
+});
+
+if (coverVideo) {
+  coverVideo.addEventListener("loadedmetadata", () => {
+    coverVideoReady = true;
+    syncCoverVideo(true);
+  });
+
+  coverVideo.addEventListener("error", () => {
+    coverVideoReady = false;
+    console.warn("[LETTER] Animated cover video could not be loaded.");
+  });
+}
 
 function sync() {
   if (!audio.paused) {
