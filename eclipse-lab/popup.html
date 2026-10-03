@@ -1,0 +1,56 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>ECLIPSE Lab</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <main>
+    <header>
+      <div class="title">♡ ECLIPSE LAB</div>
+      <div class="sub">BANAT HUMAN SIMULATOR</div>
+    </header>
+
+    <label>Render / API URL</label>
+    <input id="apiUrl" placeholder="https://your-app.onrender.com">
+
+    <label>Dashboard API key</label>
+    <input id="apiKey" type="password" placeholder="ECLIPSE_DASHBOARD_API_KEY">
+
+    <label>Incoming message</label>
+    <textarea id="incoming" rows="3" placeholder="bro why 😭"></textarea>
+
+    <label>Candidate reply</label>
+    <textarea id="candidate" rows="3" placeholder="what did i even do bro"></textarea>
+
+    <div class="row">
+      <button id="simulate">SIMULATE</button>
+      <button id="clear" class="secondary">CLEAR</button>
+    </div>
+
+    <section id="result" class="result hidden">
+      <div class="section-title">OUTPUT</div>
+      <div id="outputText" class="output"></div>
+
+      <div class="grid">
+        <div><span>reaction</span><b id="reaction">—</b></div>
+        <div><span>typing</span><b id="typing">—</b></div>
+        <div><span>total</span><b id="total">—</b></div>
+        <div><span>mode</span><b id="mode">—</b></div>
+        <div><span>momentum</span><b id="momentum">—</b></div>
+        <div><span>incoming words</span><b id="words">—</b></div>
+      </div>
+
+      <details>
+        <summary>Context</summary>
+        <pre id="context"></pre>
+      </details>
+    </section>
+
+    <div id="status" class="status"></div>
+  </main>
+  <script src="popup.js"></script>
+</body>
+</html>
