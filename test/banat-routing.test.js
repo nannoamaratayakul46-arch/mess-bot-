@@ -81,3 +81,19 @@ test("unauthorized slash uses the Banat roast replies instead of the admin-only 
   assert.match(toggleBlock, /aaaaaa bingi ka\? sabi bawal moka paa gumamit command/);
   assert.doesNotMatch(toggleBlock, /🔒 ADMIN ONLY/);
 });
+
+test("Banat burst replies are spaced 5 seconds apart and limited to one reply per sender", () => {
+  const source = read("index.js");
+  assert.match(
+    source,
+    /ECLIPSE_BANAT_MIN_INTER_REPLY_GAP_MS \|\| 5_000/
+  );
+  assert.match(
+    source,
+    /state\.senderIds\.has\(senderKey\)/
+  );
+  assert.match(
+    source,
+    /Math\.floor\(Math\.random\(\) \* eligible\.length\)/
+  );
+});

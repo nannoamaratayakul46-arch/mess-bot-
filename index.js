@@ -7648,8 +7648,8 @@ const BANAT_BURST_COALESCE_MS = Math.max(
   Number(process.env.ECLIPSE_BANAT_BURST_COALESCE_MS || 750)
 );
 const BANAT_MIN_INTER_REPLY_GAP_MS = Math.max(
-  900,
-  Number(process.env.ECLIPSE_BANAT_MIN_INTER_REPLY_GAP_MS || 1_600)
+  5_000,
+  Number(process.env.ECLIPSE_BANAT_MIN_INTER_REPLY_GAP_MS || 5_000)
 );
 const BANAT_STALE_JOB_MS = Math.max(
   15_000,
@@ -7672,6 +7672,7 @@ function acceptBanatBurstMessage(threadID, job) {
       queue: [],
       running: false,
       lastSentAt: 0,
+      senderIds: new Set(),
       coalesceTimer: null,
     };
     banatBurstState.set(key, state);
@@ -7679,6 +7680,15 @@ function acceptBanatBurstMessage(threadID, job) {
 
   if (state.accepted >= BANAT_BURST_MAX_REPLIES) {
     return false;
+  }
+
+  const senderKey = String(job.senderId || "");
+  if (senderKey && state.senderIds.has(senderKey)) {
+    return false;
+  }
+
+  if (senderKey) {
+    state.senderIds.add(senderKey);
   }
 
   state.accepted++;
@@ -7734,7 +7744,34 @@ async function runBanatBurstQueue(threadID) {
 
   try {
     while (state.queue.length) {
-      const job = state.queue.shift();
+      // Once the first person has been answered, randomly choose one of
+      // the other people waiting. Never answer the same sender twice in
+      // the same Banat burst.
+      let job;
+
+      if (state.lastSentAt) {
+        const eligible = state.queue.filter(
+          (candidate) =>
+            String(candidate.senderId || "") !== ""
+        );
+
+        if (!eligible.length) {
+          state.queue.length = 0;
+          break;
+        }
+
+        const selected =
+          eligible[
+            Math.floor(Math.random() * eligible.length)
+          ];
+
+        const selectedIndex =
+          state.queue.indexOf(selected);
+
+        job = state.queue.splice(selectedIndex, 1)[0];
+      } else {
+        job = state.queue.shift();
+      }
       const age = Date.now() - Number(job.queuedAt || Date.now());
 
       // A reply that sat in the queue too long may no longer match the
@@ -7883,6 +7920,7 @@ async function handleAutomaticBanatMessage({
             ? banatProfileUrl
             : null,
           incomingText: body,
+          senderId,
         }
       );
 
