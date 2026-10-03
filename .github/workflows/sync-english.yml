@@ -1,0 +1,36 @@
+name: Sync English vocabulary
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 4 * * 1"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-english:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Sync dwyl/english-words
+        run: npm run sync:english
+
+      - name: Commit vocabulary snapshot
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/english/words.json data/english/source.json
+          if git diff --cached --quiet; then
+            echo "No vocabulary changes."
+            exit 0
+          fi
+          git commit -m "chore: sync English vocabulary"
+          git push
