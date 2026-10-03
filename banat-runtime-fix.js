@@ -209,6 +209,10 @@ async function runBanatBurstQueue(threadID) {
     );
   }
 
+  if (source === null) {
+    return originalLoader(module, filename);
+  }
+
   module._compile(source, filename);
 };
 
