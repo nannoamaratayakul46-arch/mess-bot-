@@ -136,6 +136,8 @@ const {
 
 const {
   classifyBanatTarget,
+  setBanatConversationMode,
+  isBanatConversationModeActive,
 } = require("./banat-targeting");
 
 const {
@@ -5273,6 +5275,78 @@ async function handleMessage(
   }
 
   // ==========================================================
+  // BANAT CONTROL
+  // ==========================================================
+  //
+  // Handle / BEFORE automatic Banat. Otherwise the same slash message
+  // can be processed using the previous state and then toggle afterward.
+  // The toggle controls both the persistent roast setting and the
+  // in-memory conversational target mode.
+  // ==========================================================
+
+  const banatControlMatch =
+    originalText.match(/^\/$/);
+
+  if (banatControlMatch) {
+    if (!isAdmin(senderId)) {
+      sendReplyWithTyping(
+        api,
+        [
+          "╭────── 🎀  BANAT CONTROL  🎀 ──────╮",
+          "",
+          "🔒 ADMIN ONLY",
+          "",
+          "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+        ].join("\n"),
+        threadID
+      );
+
+      return;
+    }
+
+    try {
+      const currentlyEnabled = await db.isRoastEnabled(threadId);
+      const enabled = !currentlyEnabled;
+
+      await db.setRoastEnabled(threadId, enabled);
+      setBanatConversationMode(threadId, enabled, senderId);
+
+      if (!enabled) {
+        lastRandomRoastByThread.delete(threadId);
+        sendReplyWithTyping(
+          api,
+          "bawi ka pag malakas ka na tanga",
+          threadID
+        );
+      } else {
+        sendReplyWithTyping(
+          api,
+          require("./slash-banats")(),
+          threadID
+        );
+      }
+
+      console.log(
+        "[BANAT] Conversation mode " +
+          (enabled ? "ENABLED" : "DISABLED") +
+          " in " +
+          threadId +
+          " by " +
+          senderId
+      );
+    } catch (error) {
+      console.error("[BANAT] Update failed:", error);
+      sendReplyWithTyping(
+        api,
+        "🔴 Failed to update banat settings.",
+        threadID
+      );
+    }
+
+    return;
+  }
+
+  // ==========================================================
   // AUTOMATIC BANAT
   // ==========================================================
   //
@@ -5281,8 +5355,7 @@ async function handleMessage(
   // ==========================================================
 
   if (
-    !originalText.startsWith("!") &&
-    !/^\/$/.test(originalText)
+    !originalText.startsWith("!")
   ) {
     const banatHandled = await handleAutomaticBanatMessage({
       api,
@@ -7012,64 +7085,6 @@ async function handleMessage(
     );
   }
 
-  // ==========================================================
-  // BANAT CONTROL
-  // ==========================================================
-
-  const banatControlMatch =
-    text.match(/^\/$/);
-
-  if (banatControlMatch) {
-    if (!isAdmin(senderId)) {
-      sendReplyWithTyping(
-        api,
-        [
-          "╭────── 🎀  BANAT CONTROL  🎀 ──────╮",
-          "",
-          "🔒 ADMIN ONLY",
-          "",
-          "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
-        ].join("\n"),
-        threadID
-      );
-
-      return;
-    }
-
-    const command = "toggle";
-
-    try {
-      const currentlyEnabled = await db.isRoastEnabled(threadId);
-      const enabled = !currentlyEnabled;
-      await db.setRoastEnabled(threadId, enabled);
-
-      if (!enabled) {
-        lastRandomRoastByThread.delete(threadId);
-      }
-
-      if (enabled) {
-        sendReplyWithTyping(
-          api,
-          require("./slash-banats")(),
-          threadID
-        );
-
-        // The existing self-listener reacts to this outgoing Banat message.
-      } else {
-        sendReplyWithTyping(
-          api,
-          "bawi ka pag malakas ka na tanga",
-          threadID
-        );
-      }
-    } catch (error) {
-      console.error("[BANAT] Update failed:", error);
-      sendReplyWithTyping(api, "🔴 Failed to update banat settings.", threadID);
-    }
-
-    return;
-  }
-
 }
 
 // ============================================================
@@ -7672,13 +7687,18 @@ async function handleAutomaticBanatMessage({
       error
     );
 
-    if (!conversationActive) {
-      return false;
-    }
+    return false;
   }
 
   if (!roastEnabled) {
+    setBanatConversationMode(threadId, false);
     return false;
+  }
+
+  // Keep the in-memory conversation mode synchronized with the persistent
+  // per-thread Banat setting. This also restores active mode after restart.
+  if (!isBanatConversationModeActive(threadId)) {
+    setBanatConversationMode(threadId, true);
   }
 
   // Never let ECLIPSE react to its own incoming self-listen event.
