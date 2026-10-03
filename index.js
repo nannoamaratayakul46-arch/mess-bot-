@@ -93,6 +93,7 @@ const {
 } = require("./rpg/love-quest");
 
 const { handleAiMessage } = require("./ai");
+const { generateTriggerReply } = require("./ai/provider");
 
 // ============================================================
 // MODERATION
@@ -3098,17 +3099,38 @@ app.use(dashboardCors);
 app.post(
   "/api/dev/banat/simulate",
   requireDashboardAccess,
-  (req, res) => {
+  async (req, res) => {
     try {
       const threadID = String(req.body?.threadID || "eclipse-lab").trim();
       const incomingText = String(req.body?.incomingText || "").slice(0, 4000);
-      const candidate = String(req.body?.candidate || "").slice(0, 4000);
+      let candidate = String(req.body?.candidate || "").slice(0, 4000).trim();
 
-      if (!candidate.trim()) {
+      if (!incomingText.trim()) {
         return res.status(400).json({
           ok: false,
-          error: "candidate is required.",
+          error: "incomingText is required.",
         });
+      }
+
+      // If the Lab candidate box is empty, let the same Groq trigger
+      // reply engine used by ECLIPSE generate the raw answer first.
+      if (!candidate) {
+        candidate = await generateTriggerReply({
+          trigger: "eclipse-lab",
+          groupName: "eclipse-lab",
+          incomingText,
+          fallback: "",
+          conversationContext: "(ECLIPSE Lab test — generate a natural reply to the incoming message.)",
+        });
+
+        candidate = String(candidate || "").trim();
+
+        if (!candidate) {
+          return res.status(502).json({
+            ok: false,
+            error: "AI returned an empty reply.",
+          });
+        }
       }
 
       const prepared = prepareBanatReply(
@@ -3122,6 +3144,7 @@ app.post(
         input: {
           incomingText,
           candidate,
+          candidateGenerated: !String(req.body?.candidate || "").trim(),
         },
         output: {
           text: prepared.text,
@@ -3136,7 +3159,7 @@ app.post(
       console.error("[ECLIPSE LAB] Banat simulation failed:", error);
       return res.status(500).json({
         ok: false,
-        error: "Banat simulation failed.",
+        error: error?.message || "Banat simulation failed.",
       });
     }
   }
