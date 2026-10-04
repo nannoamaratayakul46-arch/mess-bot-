@@ -108,6 +108,7 @@ const {
 
 const { handleAiMessage } = require("./ai");
 const { generateTriggerReply } = require("./ai/provider");
+const { isPrimaryUser } = require("./ai/access");
 
 // ============================================================
 // MODERATION
@@ -8749,7 +8750,7 @@ async function handleAutomaticBanatMessage({
   try {
     // Admin messages are allowed to trigger Banat, but never receive a
     // trigger/roast response. They go through the admin-safe natural pool.
-    const triggerReply = isAdmin(senderId)
+    const triggerReply = isAdmin(senderId) || isPrimaryUser(senderId)
       ? null
       : await getTriggerReply(
           body,
