@@ -11,6 +11,14 @@ const { login } = require("ws3-fca");
 const db = require("./db");
 
 const {
+  ensureNicknameGuardTable,
+  setNicknameGuard,
+  getNicknameGuard,
+  clearNicknameGuard,
+  handleNicknameGuardEvent,
+} = require("./nickname-guard");
+
+const {
   handleVerseCommand,
   startBibleVerseScheduler,
   stopBibleVerseScheduler,
@@ -4369,6 +4377,12 @@ function attemptLogin() {
       try {
         await db.connect();
 
+        try {
+          await ensureNicknameGuardTable();
+        } catch (error) {
+          console.error("[NICK GUARD] Failed to initialize:", error);
+        }
+
         console.log(
           "Neon database connected successfully."
         );
@@ -4569,6 +4583,15 @@ function attemptLogin() {
             return;
           }
 
+          // Nickname guard listens to Messenger thread events before the
+          // normal message router.
+          if (event.type === "event") {
+            void handleNicknameGuardEvent(api, event).catch((error) => {
+              console.error("[NICK GUARD] Event handler failed:", error);
+            });
+            return;
+          }
+
           if (
             (
               event.type ===
@@ -4714,6 +4737,102 @@ async function handleMessage(
 
   const senderIsAdmin =
     isAdmin(senderId);
+
+  // ==========================================================
+  // NICKNAME GUARD — OWNER ONLY
+  // .nn        -> protect this GC and your nickname
+  // .nn status -> show the current guard
+  // .nn off    -> disable it for this GC
+  // ==========================================================
+
+  const nicknameGuardMatch =
+    originalText.match(/^\\.nn(?:\\s+(status|off|on))?$/i);
+
+  if (nicknameGuardMatch) {
+    if (!isOwner(senderId)) {
+      sendReplyWithTyping(
+        api,
+        "🔒 .nn is owner-only.",
+        threadID
+      );
+      return;
+    }
+
+    const action =
+      String(nicknameGuardMatch[1] || "on").toLowerCase();
+
+    try {
+      if (action === "status") {
+        const guard = await getNicknameGuard(threadID);
+
+        sendReplyWithTyping(
+          api,
+          [
+            "╭────── 🎀  NICK GUARD  🎀 ──────╮",
+            "",
+            "୨୧ this GC",
+            "    ♡ " + (guard?.enabled ? "🟢 PROTECTED" : "🔴 OFF"),
+            "",
+            guard?.enabled
+              ? "♡ your nickname will be cleared automatically."
+              : "♡ run .nn to protect your nickname here.",
+            "",
+            "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+          ].join("\n"),
+          threadID
+        );
+
+        return;
+      }
+
+      if (action === "off") {
+        const removed = await clearNicknameGuard(threadID);
+
+        sendReplyWithTyping(
+          api,
+          removed
+            ? "🎀 Nickname guard is OFF for this GC."
+            : "🎀 Nickname guard was already OFF for this GC.",
+          threadID
+        );
+
+        return;
+      }
+
+      await setNicknameGuard(threadID, senderId, true);
+
+      sendReplyWithTyping(
+        api,
+        [
+          "╭────── 🎀  NICK GUARD  🎀 ──────╮",
+          "",
+          "🛡️ NICKNAME PROTECTED",
+          "",
+          "୨୧ this GC is now registered.",
+          "    ♡ your nickname = protected",
+          "",
+          "♡ if someone changes it,",
+          "  ECLIPSE will clear it automatically.",
+          "",
+          "୨୧ controls",
+          "    ♡ .nn status",
+          "    ♡ .nn off",
+          "",
+          "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
+        ].join("\n"),
+        threadID
+      );
+    } catch (error) {
+      console.error("[NICK GUARD] Command failed:", error);
+      sendReplyWithTyping(
+        api,
+        "🔴 Nickname guard could not be updated.",
+        threadID
+      );
+    }
+
+    return;
+  }
 
   // ==========================================================
   // ADMIN CONTROL DENIAL
@@ -8707,6 +8826,5 @@ setInterval(() => {
       `Music: ${music.activeDownloads}/${MUSIC_MAX_GLOBAL_DOWNLOADS} downloads`
   );
 }, 60_000);
-
 
 
