@@ -60,17 +60,13 @@ const BANAT_HESITATION_RATE = Math.min(
 // Keep response length/style varied. Short reactions are intentionally
 // favored for short incoming messages so Banat does not answer everything
 // with a full sentence.
-const BANAT_SHORT_REPLY_RATE = Math.min(
-  0.65,
-  Math.max(0, Number(process.env.ECLIPSE_BANAT_SHORT_REPLY_RATE || 0.24))
+// Full Banat lines are preferred. The old short-reply shaper was truncating
+// the large response pool into the same handful of opening phrases, which
+// made Banat feel repetitive even when it selected a different source line.
+const BANAT_FULL_REPLY_RATE = Math.min(
+  1,
+  Math.max(0.80, Number(process.env.ECLIPSE_BANAT_FULL_REPLY_RATE || 0.96))
 );
-
-const BANAT_MINIMAL_REACTION_RATE = Math.min(
-  0.30,
-  Math.max(0, Number(process.env.ECLIPSE_BANAT_MINIMAL_REACTION_RATE || 0.07))
-);
-
-const SHORT_REACTION_RE = /^(?:bro|bruh|nah|wtf|what|wait|okay|ok|fr|real|damn|pls|please|😭+|💀+|\?+|!+|lol+|lmao+|lmfao+)$/i;
 
 function countReplyWords(text) {
   return String(text || "").trim().split(/\s+/).filter(Boolean).length;
@@ -96,53 +92,20 @@ function incomingEnergy(text) {
 }
 
 function chooseReplyShape(text, incomingText, context = {}) {
-  const incomingShort = isShortIncoming(incomingText);
-  const energy = incomingEnergy(incomingText);
   const words = countReplyWords(text);
-  const random = Math.random();
 
   if (!text || words <= 2) return text;
 
-  // Short incoming messages should often get a quick reaction instead of
-  // a polished paragraph.
-  if (
-    incomingShort &&
-    random < BANAT_MINIMAL_REACTION_RATE
-  ) {
-    const reactions = energy >= 2
-      ? ["😭", "💀", "bro 😭", "nah 😭", "LMFAO"]
-      : ["bro", "nah", "wait", "😭", "💀"];
-
-    return reactions[Math.floor(Math.random() * reactions.length)];
+  // Preserve the complete selected Banat line. Only allow the old
+  // conversational shortening in the rarest cases, and never chop a line
+  // merely because the incoming message was short.
+  if (Math.random() < BANAT_FULL_REPLY_RATE) {
+    return text;
   }
 
-  if (
-    incomingShort &&
-    random < BANAT_SHORT_REPLY_RATE &&
-    words >= 4
-  ) {
+  if (context.momentum >= 6 && words >= 18) {
     const parts = String(text).trim().split(/\s+/);
-    const target = Math.min(
-      parts.length,
-      energy >= 2 ? 5 : 7
-    );
-
-    // Prefer a natural front-loaded reaction rather than chopping a
-    // sentence at a random point.
-    if (/^(?:baby|bro|bruh|nah|wait|okay|lmao|lmfao|haha)/i.test(text)) {
-      return parts.slice(0, target).join(" ").replace(/[,.]$/, "");
-    }
-  }
-
-  // Very short conversational momentum: occasionally keep a response
-  // short even when the candidate itself is longer.
-  if (
-    context.momentum >= 4 &&
-    words >= 8 &&
-    random < 0.12
-  ) {
-    const parts = String(text).trim().split(/\s+/);
-    return parts.slice(0, 6).join(" ").replace(/[,.]$/, "");
+    return parts.slice(0, 12).join(" ").replace(/[,.]$/, "");
   }
 
   return text;
