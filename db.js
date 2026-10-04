@@ -148,6 +148,30 @@ async function connect() {
   `);
 
   // ═════════════════════════════════════════════════════════
+
+  // ═════════════════════════════════════════════════════════
+  // AUTOMATIC BIBLE VERSES
+  // ═════════════════════════════════════════════════════════
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS bible_verse_settings (
+      thread_id TEXT PRIMARY KEY,
+      enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      updated_at BIGINT NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS bible_verse_drops (
+      slot_key TEXT PRIMARY KEY,
+      verse_id TEXT NOT NULL,
+      created_at BIGINT NOT NULL
+    );
+
+    INSERT INTO bible_verse_settings(thread_id, enabled, updated_at)
+    SELECT thread_id, TRUE, ${Date.now()}
+    FROM thread_settings
+    ON CONFLICT(thread_id) DO NOTHING;
+  `);
+
   // MODERATION
   // ═════════════════════════════════════════════════════════
 
@@ -3362,6 +3386,71 @@ async function setThreadSettings(threadId, fields) {
   return getThreadSettings(id);
 }
 
+
+async function isBibleVerseEnabled(threadId) {
+  const conn = requireConn();
+  const id = String(threadId);
+  const { rows } = await conn.query(
+    `SELECT enabled FROM bible_verse_settings WHERE thread_id = $1`,
+    [id]
+  );
+  if (!rows.length) {
+    await conn.query(
+      `INSERT INTO bible_verse_settings(thread_id, enabled, updated_at)
+       VALUES($1, TRUE, $2) ON CONFLICT(thread_id) DO NOTHING`,
+      [id, Date.now()]
+    );
+    return true;
+  }
+  return rows[0].enabled === true;
+}
+
+async function setBibleVerseEnabled(threadId, enabled) {
+  const conn = requireConn();
+  const id = String(threadId);
+  await conn.query(
+    `INSERT INTO bible_verse_settings(thread_id, enabled, updated_at)
+     VALUES($1, $2, $3)
+     ON CONFLICT(thread_id)
+     DO UPDATE SET enabled = EXCLUDED.enabled, updated_at = EXCLUDED.updated_at`,
+    [id, Boolean(enabled), Date.now()]
+  );
+  return Boolean(enabled);
+}
+
+async function getBibleVerseEnabledThreadIds() {
+  const { rows } = await requireConn().query(
+    `SELECT thread_id FROM bible_verse_settings WHERE enabled = TRUE ORDER BY thread_id`
+  );
+  return rows.map((row) => String(row.thread_id));
+}
+
+async function getBibleVerseDrop(slotKey) {
+  const { rows } = await requireConn().query(
+    `SELECT slot_key, verse_id, created_at FROM bible_verse_drops WHERE slot_key = $1`,
+    [String(slotKey)]
+  );
+  return rows[0] || null;
+}
+
+async function getRecentBibleVerseIds(limit = 8) {
+  const safeLimit = Math.max(1, Math.min(100, Number(limit) || 8));
+  const { rows } = await requireConn().query(
+    `SELECT verse_id FROM bible_verse_drops ORDER BY created_at DESC LIMIT $1`,
+    [safeLimit]
+  );
+  return rows.map((row) => String(row.verse_id));
+}
+
+async function recordBibleVerseDrop(slotKey, verseId) {
+  const { rowCount } = await requireConn().query(
+    `INSERT INTO bible_verse_drops(slot_key, verse_id, created_at)
+     VALUES($1, $2, $3) ON CONFLICT(slot_key) DO NOTHING`,
+    [String(slotKey), String(verseId), Date.now()]
+  );
+  return rowCount === 1;
+}
+
 async function isRoastEnabled(threadId) {
   const settings = await getThreadSettings(threadId);
   return settings.roast_enabled === true;
@@ -3852,6 +3941,12 @@ module.exports = {
   setThreadSettings,
 
   // Roast / Banat
+  isBibleVerseEnabled,
+  setBibleVerseEnabled,
+  getBibleVerseEnabledThreadIds,
+  getBibleVerseDrop,
+  getRecentBibleVerseIds,
+  recordBibleVerseDrop,
   isRoastEnabled,
   setRoastEnabled,
   isBanatLinkEnabled,
