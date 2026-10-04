@@ -1,16 +1,23 @@
-const replies = Object.freeze([
-  "puta, andito na God niyo, supaen niyo ttko",
-  "asan na yung mga mahihinang tae? gagawin kong matigas na tubol yan",
-  "hoy babaeng mukhang acne, sabi ko wag ka mag yabang dito",
-  "kaninong ea to? kantutin ko",
-  "Hev Abi is otw to save u, baby."
-]);
+"use strict";
+
+const { groups } = require("./triggers");
 
 function pickSlashBanat() {
+  const group = groups.find((item) => item.name === "banat-natural");
+  const replies = Array.isArray(group?.replies) ? group.replies : [];
+
+  if (!replies.length) {
+    return "okay, banat is on 😭";
+  }
+
   return replies[Math.floor(Math.random() * replies.length)];
 }
 
-pickSlashBanat.is = (text) => replies.includes(String(text || ""));
-pickSlashBanat.replies = replies;
+pickSlashBanat.is = (text) =>
+  String(groups.find((item) => item.name === "banat-natural")?.replies || "")
+    .includes(String(text || ""));
+
+pickSlashBanat.replies =
+  groups.find((item) => item.name === "banat-natural")?.replies || [];
 
 module.exports = pickSlashBanat;
