@@ -27,44 +27,38 @@ const durationEl = document.getElementById("duration");
 const status = document.getElementById("status");
 
 const timeline = [
-  { start: 0.000,   end: 7.733,   text: "SO WHAT IF I CALL?" },
-
-  { start: 7.733,   end: 12.400,  text: "AND YOU PICK UP THE PHONE" },
-  { start: 12.400,   end: 15.367,  text: "AND I USE THIS HOLIDAY" },
-  { start: 15.367,   end: 20.867,  text: "TO MAKE MY WAY TO YOUR GHOST" },
-
-  { start: 20.867,  end: 33.167,  text: "YOU WALKED IN THE PARTY, YOUR COAT WAS UNTIED" },
-  { start: 33.167,  end: 41.367,  text: "SLAMMING THE DOOR 'CAUSE IT'S COLDER OUTSIDE" },
-  { start: 41.367,  end: 51.167,  text: "NOW I WON'T FORGET THAT MOMENT LIKE THE BLINK OF AN EYE" },
-  { start: 51.167,  end: 57.967,  text: "YOU'RE OFF TO THE BEACH NOW 'TIL THE WEATHER GETS NICE" },
-
-  { start: 57.967,  end: 62.367,  text: "BUT WHAT IF I CALL?" },
-  { start: 62.367,  end: 67.334,  text: "AND YOU PICK UP THE PHONE" },
-  { start: 67.334,  end: 70.334,  text: "AND I USE THIS HOLIDAY" },
-  { start: 70.334,  end: 76.234,  text: "TO MAKE MY WAY TO YOUR GHOST" },
-
-  { start: 76.234,  end: 80.767,  text: "OH, WHAT IF YOU'RE LONELY?" },
-  { start: 80.767,  end: 85.434,  text: "AND YOU KNOW I AM TOO" },
-  { start: 85.434,  end: 88.301,  text: "AND I GET THE CHANCE TO SAY" },
-  { start: 88.301,  end: 94.768,  text: "I WISH I DIDN'T BUT I MISS YOU" },
-
-  { start: 94.768,  end: 96.568,  text: "I MISS YOU" },
-  { start: 96.568,  end: 103.734, text: "YOU KNOW IT'S TRUE" },
-  { start: 103.734, end: 108.534, text: "YEAH, I MISS YOU" },
-  { start: 108.534, end: 112.701, text: "YOU KNOW IT'S TRUE" },
-
-  { start: 112.701, end: 117.301, text: "SO WHAT IF I CALL?" },
-  { start: 117.301, end: 122.068, text: "AND YOU PICK UP THE PHONE" },
-  { start: 122.068, end: 125.268, text: "AND I USE THIS HOLIDAY" },
-  { start: 125.268, end: 131.201, text: "TO MAKE MY WAY TO YOUR GHOST" },
-
-  { start: 131.201, end: 133.601, text: "OH, WHAT IF YOU'RE LONELY?" },
-  { start: 133.601, end: 140.501, text: "AND YOU KNOW I AM TOO" },
-  { start: 140.501, end: 143.601, text: "AND I GET THE CHANCE TO SAY" },
-  { start: 143.601, end: 149.868, text: "I WISH I DIDN'T BUT I MISS YOU" },
-
-  { start: 149.868, end: 151.802, text: "I MISS YOU" },
-  { start: 151.802, end: 162.702, text: "…" }
+  { start: 18.31, end: 20.60, text: "SO WHAT IF I CALL?" },
+  { start: 20.60, end: 22.88, text: "AND YOU PICK UP THE PHONE" },
+  { start: 22.88, end: 25.17, text: "AND I USE THIS HOLIDAY" },
+  { start: 25.17, end: 27.45, text: "TO MAKE MY WAY TO YOUR GHOST" },
+  { start: 27.45, end: 29.74, text: "YOU WALKED IN THE PARTY, YOUR COAT WAS UNTIED" },
+  { start: 29.74, end: 32.02, text: "SLAMMING THE DOOR 'CAUSE IT'S COLDER OUTSIDE" },
+  { start: 32.02, end: 34.31, text: "NOW I WON'T FORGET THAT MOMENT LIKE THE BLINK OF AN EYE" },
+  { start: 34.31, end: 36.60, text: "YOU'RE OFF TO THE BEACH NOW 'TIL THE WEATHER GETS NICE" },
+  { start: 36.60, end: 38.88, text: "BUT WHAT IF I CALL?" },
+  { start: 38.88, end: 41.17, text: "AND YOU PICK UP THE PHONE" },
+  { start: 41.17, end: 43.45, text: "AND I USE THIS HOLIDAY" },
+  { start: 43.45, end: 45.74, text: "TO MAKE MY WAY TO YOUR GHOST" },
+  { start: 45.74, end: 48.02, text: "OH, WHAT IF YOU'RE LONELY?" },
+  { start: 48.02, end: 50.31, text: "AND YOU KNOW I AM TOO" },
+  { start: 50.31, end: 52.60, text: "AND I GET THE CHANCE TO SAY" },
+  { start: 52.60, end: 54.88, text: "I WISH I DIDN'T BUT I MISS YOU" },
+  { start: 54.88, end: 57.17, text: "I MISS YOU" },
+  { start: 57.17, end: 59.45, text: "YOU KNOW IT'S TRUE" },
+  { start: 59.45, end: 61.74, text: "YEAH, I MISS YOU" },
+  { start: 61.74, end: 64.02, text: "YOU KNOW IT'S TRUE" },
+  { start: 64.02, end: 66.31, text: "SO WHAT IF I CALL?" },
+  { start: 66.31, end: 68.60, text: "AND YOU PICK UP THE PHONE" },
+  { start: 68.60, end: 70.88, text: "AND I USE THIS HOLIDAY" },
+  { start: 70.88, end: 73.17, text: "TO MAKE MY WAY TO YOUR GHOST" },
+  { start: 73.17, end: 75.45, text: "OH, WHAT IF YOU'RE LONELY?" },
+  { start: 75.45, end: 77.74, text: "AND YOU KNOW I AM TOO" },
+  { start: 77.74, end: 80.02, text: "AND I GET THE CHANCE TO SAY" },
+  { start: 80.02, end: 82.31, text: "I WISH I DIDN'T BUT I MISS YOU" },
+  { start: 82.31, end: 84.60, text: "I MISS YOU" },
+  { start: 84.60, end: 86.88, text: "…" },
+  { start: 86.88, end: 89.17, text: "…" },
+  { start: 89.17, end: 91.46, text: "…" }
 ];
 
 let W = 0;
@@ -173,7 +167,7 @@ function spawnHeartBurst(x, y, count = 140) {
 }
 
 
-const FINAL_CINEMATIC_AT = 151.802;
+const FINAL_CINEMATIC_AT = 91.46;
 let finalCinematicActive = false;
 
 function formatTime(value) {
@@ -486,7 +480,7 @@ function pauseCoverVideo() {
 
 function updatePlayerUI() {
   const t = audio.currentTime || 0;
-  const duration = Number.isFinite(audio.duration) ? audio.duration : 162.7;
+  const duration = Number.isFinite(audio.duration) ? audio.duration : 139;
   const pct = duration > 0 ? (t / duration) * 100 : 0;
 
   progress.value = String(Math.min(100, Math.max(0, pct)));
@@ -561,7 +555,7 @@ muteBtn.addEventListener("click", () => {
 });
 
 progress.addEventListener("input", () => {
-  const duration = Number.isFinite(audio.duration) ? audio.duration : 162.7;
+  const duration = Number.isFinite(audio.duration) ? audio.duration : 139;
   audio.currentTime = (Number(progress.value) / 100) * duration;
   syncCoverVideo(true);
   updateLyric(audio.currentTime, true);
