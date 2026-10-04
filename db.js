@@ -54,19 +54,28 @@ let pool = null;
 async function connect() {
   if (pool) return pool;
 
-  if (!process.env.DATABASE_URL) {
-    throw new Error(
-      "DATABASE_URL is not set. Add your Neon connection string to Render Environment Variables."
-    );
-  }
+  // Initialization is atomic from the application's point of view. If a
+  // migration/table setup query fails, discard the half-initialized pool so
+  // the next connect attempt can build a clean pool instead of reusing a
+  // broken one.
+  let initializingPool = null;
 
-  pool = new Pool({
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error(
+        "DATABASE_URL is not set. Add your Neon connection string to Render Environment Variables."
+      );
+    }
+
+    pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
     max: Number(process.env.DB_POOL_MAX) || 10,
     idleTimeoutMillis: 30_000,
     connectionTimeoutMillis: 10_000,
   });
+
+  initializingPool = pool;
 
   pool.on("error", (error) => {
     console.error("[DB] Unexpected pool error:", error.message);
@@ -1235,8 +1244,25 @@ async function connect() {
       ON ai_sessions(character_id, thread_id, user_id, active);
   `);
 
-  console.log("[DB] Neon PostgreSQL ONLINE ✓");
-  return pool;
+    console.log("[DB] Neon PostgreSQL ONLINE ✓");
+    return pool;
+  } catch (error) {
+  if (initializingPool) {
+    try {
+      await initializingPool.end();
+    } catch (closeError) {
+      console.error(
+        "[DB] Failed to close the failed initialization pool:",
+        closeError?.message || closeError
+      );
+    }
+  }
+
+  if (pool === initializingPool) {
+    pool = null;
+  }
+
+  throw error;
 }
 
 // ═══════════════════════════════════════════════════════════
