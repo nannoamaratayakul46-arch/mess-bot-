@@ -3574,14 +3574,7 @@ app.post(
 
     loginAttempt = 0;
     listenFailureCount = 0;
-    async function initializeMessengerSession() {
-  // Prefer the newest durable checkpoint. If it is unavailable or invalid,
-  // retain the deployment-provided FB_COOKIES fallback.
-  await loadPersistedFacebookSessionState();
-  attemptLogin();
-}
-
-void initializeMessengerSession();
+    attemptLogin();
 
     return res.status(202).json({
       ok: true,
@@ -3599,7 +3592,6 @@ app.post(
 
     if (
       !activeMessengerApi ||
-      !watchdogMessengerConnected ||
       activeListenerGeneration <= 0
     ) {
       attemptLogin();
@@ -3646,7 +3638,6 @@ app.post(
 
     if (
       !activeMessengerApi ||
-      !watchdogMessengerConnected ||
       activeListenerGeneration <= 0
     ) {
       attemptLogin();
@@ -4115,12 +4106,20 @@ async function loadPersistedFacebookSessionState() {
     }
 
     appState = restored;
+    appStateSource = "durable";
+    durableSessionRejected = false;
 
     console.log("[AUTH] Durable Messenger session checkpoint restored.");
     return true;
   } catch (error) {
+    // Keep the deployment-provided FB_COOKIES value untouched. A durable
+    // checkpoint is optional; if it cannot be restored, FB_COOKIES remains
+    // the authoritative fallback.
+    appState = deploymentAppState;
+    appStateSource = deploymentAppState ? "fb_cookies" : "none";
+
     console.warn(
-      "[AUTH] Durable session restore unavailable; falling back to FB_COOKIES:",
+      "[AUTH] Durable session restore unavailable; using FB_COOKIES fallback:",
       error?.message || error
     );
     return false;
@@ -4134,10 +4133,16 @@ async function loadPersistedFacebookSessionState() {
     }
 
 let appState;
+let deploymentAppState = null;
+let appStateSource = "none";
+let durableSessionRejected = false;
 
 try {
   appState =
     readAppState();
+
+  deploymentAppState = appState;
+  appStateSource = appState ? "fb_cookies" : "none";
 
   if (!appState) {
     console.warn(
@@ -4411,7 +4416,27 @@ function attemptLogin() {
           `[LOGIN] Login failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
         );
 
-        if (!activeMessengerApi) {
+        // A durable checkpoint can be older than the deployment-provided
+        // FB_COOKIES value. If that checkpoint is rejected, immediately fall
+        // back to FB_COOKIES once instead of retrying stale cookies forever.
+        if (
+          !isReplacementSession &&
+          appStateSource === "durable" &&
+          deploymentAppState &&
+          !durableSessionRejected
+        ) {
+          durableSessionRejected = true;
+          appState = deploymentAppState;
+          appStateSource = "fb_cookies";
+          loginAttempt = 0;
+          dashboardLoginError =
+            "Durable Messenger session was rejected; retrying with FB_COOKIES.";
+          console.warn(
+            "[AUTH] Durable session rejected; falling back to FB_COOKIES."
+          );
+        }
+
+        if (!activeMessengerApi && appStateSource !== "durable") {
           watchdogSetMessengerConnected(false);
         }
 
@@ -4465,6 +4490,8 @@ function attemptLogin() {
       // Persist the newest session returned by ws3-fca. This is what makes
       // a refreshed cookie survive Render restarts and redeploys.
       await persistFacebookSessionState(appState);
+      appStateSource = "durable";
+      durableSessionRejected = false;
 
       preferDashboardCredentials = false;
       pendingFacebookAppState = null;
@@ -4552,11 +4579,18 @@ function attemptLogin() {
         }
       } catch (error) {
         console.error(
-          "Database connection failed:",
+          "[DB] Database initialization failed after Messenger login; " +
+            "keeping the Facebook session alive:",
           error
         );
 
-        process.exit(1);
+        dashboardLoginError =
+          "Messenger is connected, but database initialization is temporarily unavailable.";
+
+        pushDashboardEvent(
+          "database",
+          "Database initialization failed; Messenger session remains connected."
+        );
       }
 
       // ========================================================
@@ -4689,10 +4723,10 @@ function attemptLogin() {
           }
 
           if (listenError) {
-            // ws3-fca owns reconnect/relogin. ECLIPSE does not create
-            // a second login/reconnect loop that can race the library.
-            watchdogSetMessengerConnected(false);
-
+            // A listener/MQTT hiccup is not the same thing as a Facebook
+            // authentication failure. ws3-fca owns its reconnect/relogin
+            // path, so keep the known-good session marked connected and do
+            // not start a competing login loop.
             listenFailureCount++;
 
             console.error(
@@ -4802,8 +4836,15 @@ function attemptLogin() {
     handleLoginInvocationFailure(error);
   }
 }
+async function initializeMessengerSession() {
+  // Prefer the newest durable checkpoint. If it is unavailable or invalid,
+  // loadPersistedFacebookSessionState() leaves the deployment-provided
+  // FB_COOKIES fallback in place.
+  await loadPersistedFacebookSessionState();
+  attemptLogin();
+}
 
-attemptLogin();
+void initializeMessengerSession();
 
 // ============================================================
 // ACTIVE THREAD TRACKING
