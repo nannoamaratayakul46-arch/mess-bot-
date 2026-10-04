@@ -661,286 +661,90 @@ const groups = [
 
 
 // ============================================================
-  // RANDOM RAP DROPS
-  // ============================================================
+// BANAT REPLY DIVERSITY
+// ============================================================
+// Rap/cypher drops were intentionally removed. Banat now stays in its
+// normal conversational voice and focuses on the full one-liner pool.
+//
+// The pool is de-duplicated before selection because "trash-talk" and
+// "banat-expanded" contain overlapping material. That was making a large
+// list behave like a much smaller list in practice.
+// ============================================================
 
-const RAP_DROP_CHANCE = 0.14;
-const RAP_RECENT_LIMIT = 6;
+const BANAT_RECENT_LIMIT = Math.max(
+  20,
+  Math.min(60, Number(process.env.ECLIPSE_BANAT_RECENT_LIMIT || 36))
+);
 
-const rapTypes = [
-  {
-    name: "battle",
-    replies: [
-      "you came for the smoke, now the whole room knows / big talk in the chat but your punchline froze / I don't need a crown, the cadence already shows / you brought a whole speech, I brought the closing blows",
-      "step in the ring, better tighten that stance / one line from me got your whole take a chance / you talk like a boss but you move like a glance / this ain't luck, bro, this is timing and plans",
-      "you wanted a round, so I gave you the verse / tried to make a comeback, somehow made it worse / every bar lands clean, every excuse gets dispersed / you brought your best line and still came in reverse",
-      "talk loud, stand proud, but the rhythm says no / you can raise all the volume, still the facts gonna show / I don't chase every argument, I just let the bars flow / then watch your whole comeback disappear in the echo",
-      "you entered with confidence, left with a lesson / every line got pressure, every pause got direction / no need for a speech, no need for aggression / the beat says enough, that's the final assessment"
-    ]
-  },
-  {
-    name: "freestyle",
-    replies: [
-      "off the top, no script, just a spark and a beat / you brought ten explanations, I brought one clean feat / every word got a bounce, every bar got a seat / if the chat wants a round, then the rhythm's complete",
-      "no pen, no plan, just a flow in the moment / you keep forcing the point, I keep casually owning it / every bar moves clean, every rhyme keeps going / you thought this was random, now the whole chat is showing",
-      "freestyle mode, let the syllables run / you started with a challenge, now the verse has begun / no need for a setup when the cadence is fun / you can keep typing paragraphs, I'm already on one",
-      "beat in my head, got the room on pause / you brought a weak take with a list of applause / I turn one little line into sixteen bars / then leave your whole argument parked under stars"
-    ]
-  },
-  {
-    name: "taglish",
-    replies: [
-      "angas sa chat pero pag bars na, tahimik / sabi mo ikaw solid, bakit verse mo sablay at pilit / I keep it clean sa beat, bawat linya precise / habang ikaw paikot-ikot, same point, same advice",
-      "nagdadaldal ka nang todo, pero walang punch / I got rhythm sa sentence, bawat cadence may crunch / kung gusto mo ng laban, sige, step to the front / pero wag kang magtaka kung sa chorus ka ma-stuck",
-      "eto ang banat, hindi kailangan ng hype / isang verse lang sapat para makita ang type / you talk about winning, but the timing ain't right / ako chill lang sa corner, still controlling the mic",
-      "wala namang galit, bars lang ang usapan / kung weak ang iyong point, natural lang masapawan / you brought noise to the room, I brought rhythm and pattern / pag tapos nitong verse, balik ka na sa drafting"
-    ]
-  },
-  {
-    name: "quick-bars",
-    replies: [
-      "talk slick, miss quick / weak take, same trick / one bar, clean hit / next round, don't quit",
-      "big talk, no proof / weak line, no roof / I rhyme, you loop / chat knows the truth",
-      "you type, I rhyme / you stall, I shine / one beat, one line / now that's good timing",
-      "no hype, just flow / no fear, just show / you came too slow / now everybody knows",
-      "one line, two bars / you reached way too far / I stay on beat / you stay where you are"
-    ]
-  },
-  {
-    name: "story-rap",
-    replies: [
-      "you walked in the chat with a point to defend / typed one little comeback, then doubled it again / by the third paragraph even your logic needed a friend / now the verse got the ending that the argument couldn't send",
-      "once upon a group chat, somebody talked brave / brought a weak little take like a trophy to save / then the rhythm showed up and the whole room behaved / funny how confidence disappears when the bars get engraved",
-      "late in the chat, when the messages were loud / somebody claimed victory and started feeling proud / then a random little verse pulled the whole thing out the crowd / now the loudest person suddenly ain't making a sound",
-      "you started with a question, turned it into a fight / then kept adding details trying to make yourself right / I turned the whole scene into four bars tonight / now the ending writes itself and the timing feels right"
-    ]
-  },
-  {
-    name: "pinoy-cypher",
-    replies: [
-      "sa chat ka matapang, sa bars kailangan steady / bawat salita may timbang, bawat rhyme dapat ready / di kailangan mag-ingay para masabing heavy / isang clean na verse lang, tapos alam na who's ready",
-      "dito sa cypher, walang takas sa timing / kung puro yabang lang, mahuhuli rin sa rhyming / chill lang ang delivery pero sharp ang lining / pag pumasok ang beat, lahat biglang quiet sa timing",
-      "banat kung banat, pero gawin mong maayos / hindi puro sigaw, dapat may laman ang bawat kilos / isang verse, isang flow, walang kailangang palabok / pag rhythm na ang usapan, kita agad kung sino ang sablay",
-      "walang drama sa mic, puro bars at timing / kung mahina ang point mo, wag pilitin ang rhyming / I keep the flow clean, no need for extra styling / pag tapos ng round, balik tayo sa normal na chatting"
-    ]
+function dedupeBanatReplies(replies) {
+  const seen = new Set();
+  const output = [];
+
+  for (const reply of Array.isArray(replies) ? replies : []) {
+    const text = String(reply || "").trim();
+    const key = text
+      .toLowerCase()
+      .normalize("NFKC")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    output.push(text);
   }
-];
 
-const recentRapDrops = [];
-const recentBanatReplies = [];
-
-const banatContextState = new Map();
-const BANAT_CONTEXT_TTL_MS = 20 * 60 * 1000;
-
-const BANAT_CONTEXT_RULES = Object.freeze([
-  { name: "question", words: ["why", "what", "how", "who", "where", "when", "bakit", "ano", "paano", "sino", "saan", "kelan", "question", "tanong", "explain"] },
-  { name: "confidence", words: ["confident", "confidence", "yabang", "proud", "right", "tama", "expert", "alam ko", "sure", "obvious", "claim"] },
-  { name: "argument", words: ["argue", "argument", "debate", "logic", "point", "facts", "fact", "evidence", "source", "citation", "resibo", "claim"] },
-  { name: "insult", words: ["gago", "tanga", "bobo", "tukmol", "weak", "trash", "stupid", "patawa", "kalokohan", "kabobohan"] },
-  { name: "drama", words: ["galit", "inis", "naiinis", "drama", "iyak", "umiiyak", "tampo", "serious", "seryoso", "panic"] },
-  { name: "flirty", words: ["cute", "baby", "lambing", "kiss", "halik", "love", "mahal", "miss", "pansin", "attention"] },
-]);
-
-function banatClassifyIncoming(text) {
-  const normalized = normalizeText(text);
-  if (!normalized) return "general";
-
-  const wordCount = normalized.split(/\s+/).filter(Boolean).length;
-  if (wordCount >= 35 || normalized.length >= 240) return "long_message";
-
-  let best = { name: "general", score: 0 };
-  for (const rule of BANAT_CONTEXT_RULES) {
-    let score = 0;
-    for (const word of rule.words) {
-      if (normalized.includes(word)) score++;
-    }
-    if (score > best.score) best = { name: rule.name, score };
-  }
-  return best.name;
+  return output;
 }
 
-function banatReplyFamily(reply) {
-  const text = normalizeText(reply);
-  if (!text) return "general";
-  const body = text.replace(/^baby[, ]+/, "");
-  if (/confidence|yabang|proud|confident/.test(body)) return "confidence";
-  if (/logic|point|argument|evidence|citation|source|facts|claim|sense/.test(body)) return "argument";
-  if (/cute|lambing|kiss|halik|miss|attention|sweet|pout|favorite/.test(body)) return "flirty";
-  if (/dramatic|tampo|panic|calm|relax|behave|breathe|serious/.test(body)) return "drama";
-  if (/speech|paragraph|daldal|reply|sentence/.test(body)) return "long_message";
-  if (/question|tanong|explain|tutorial|sagot/.test(body)) return "question";
-  if (/tanga|kabobohan|silly|nonsense|kalokohan|wrong|mali|sablay/.test(body)) return "insult";
-  return "general";
-}
+function pickDiverseBanatReply(replies, threadId, incomingText) {
+  const pool = dedupeBanatReplies(replies);
+  if (!pool.length) return null;
 
-function banatRememberIncoming(threadId, incomingText) {
   const key = String(threadId || "unknown");
-  const now = Date.now();
-  let state = banatContextState.get(key);
+  const recent = banatContextState.get(key)?.recentReplies || [];
 
-  if (!state || now - state.at > BANAT_CONTEXT_TTL_MS) {
-    state = {
-      at: now,
-      recentFamilies: [],
-      recentReplies: [],
-      recentMessages: [],
-      runningBits: [],
-    };
-  }
+  // Prefer replies that are not only unseen, but also materially longer or
+  // structurally different from the last few responses. This makes the bot
+  // actually explore the large pool instead of living in its shortest,
+  // safest-looking answers.
+  const unseen = pool.filter((reply) => !recent.includes(reply));
+  const source = unseen.length ? unseen : pool;
 
-  const text = String(incomingText || "").trim();
-  if (!text) return state;
+  const recentWords = recent
+    .slice(-6)
+    .map((reply) => new Set(String(reply).toLowerCase().split(/\s+/).filter(Boolean)));
 
-  state.at = now;
-  state.recentMessages.push({
-    text: text.slice(0, 500),
-    category: banatClassifyIncoming(text),
-    at: now,
+  const scored = source.map((reply) => {
+    const words = String(reply).split(/\s+/).filter(Boolean);
+    const wordCount = words.length;
+    const normalized = String(reply).toLowerCase();
+    let score = Math.min(12, wordCount / 4);
+
+    // Penalize replies that share too much vocabulary with recent replies.
+    for (const prior of recentWords) {
+      const overlap = words.reduce(
+        (count, word) => count + (prior.has(word.toLowerCase()) ? 1 : 0),
+        0
+      );
+      score -= Math.min(4, overlap * 0.35);
+    }
+
+    // Small boost for substantial replies; do not make every answer huge.
+    if (wordCount >= 10) score += 1.5;
+    if (wordCount >= 18) score += 1;
+    if (wordCount <= 3) score -= 1.5;
+
+    // Tiny randomness prevents a deterministic "longest first" cycle.
+    score += Math.random() * 2.5;
+
+    return { reply, score };
   });
-  state.recentMessages = state.recentMessages.slice(-6);
 
-  const cleaned = text
-    .replace(/https?:\/\/\S+/gi, "")
-    .replace(/[^\p{L}\p{N}\s'-]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  scored.sort((a, b) => b.score - a.score);
 
-  if (cleaned.length >= 12 && cleaned.length <= 100) {
-    state.runningBits = state.runningBits.filter(
-      (bit) => bit !== cleaned
-    );
-    state.runningBits.push(cleaned);
-    state.runningBits = state.runningBits.slice(-5);
-  }
-
-  banatContextState.set(key, state);
-  return state;
-}
-
-function banatContextPrompt(threadId) {
-  const key = String(threadId || "unknown");
-  const state = banatContextState.get(key);
-
-  if (!state) return "(no recent context)";
-
-  const recent = state.recentMessages
-    .slice(-5)
-    .map(
-      (item) =>
-        "[" +
-        item.category +
-        "] " +
-        item.text
-    )
-    .join("\n");
-
-  return [
-    "Recent conversation:",
-    recent || "(none)",
-    "Running bits/callback material:",
-    state.runningBits.join(" | ") || "(none)",
-    "Recent reply families:",
-    state.recentFamilies.join(", ") || "(none)",
-    "Avoid repeating the same reply shape when possible.",
-  ].join("\n");
-}
-
-function banatContextualPick(replies, threadId, incomingText) {
-  if (!Array.isArray(replies) || !replies.length) return null;
-
-  const key = String(threadId || "unknown");
-  const now = Date.now();
-  let state = banatContextState.get(key);
-  if (!state || now - state.at > BANAT_CONTEXT_TTL_MS) {
-    state = {
-      at: now,
-      recentFamilies: [],
-      recentReplies: [],
-      recentMessages: [],
-      runningBits: [],
-    };
-  }
-
-  const observed = banatRememberIncoming(key, incomingText);
-  state = observed;
-
-  const category = banatClassifyIncoming(incomingText);
-  const fresh = replies.filter((reply) => !state.recentReplies.includes(reply));
-  const candidates = fresh.length ? fresh : replies;
-
-  const categoryPool = category === "general"
-    ? []
-    : candidates.filter((reply) => banatReplyFamily(reply) === category);
-
-  const selectedPool = categoryPool.length ? categoryPool : candidates;
-  const selected =
-    pickBanatReply(
-      key,
-      selectedPool,
-      state.recentReplies
-    ) ||
-    selectedPool[Math.floor(Math.random() * selectedPool.length)];
-
-  const family = banatReplyFamily(selected);
-  state.at = now;
-  state.recentFamilies.push(family);
-  state.recentReplies.push(selected);
-  rememberBanatReply(key, selected);
-  state.recentFamilies = state.recentFamilies.slice(-4);
-  state.recentReplies = state.recentReplies.slice(-6);
-  banatContextState.set(key, state);
-
-  if (banatContextState.size > 1000) {
-    for (const [thread, value] of banatContextState) {
-      if (now - value.at > BANAT_CONTEXT_TTL_MS) banatContextState.delete(thread);
-    }
-  }
-
-  return selected;
-}
-
-
-function rememberRecent(list, value, limit) {
-  list.push(value);
-  while (list.length > limit) {
-    list.shift();
-  }
-}
-
-function pickFreshRandom(items, recentList) {
-  if (!Array.isArray(items) || items.length === 0) {
-    return null;
-  }
-
-  const fresh = items.filter(
-    (item) => !recentList.includes(item)
-  );
-
-  const pool = fresh.length > 0 ? fresh : items;
-  return pool[Math.floor(Math.random() * pool.length)];
-}
-
-function getRandomRapDrop() {
-  const type = rapTypes[
-    Math.floor(Math.random() * rapTypes.length)
-  ];
-
-  const reply = pickFreshRandom(
-    type.replies,
-    recentRapDrops
-  );
-
-  if (!reply) {
-    return null;
-  }
-
-  rememberRecent(
-    recentRapDrops,
-    reply,
-    RAP_RECENT_LIMIT
-  );
-
-  return reply;
+  // Choose from the top band rather than always taking #1.
+  const band = scored.slice(0, Math.min(7, scored.length));
+  return band[Math.floor(Math.random() * band.length)].reply;
 }
 
 // ============================================================
@@ -1600,15 +1404,6 @@ function enforceBanatAddressStyle(reply, senderId) {
 // ============================================================
 
 function getRandomRoastReply(threadId = null, incomingText = "", senderId = null) {
-  // Occasionally drop a full rap instead of a one-liner.
-  if (Math.random() < RAP_DROP_CHANCE) {
-    const rap = getRandomRapDrop();
-
-    if (rap) {
-      return rap;
-    }
-  }
-
   const genericGroups = groups.filter(
     (group) =>
       group.name === "trash-talk" ||
@@ -1616,26 +1411,23 @@ function getRandomRoastReply(threadId = null, incomingText = "", senderId = null
       group.name === "public"
   );
 
-  const replies = genericGroups.flatMap(
-    (group) =>
-      Array.isArray(group.replies)
-        ? group.replies
-        : []
+  const replies = dedupeBanatReplies(
+    genericGroups.flatMap((group) =>
+      Array.isArray(group.replies) ? group.replies : []
+    )
   );
 
   if (replies.length === 0) {
     return null;
   }
 
-  const reply = banatContextualPick(
-    replies,
-    threadId,
-    incomingText
-  ) || pickBanatReply(
-    String(threadId || "unknown"),
-    replies,
-    recentBanatReplies
-  ) || pickFreshRandom(replies, recentBanatReplies);
+  const reply =
+    pickDiverseBanatReply(replies, threadId, incomingText) ||
+    pickBanatReply(
+      String(threadId || "unknown"),
+      replies,
+      []
+    );
 
   if (!reply) {
     return null;
@@ -1649,7 +1441,7 @@ function getRandomRoastReply(threadId = null, incomingText = "", senderId = null
   rememberRecent(
     recentBanatReplies,
     styledReply,
-    12
+    BANAT_RECENT_LIMIT
   );
   rememberBanatReply(String(threadId || "unknown"), styledReply);
 
