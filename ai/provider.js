@@ -222,7 +222,7 @@ async function generateTriggerReply({
     "React to the actual incoming message instead of producing a generic roast.",
     "Match the energy and approximate length of the conversation.",
     "Very short reactions are allowed when the situation calls for them.",
-    "For trash-talk, banat-expanded, and public banat groups, keep the reply clearly banter/roast-oriented and preserve the fallback's insulting or teasing edge; do not turn it into a polite, neutral, wholesome, or generic answer.",
+    "For the natural Banat pool, keep the reply conversational, spontaneous, Tagalog/Taglish/conyo when it fits, and grounded in the actual incoming message; do not force a generic roast.",
     "For other trigger groups, do not force an insult when it does not fit.",
     "If the recent context contains a running joke or callback, use it naturally when it fits.",
     "If the same kind of message has happened repeatedly, vary the reaction instead of repeating the same structure.",
