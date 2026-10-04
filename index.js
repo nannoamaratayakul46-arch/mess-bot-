@@ -3420,8 +3420,11 @@ app.get(
   "/api/dashboard/status",
   requireDashboardAccess,
   (_req, res) => {
+    // Messenger session state is owned by the active API/listener generation.
+    // The watchdog can briefly mark the transport unhealthy during a transient
+    // listener hiccup; that must not make the dashboard treat a valid session
+    // as logged out.
     const connected =
-      Boolean(watchdogMessengerConnected) &&
       Boolean(activeMessengerApi) &&
       activeListenerGeneration > 0;
 
@@ -3469,9 +3472,24 @@ app.get(
     } catch (error) {
       console.error("[DASHBOARD] Snapshot query failed:", error);
 
-      res.status(503).json({
-        ok: false,
+      // A read-model/schema failure is not an authentication failure.
+      // Keep the HTTP response authenticated so the Command Center does not
+      // discard a valid Facebook session just because dashboard data failed.
+      res.status(200).json({
+        ok: true,
+        degraded: true,
+        snapshot: null,
         error: "Dashboard data is temporarily unavailable.",
+        error_code: "DASHBOARD_SNAPSHOT_UNAVAILABLE",
+        runtime: {
+          watchdog: getWatchdogStatus(),
+          traffic: trafficSafetyStatus(),
+          music: getMusicStats(),
+          database: await db.healthCheck().catch(() => false),
+          uptime_seconds: Math.floor(process.uptime()),
+          node_version: process.version,
+          memory: process.memoryUsage(),
+        },
       });
     }
   }
