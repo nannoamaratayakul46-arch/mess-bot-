@@ -185,3 +185,24 @@ test("Banat admin safety uses the centralized admin registry", () => {
   assert.match(source, /const \{ isAdmin \} = require\("\.\/permissions"\)/);
   assert.match(source, /const adminSender = isAdmin\(senderId\)/);
 });
+
+
+test("slash Banat pools are separated from the natural pool", () => {
+  const source = read("slash-banats.js");
+  assert.match(source, /andito na boss mo tanga, supaen mo ttko/);
+  assert.match(source, /bounce na ako, di kaya kakunatan ko/);
+  assert.match(source, /bawal bobo/);
+  assert.match(source, /function pickSlashBanat\\(mode = "on"\\)/);
+  assert.match(source, /pickUnauthorizedSlashBanat/);
+});
+
+test("slash Banat sends selected words through the Banat human layer", () => {
+  const source = read("index.js");
+  const toggle = source.indexOf("const banatControlMatch");
+  const automatic = source.indexOf("const banatHandled = await handleAutomaticBanatMessage");
+  const block = source.slice(toggle, automatic);
+
+  assert.match(block, /require\\("\\.\\/slash-banats"\\)\\(enabled \\? "on" : "off"\\)/);
+  assert.match(block, /require\\("\\.\\/slash-banats"\\)\\.pickUnauthorizedSlashBanat\\(\\)/);
+  assert.match(block, /sendBanatReplyWithTyping\\(/);
+});
