@@ -1,6 +1,7 @@
 const { generateTriggerReply } = require("./ai/provider");
 const { isPrimaryUser } = require("./ai/access");
 const { rememberBanatReply, pickBanatReply } = require("./banat-memory");
+const { isAdmin } = require("./permissions");
 
 // ============================================================
 // TRIGGERS / BANAT SYSTEM
