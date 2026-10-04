@@ -1700,6 +1700,7 @@ const naturalBanatGroup = {
     "wala tayong problema",
     "we're cool",
     "okay we're cool",
+  ],
 };
 
 groups.push(naturalBanatGroup);
