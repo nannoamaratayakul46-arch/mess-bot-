@@ -5670,21 +5670,9 @@ async function handleMessage(
 
   if (banatControlMatch) {
     if (!isAdmin(senderId)) {
-      const unauthorizedSlashReplies = [
-        "bawal bobo",
-        "tuwad ka muna",
-        "bilang ka mga sampo, tangina mong banlag ka",
-        "gamit pa slash, walang bot dito gago",
-        "kunware may bot sa acc ko na to",
-        "slash mo pa mukha mo",
-        "hev abi owns you, wag mo na off, nakakaturn off naman pagmumukha mo kaya ako na mag bbounce",
-      ];
-
       sendBanatReplyWithTyping(
         api,
-        unauthorizedSlashReplies[
-          Math.floor(Math.random() * unauthorizedSlashReplies.length)
-        ],
+        require("./slash-banats").pickUnauthorizedSlashBanat(),
         threadID,
         event.messageID,
         false,
@@ -5710,25 +5698,9 @@ async function handleMessage(
         clearBanatBurstState(threadId);
       }
 
-      const slashReplies = enabled
-        ? [
-            "andito na boss mo tanga, supaen mo ttko",
-            "e kung suntukin ko ulo niyo?",
-            "hev owns you mga garapata",
-            "sabi ko wag ka tanga",
-          ]
-        : [
-            "bounce na ako, di kaya kakunatan ko",
-            "yoko na, baduy na",
-            "pass na, bumaho na kasi andito na ea ni tanga",
-            "ano ba yan, tukmol squad yan?",
-          ];
-
       sendBanatReplyWithTyping(
         api,
-        slashReplies[
-          Math.floor(Math.random() * slashReplies.length)
-        ],
+        require("./slash-banats")(enabled ? "on" : "off"),
         threadID,
         event.messageID,
         false,
