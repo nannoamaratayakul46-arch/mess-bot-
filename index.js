@@ -8390,16 +8390,18 @@ async function handleAutomaticBanatMessage({
     return false;
   }
 
-  // Banat is a thread-level mode. Once enabled, it can answer
-  // messages from every human participant, including the owner.
-  // The bot's own sender ID is still blocked above.
-  const target = classifyBanatTarget({
-    api,
-    event,
-    body,
-    eclipseUserID,
-    threadID,
-  });
+  // Persistent Banat ON means this thread is in automatic-reply mode.
+  // Do not make the actual reply depend on a second in-memory gate: that
+  // caused Banat to be ON in Neon while messages were still treated as
+  // "undirected" after restarts or state desyncs.
+  // ECLIPSE's own self-listen messages are already blocked above.
+  const target = {
+    shouldRespond: true,
+    reason: "banat-enabled",
+    directed: true,
+    via: "enabled",
+    conversationActive: true,
+  };
 
   try {
     const triggerReply = await getTriggerReply(
