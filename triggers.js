@@ -196,6 +196,48 @@ const BANAT_RECENT_LIMIT = Math.max(
 const banatContextState = new Map();
 const BANAT_CONTEXT_LIMIT = Math.max(6, Math.min(20, BANAT_RECENT_LIMIT));
 
+// Short-lived global Banat history used by the trigger/AI diversity guard.
+// Keep this bounded; the per-thread Map below remains the primary selector memory.
+const recentBanatReplies = [];
+
+function rememberRecent(list, value, limit = BANAT_RECENT_LIMIT) {
+  if (!Array.isArray(list)) return;
+  const text = String(value || "").trim();
+  if (!text) return;
+  const index = list.indexOf(text);
+  if (index !== -1) list.splice(index, 1);
+  list.push(text);
+  if (list.length > Math.max(1, Number(limit) || BANAT_RECENT_LIMIT)) {
+    list.splice(0, list.length - Math.max(1, Number(limit) || BANAT_RECENT_LIMIT));
+  }
+}
+
+function banatReplyFamily(reply) {
+  const text = String(reply || "").toLowerCase().trim();
+  if (!text) return "empty";
+  if (text.includes("haha") || text.includes("😭") || text.includes("lol")) return "laugh";
+  if (text.includes("?")) return "question";
+  if (text.split(/\s+/).length <= 4) return "short";
+  if (text.includes("bro") || text.includes("beh") || text.includes("pre") || text.includes("tol")) return "casual";
+  return "general";
+}
+
+function banatContextPrompt(threadId) {
+  const key = String(threadId || "unknown");
+  const state = banatContextState.get(key);
+  const threadRecent = state?.recentReplies || [];
+  const recent = [...threadRecent, ...recentBanatReplies]
+    .filter(Boolean)
+    .slice(-10);
+  return recent.length
+    ? recent.map((reply, index) => `${index + 1}. ${reply}`).join("\n")
+    : "";
+}
+
+function banatContextualPick(replies, threadId, incomingText) {
+  return pickDiverseBanatReply(replies, threadId, incomingText);
+}
+
 function dedupeBanatReplies(replies) {
   const seen = new Set();
   const output = [];
