@@ -44,8 +44,6 @@ function signature(value) {
 
   const words = text.split(" ").filter(Boolean);
 
-  if (words[0] === "baby") words.shift();
-
   // Catch exact repeats plus lightly reworded versions of the same
   // one-liner without blocking every reply from the same family.
   return words.slice(0, 7).join(" ");
