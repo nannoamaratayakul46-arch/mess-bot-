@@ -8451,65 +8451,60 @@ function acceptBanatBurstMessage(threadID, job) {
     state.cleanupTimer = null;
   }
 
-  const senderKey = String(job.senderId || "").trim();
+  /*
+   * Banat uses a strict one-message-per-turn window.
+   *
+   * The first incoming message owns the current turn.
+   * Every other message received while that turn is waiting, being
+   * answered, or inside the 5s reply gap is intentionally discarded.
+   *
+   * Example:
+   *   A1 -> accepted
+   *   A2 -> discarded
+   *   A3 -> discarded
+   *   B1 -> discarded
+   *
+   * After the 5s gap expires, the next NEW message starts the next turn.
+   * This prevents old messages from piling up and being answered later.
+   */
+  const now = Date.now();
 
-  if (senderKey) {
-    const existingIndex = state.queue.findIndex(
-      (candidate) =>
-        String(candidate.senderId || "").trim() === senderKey
-    );
+  if (state.running || state.decisionTimer) {
+    return true;
+  }
 
-    const queuedJob = {
-      ...job,
-      senderId: senderKey,
-      queuedAt: Date.now(),
-    };
+  if (
+    state.lastSentAt &&
+    now - state.lastSentAt < BANAT_MIN_INTER_REPLY_GAP_MS
+  ) {
+    return true;
+  }
 
-    if (existingIndex >= 0) {
-      state.queue[existingIndex] = queuedJob;
-    } else {
-      state.queue.push(queuedJob);
-    }
-  } else {
-    state.queue.push({
-      ...job,
-      queuedAt: Date.now(),
+  // The current turn must contain exactly one job.
+  state.queue.length = 0;
+  state.queue.push({
+    ...job,
+    senderId: String(job.senderId || "").trim(),
+    queuedAt: now,
+  });
+
+  const decisionMs = Math.max(
+    BANAT_DECISION_MIN_MS,
+    typeof calculateBanatDecisionDelay === "function"
+      ? calculateBanatDecisionDelay(
+          job.incomingText || job.message || "",
+          1
+        )
+      : 1000
+  );
+
+  state.decisionTimer = setTimeout(() => {
+    state.decisionTimer = null;
+
+    runBanatBurstQueue(key).catch((error) => {
+      console.error("[BANAT] Burst queue failed:", error);
     });
-  }
-
-  if (state.queue.length > BANAT_PENDING_PER_THREAD) {
-    state.queue.splice(
-      0,
-      state.queue.length - BANAT_PENDING_PER_THREAD
-    );
-  }
-
-  if (!state.running && !state.decisionTimer) {
-    const sinceLast = Date.now() - state.lastSentAt;
-    const cooldownMs = state.lastSentAt
-      ? Math.max(0, BANAT_MIN_INTER_REPLY_GAP_MS - sinceLast)
-      : 0;
-
-    const latest = state.queue[state.queue.length - 1];
-
-    const decisionMs = Math.max(
-      BANAT_DECISION_MIN_MS,
-      typeof calculateBanatDecisionDelay === "function"
-        ? calculateBanatDecisionDelay(
-            latest?.incomingText || latest?.message || "",
-            state.queue.length
-          )
-        : 1000
-    );
-
-    state.decisionTimer = setTimeout(() => {
-      state.decisionTimer = null;
-
-      runBanatBurstQueue(key).catch((error) => {
-        console.error("[BANAT] Burst queue failed:", error);
-      });
-    }, cooldownMs + decisionMs);
-  }
+  }, decisionMs);
 
   return true;
 }
