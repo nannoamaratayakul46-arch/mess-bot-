@@ -3531,55 +3531,10 @@ app.get(
 app.post(
   "/api/dashboard/connect-credentials",
   requireDashboardAccess,
-  (req, res) => {
-    if (loginInProgress) {
-      return res.status(409).json({
-        ok: false,
-        error: "A Facebook login is already in progress. Wait for it to finish, then try again.",
-      });
-    }
-
-    const email = String(req.body?.email || "").trim();
-    const password = String(req.body?.password || "");
-
-    if (!email || !password) {
-      return res.status(400).json({
-        ok: false,
-        error: "Facebook email and password are required.",
-      });
-    }
-
-    // Credentials are intentionally ephemeral: they are kept only in
-    // process memory for the active login attempt and are never written
-    // to the database, logs, browser storage, or GitHub.
-    dashboardFacebookCredentials = {
-      email,
-      password,
-    };
-    preferDashboardCredentials = true;
-    pendingFacebookAppState = null;
-    dashboardBotPaused = false;
-    dashboardLoginError = null;
-
-    if (loginRetryTimer) {
-      clearTimeout(loginRetryTimer);
-      loginRetryTimer = null;
-    }
-
-    loginAttempt = 0;
-    listenFailureCount = 0;
-    listenerGeneration++;
-
-    pushDashboardEvent(
-      "messenger",
-      "Facebook credential login requested from Command Center. Credentials are used only for this login attempt."
-    );
-
-    attemptLogin();
-
-    return res.status(202).json({
-      ok: true,
-      action: "facebook_credentials_connect_requested",
+  (_req, res) => {
+    return res.status(410).json({
+      ok: false,
+      error: "Facebook password login is disabled. Export a Facebook session cookie file and upload it instead.",
     });
   }
 );
@@ -4512,7 +4467,6 @@ function attemptLogin() {
       await persistFacebookSessionState(appState);
 
       preferDashboardCredentials = false;
-      dashboardFacebookCredentials = null;
       pendingFacebookAppState = null;
 
       if (loginRetryTimer) {
