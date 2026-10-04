@@ -10,6 +10,12 @@ const { login } = require("ws3-fca");
 
 const db = require("./db");
 
+const {
+  handleVerseCommand,
+  startBibleVerseScheduler,
+  stopBibleVerseScheduler,
+} = require("./bible-verse");
+
 const { handleEconomyCommand } = require("./economy");
 
 const {
@@ -4366,6 +4372,18 @@ function attemptLogin() {
         console.log(
           "Neon database connected successfully."
         );
+        
+        try {
+          startBibleVerseScheduler(
+            api,
+            trafficSendMessage
+          );
+        } catch (error) {
+          console.error(
+            "[BIBLE] Failed to start verse scheduler:",
+            error
+          );
+        }
       } catch (error) {
         console.error(
           "Database connection failed:",
@@ -4630,6 +4648,15 @@ function registerActiveThread(
     String(threadID),
     now
   );
+
+  void db.isBibleVerseEnabled(
+    String(threadID)
+  ).catch((error) => {
+    console.error(
+      "[BIBLE] Failed to initialize thread setting:",
+      error
+    );
+  });
 
   registerActiveThreadCleanup();
 }
@@ -6670,6 +6697,28 @@ async function handleMessage(
     );
 
     return;
+  }
+
+  // ==========================================================
+  // AUTOMATIC BIBLE VERSES
+  // ==========================================================
+
+  try {
+    if (
+      await handleVerseCommand(
+        api,
+        trafficSendMessage,
+        event,
+        originalText
+      )
+    ) {
+      return;
+    }
+  } catch (error) {
+    console.error(
+      "[BIBLE] Verse command failed:",
+      error
+    );
   }
 
   // ==========================================================
