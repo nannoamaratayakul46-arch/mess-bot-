@@ -3581,7 +3581,11 @@ app.post(
 
     const diagnostics = await getMessengerAuthDiagnostics();
 
-    if (!diagnostics.connected && !diagnostics.durable_checkpoint && !diagnostics.fb_cookies_configured) {
+    if (
+      !diagnostics.connected &&
+      diagnostics.durable_checkpoint !== "available" &&
+      !diagnostics.fb_cookies_configured
+    ) {
       dashboardLoginError =
         "No durable Messenger session or FB_COOKIES is available. Upload a fresh Facebook session export or cookie header.";
       pushDashboardEvent("messenger", dashboardLoginError);
@@ -4428,7 +4432,28 @@ function attemptLogin() {
     // A stale durable checkpoint can also fail before ws3-fca invokes the
     // normal login callback. Fall back to FB_COOKIES for that case too.
     if (!isReplacementSession) {
-      fallbackFromRejectedDurableSession();
+      const fellBackToCookies =
+        fallbackFromRejectedDurableSession();
+
+      if (fellBackToCookies) {
+        loginInProgress = false;
+        if (loginRetryTimer) clearTimeout(loginRetryTimer);
+        loginRetryTimer = setTimeout(() => {
+          loginRetryTimer = null;
+          attemptLogin();
+        }, 100);
+        return;
+      }
+
+      if (appStateSource !== "durable") {
+        loginInProgress = false;
+        dashboardLoginError =
+          appStateSource === "fb_cookies"
+            ? "FB_COOKIES was rejected by Facebook. Upload a fresh session export or cookie header."
+            : "No usable Facebook session is available. Upload a fresh session export or cookie header.";
+        console.warn("[AUTH] Facebook session is unavailable; waiting for dashboard recovery.");
+        return;
+      }
     }
 
     loginInProgress = false;
