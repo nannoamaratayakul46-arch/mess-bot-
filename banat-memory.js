@@ -11,8 +11,8 @@
  */
 
 const MAX_RECENT = Math.max(
-  4,
-  Math.min(20, Number(process.env.ECLIPSE_BANAT_MEMORY_SIZE || 8))
+  20,
+  Math.min(60, Number(process.env.ECLIPSE_BANAT_MEMORY_SIZE || 36))
 );
 
 const TTL_MS = Math.max(
