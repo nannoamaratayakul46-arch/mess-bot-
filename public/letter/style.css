@@ -1947,3 +1947,284 @@ body.isPlaying .coverWrap .coverVideo {
   box-shadow: 0 45px 0 #24211d;
   opacity: .9;
 }
+
+
+/* ============================================================
+   ECLIPSE PHONE — Spotify-inspired listening UI
+   ============================================================ */
+
+.phone {
+  position: relative;
+  border: 1px solid rgba(255,255,255,.10);
+  background:
+    linear-gradient(145deg, #34322e 0%, #12110f 42%, #050505 100%);
+}
+
+.phone::before {
+  content: "";
+  position: absolute;
+  inset: 3px;
+  border-radius: 39px;
+  border: 1px solid rgba(255,255,255,.06);
+  pointer-events: none;
+  z-index: 8;
+}
+
+.phoneScreen {
+  background:
+    radial-gradient(circle at 50% 23%, rgba(70,68,59,.22), transparent 35%),
+    linear-gradient(180deg, #171614 0%, #0d0d0c 100%);
+  padding: 17px 15px 10px;
+}
+
+.spotifyTopBar {
+  align-items: center;
+  justify-content: space-between;
+  height: 32px;
+  margin: 1px 0 16px;
+}
+
+.spotifyTopTitle {
+  display: grid;
+  justify-items: center;
+  gap: 3px;
+  text-align: center;
+}
+
+.spotifyTopTitle span {
+  font-size: 6px;
+  letter-spacing: .24em;
+  color: rgba(238,232,201,.42);
+}
+
+.spotifyTopTitle strong {
+  font-size: 7px;
+  font-weight: 600;
+  letter-spacing: .12em;
+  color: rgba(238,232,201,.78);
+}
+
+.phoneNavIcon {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: rgba(238,232,201,.72);
+  font-size: 10px;
+  cursor: pointer;
+}
+
+.spotifyCover {
+  border-radius: 5px;
+  box-shadow:
+    0 22px 42px rgba(0,0,0,.55),
+    0 4px 12px rgba(0,0,0,.35);
+}
+
+.coverBadge {
+  position: absolute;
+  z-index: 5;
+  top: 9px;
+  left: 9px;
+  padding: 4px 6px;
+  border: 1px solid rgba(255,255,255,.16);
+  border-radius: 3px;
+  background: rgba(0,0,0,.34);
+  color: rgba(255,255,255,.75);
+  font-size: 5px;
+  font-weight: 700;
+  letter-spacing: .22em;
+  backdrop-filter: blur(8px);
+}
+
+.coverWrap::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  box-shadow: inset 0 0 45px rgba(0,0,0,.25);
+  pointer-events: none;
+}
+
+.spotifySongInfo {
+  margin: 15px 1px 12px;
+}
+
+.songMeta {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.songMeta > div:first-child {
+  min-width: 0;
+  flex: 1;
+}
+
+.songTitle {
+  font-size: 20px;
+  font-weight: 500;
+}
+
+.songHeart {
+  width: 29px;
+  height: 29px;
+  flex: 0 0 auto;
+  border: 0;
+  background: transparent;
+  color: rgba(238,232,201,.82);
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.songHeart:hover {
+  color: var(--paper);
+  transform: scale(1.08);
+}
+
+.progressArea {
+  margin-top: 5px;
+}
+
+#progress {
+  height: 3px;
+  border-radius: 99px;
+}
+
+.timeRow {
+  margin-top: 5px;
+  font-size: 6px;
+  color: rgba(238,232,201,.42);
+}
+
+.spotifyControls {
+  justify-content: space-between;
+  gap: 6px;
+  margin-top: 15px;
+  padding: 0 1px;
+}
+
+.spotifyControls .control {
+  flex: 0 0 auto;
+}
+
+.control.tiny {
+  width: 22px;
+  height: 34px;
+  color: rgba(238,232,201,.54);
+  font-size: 11px;
+}
+
+.spotifyControls .control.ghost {
+  font-size: 13px;
+  color: rgba(238,232,201,.82);
+}
+
+.spotifyControls .control.main {
+  width: 46px;
+  height: 46px;
+  font-size: 11px;
+  box-shadow: 0 7px 28px rgba(0,0,0,.42);
+}
+
+.deviceRow {
+  display: flex;
+  align-items: center;
+  min-height: 24px;
+  margin: 5px 1px 1px;
+  color: rgba(238,232,201,.38);
+  font-size: 5px;
+  letter-spacing: .18em;
+}
+
+.deviceDot {
+  width: 5px;
+  height: 5px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: #8fd18f;
+  box-shadow: 0 0 9px rgba(143,209,143,.35);
+}
+
+.deviceSpacer {
+  flex: 1;
+}
+
+.queueGlyph {
+  font-size: 10px;
+  color: rgba(238,232,201,.62);
+}
+
+.phoneFooter {
+  margin-top: 6px;
+  padding-top: 7px;
+  border-top: 1px solid rgba(238,232,201,.07);
+}
+
+.lyricsPill {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: rgba(238,232,201,.62);
+  font-size: 5px;
+  letter-spacing: .15em;
+  cursor: pointer;
+}
+
+.lyricsPill:hover {
+  color: var(--paper);
+}
+
+.phoneBottomNav {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  bottom: 5px;
+  display: flex;
+  justify-content: space-around;
+  padding: 6px 0 3px;
+  border-top: 1px solid rgba(238,232,201,.06);
+  background: linear-gradient(180deg, transparent, rgba(10,9,8,.86) 38%);
+  color: rgba(238,232,201,.32);
+  font-size: 11px;
+  pointer-events: none;
+}
+
+.phoneBottomNav span {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+}
+
+.phoneBottomNav small {
+  font-size: 4px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+
+.phoneBottomNav .active {
+  color: rgba(238,232,201,.82);
+}
+
+.phoneLyricsPage {
+  background:
+    linear-gradient(180deg, rgba(18,17,15,.96), rgba(8,8,8,.99));
+}
+
+@media (max-width: 390px) {
+  .phone {
+    width: min(82vw, 330px);
+  }
+
+  .phoneScreen {
+    padding-left: 13px;
+    padding-right: 13px;
+  }
+
+  .songTitle {
+    font-size: 18px;
+  }
+}
