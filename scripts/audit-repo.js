@@ -89,8 +89,33 @@ if (pkg.scripts?.start !== "node bootstrap.js") {
   fail(`package.json start script must be exactly "node bootstrap.js".`);
 }
 
-if (/banat-runtime-fix/.test(pkg.scripts?.start || "") || /banat-runtime-fix/.test(bootstrap)) {
-  fail("Obsolete Banat runtime source patch is still referenced by startup.");
+if (/banat-runtime-fix|banat-runtime-hotfix/.test(pkg.scripts?.start || "") || /banat-runtime-fix|banat-runtime-hotfix/.test(bootstrap)) {
+  fail("Obsolete Banat runtime patch is still referenced by startup.");
+}
+
+const banatHumanPath = path.join(ROOT, "banat-human.js");
+if (!fs.existsSync(banatHumanPath)) {
+  fail("banat-human.js is missing; Banat replies cannot use the humanizer.");
+} else {
+  const banatHuman = source(banatHumanPath);
+  for (const required of [
+    "humanize(message",
+    "BANAT_SHORTHANDS",
+    "calculateHumanDelay",
+    "trafficSendMessage(",
+  ]) {
+    if (!banatHuman.includes(required)) {
+      fail("Banat humanizer wiring missing: " + required);
+    }
+  }
+
+  if (!index.includes("sendBanatReplyWithTyping(")) {
+    fail("index.js is not wired to the Banat human send layer.");
+  }
+}
+
+if (fs.existsSync(path.join(ROOT, "banat-runtime-hotfix.js"))) {
+  fail("banat-runtime-hotfix.js must not exist; routing belongs in the real source path.");
 }
 
 // 4. Keep the single transport governor intact.
