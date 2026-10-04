@@ -111,3 +111,46 @@ test("Banat keeps burst state alive during the 5-second cooldown", () => {
     /}, BANAT_MIN_INTER_REPLY_GAP_MS\);/
   );
 });
+
+
+test("automatic Banat passes the router thread ID into target classification", () => {
+  const source = read("index.js");
+  const start = source.indexOf("async function handleAutomaticBanatMessage");
+  const body = source.slice(start, start + 6500);
+
+  assert.match(body, /classifyBanatTarget\(\{[\s\S]*?threadID,/);
+});
+
+test("Banat does not skip the owner when the thread mode is enabled", () => {
+  const source = read("index.js");
+  const start = source.indexOf("async function handleAutomaticBanatMessage");
+  const end = source.indexOf("// ============================================================\n// HUMAN / BANAT WIRING", start);
+  const body = source.slice(start, end);
+
+  assert.doesNotMatch(
+    body,
+    /if \(\s*isOwner\(senderId\)\s*\)\s*\{[\s\S]*?return false;/
+  );
+});
+
+test("Banat reactions use the compatible setMessageReaction callback signature", () => {
+  const index = read("index.js");
+  const human = read("banat-human.js");
+
+  assert.match(
+    index,
+    /api\.setMessageReaction\(\s*"😆",\s*messageID,\s*reactionCallback,\s*true\s*\)/
+  );
+  assert.match(
+    human,
+    /api\.setMessageReaction\(\s*"😆",\s*String\(sentMessageID\),\s*reactionCallback,\s*true\s*\)/
+  );
+  assert.doesNotMatch(
+    index,
+    /setMessageReactionMqtt\(\s*"😆",\s*messageID,\s*threadId,\s*reactionCallback/
+  );
+  assert.doesNotMatch(
+    human,
+    /setMessageReactionMqtt\(\s*"😆",\s*String\(sentMessageID\),\s*String\(threadID\),\s*reactionCallback/
+  );
+});
