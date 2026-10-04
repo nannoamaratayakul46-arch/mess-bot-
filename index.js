@@ -4352,7 +4352,9 @@ function attemptLogin() {
 
     // A stale durable checkpoint can also fail before ws3-fca invokes the
     // normal login callback. Fall back to FB_COOKIES for that case too.
-    fallbackFromRejectedDurableSession();
+    if (!isReplacementSession) {
+      fallbackFromRejectedDurableSession();
+    }
 
     loginInProgress = false;
 
