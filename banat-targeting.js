@@ -121,9 +121,12 @@ function classifyBanatTarget({
   event,
   body,
   eclipseUserID = "",
+  threadID = "",
 }) {
   const text = normalize(body);
   const botID = String(eclipseUserID || "").trim();
+  const conversationThreadID =
+    String(threadID || event?.threadID || "").trim();
 
   if (!text) {
     return {
@@ -152,10 +155,12 @@ function classifyBanatTarget({
 
   const directAddress = isDirectAddress(text);
   const question = looksLikeQuestion(text);
-  const conversationActive = isBanatConversationModeActive(event?.threadID);
+  const conversationActive =
+    Boolean(conversationThreadID) &&
+    isBanatConversationModeActive(conversationThreadID);
 
   if (conversationActive) {
-    touchBanatConversation(event?.threadID);
+    touchBanatConversation(conversationThreadID);
 
     return {
       shouldRespond: true,
