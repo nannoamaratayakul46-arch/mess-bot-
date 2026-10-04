@@ -4911,21 +4911,21 @@ async function handleMessage(
           }
         };
 
-        if (typeof api.setMessageReactionMqtt === "function") {
-          api.setMessageReactionMqtt(
-            "😆",
-            messageID,
-            threadId,
-            reactionCallback
-          );
-        } else {
-          // ws3-fca expects the message ID string here, not a
-          // { messageID, threadID } descriptor object.
+        if (typeof api.setMessageReaction === "function") {
+          // ws3-fca's compatible signature is:
+          // setMessageReaction(reaction, messageID, callback, forceCustomReaction)
           api.setMessageReaction(
             "😆",
             messageID,
             reactionCallback,
             true
+          );
+        } else if (typeof api.setMessageReactionMqtt === "function") {
+          // Legacy fallback for FCA builds that expose only the MQTT alias.
+          api.setMessageReactionMqtt(
+            "😆",
+            messageID,
+            reactionCallback
           );
         }
       }
@@ -8390,20 +8390,15 @@ async function handleAutomaticBanatMessage({
     return false;
   }
 
-  if (
-    isOwner(senderId)
-  ) {
-    console.log(
-      "[BANAT] Owner message skipped for roast targeting: " + senderId
-    );
-    return false;
-  }
-
+  // Banat is a thread-level mode. Once enabled, it can answer
+  // messages from every human participant, including the owner.
+  // The bot's own sender ID is still blocked above.
   const target = classifyBanatTarget({
     api,
     event,
     body,
     eclipseUserID,
+    threadID,
   });
 
   try {
