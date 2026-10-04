@@ -8404,15 +8404,19 @@ async function handleAutomaticBanatMessage({
   };
 
   try {
-    const triggerReply = await getTriggerReply(
-      body,
-      senderId,
-      threadId,
-      api,
-      event
-    );
+    // Admin messages are allowed to trigger Banat, but never receive a
+    // trigger/roast response. They go through the admin-safe natural pool.
+    const triggerReply = isOwner(senderId)
+      ? null
+      : await getTriggerReply(
+          body,
+          senderId,
+          threadId,
+          api,
+          event
+        );
 
-    // Explicit triggers remain opt-in and can bypass ordinary target gating.
+    // Explicit triggers remain opt-in for non-admin senders.
     if (triggerReply) {
       let banatLinkEnabled = false;
       let banatMemeEnabled = false;
