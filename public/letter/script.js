@@ -27,38 +27,38 @@ const durationEl = document.getElementById("duration");
 const status = document.getElementById("status");
 
 const timeline = [
-  { start: 18.31, end: 20.60, text: "SO WHAT IF I CALL?" },
-  { start: 20.60, end: 22.88, text: "AND YOU PICK UP THE PHONE" },
-  { start: 22.88, end: 25.17, text: "AND I USE THIS HOLIDAY" },
-  { start: 25.17, end: 27.45, text: "TO MAKE MY WAY TO YOUR GHOST" },
-  { start: 27.45, end: 29.74, text: "YOU WALKED IN THE PARTY, YOUR COAT WAS UNTIED" },
-  { start: 29.74, end: 32.02, text: "SLAMMING THE DOOR 'CAUSE IT'S COLDER OUTSIDE" },
-  { start: 32.02, end: 34.31, text: "NOW I WON'T FORGET THAT MOMENT LIKE THE BLINK OF AN EYE" },
-  { start: 34.31, end: 36.60, text: "YOU'RE OFF TO THE BEACH NOW 'TIL THE WEATHER GETS NICE" },
-  { start: 36.60, end: 38.88, text: "BUT WHAT IF I CALL?" },
-  { start: 38.88, end: 41.17, text: "AND YOU PICK UP THE PHONE" },
-  { start: 41.17, end: 43.45, text: "AND I USE THIS HOLIDAY" },
-  { start: 43.45, end: 45.74, text: "TO MAKE MY WAY TO YOUR GHOST" },
-  { start: 45.74, end: 48.02, text: "OH, WHAT IF YOU'RE LONELY?" },
-  { start: 48.02, end: 50.31, text: "AND YOU KNOW I AM TOO" },
-  { start: 50.31, end: 52.60, text: "AND I GET THE CHANCE TO SAY" },
-  { start: 52.60, end: 54.88, text: "I WISH I DIDN'T BUT I MISS YOU" },
-  { start: 54.88, end: 57.17, text: "I MISS YOU" },
-  { start: 57.17, end: 59.45, text: "YOU KNOW IT'S TRUE" },
-  { start: 59.45, end: 61.74, text: "YEAH, I MISS YOU" },
-  { start: 61.74, end: 64.02, text: "YOU KNOW IT'S TRUE" },
-  { start: 64.02, end: 66.31, text: "SO WHAT IF I CALL?" },
-  { start: 66.31, end: 68.60, text: "AND YOU PICK UP THE PHONE" },
-  { start: 68.60, end: 70.88, text: "AND I USE THIS HOLIDAY" },
-  { start: 70.88, end: 73.17, text: "TO MAKE MY WAY TO YOUR GHOST" },
-  { start: 73.17, end: 75.45, text: "OH, WHAT IF YOU'RE LONELY?" },
-  { start: 75.45, end: 77.74, text: "AND YOU KNOW I AM TOO" },
-  { start: 77.74, end: 80.02, text: "AND I GET THE CHANCE TO SAY" },
-  { start: 80.02, end: 82.31, text: "I WISH I DIDN'T BUT I MISS YOU" },
-  { start: 82.31, end: 84.60, text: "I MISS YOU" },
-  { start: 84.60, end: 86.88, text: "…" },
-  { start: 86.88, end: 89.17, text: "…" },
-  { start: 89.17, end: 91.46, text: "…" }
+  { start: 18.21, end: 20.50, text: "Girl, come through" },
+  { start: 20.50, end: 22.78, text: "And let's do what we do" },
+  { start: 22.78, end: 25.07, text: "In our imagination" },
+  { start: 25.07, end: 27.35, text: "When I'm gone" },
+  { start: 27.35, end: 29.64, text: "Show me through what we do" },
+  { start: 29.64, end: 31.92, text: "In our imagination" },
+  { start: 31.92, end: 34.21, text: "Girl, come through" },
+  { start: 34.21, end: 36.50, text: "And let's do what we do" },
+  { start: 36.50, end: 38.78, text: "In our imagination" },
+  { start: 38.78, end: 41.07, text: "When I'm gone" },
+  { start: 41.07, end: 43.35, text: "Show me through what we do" },
+  { start: 43.35, end: 45.64, text: "In our imagination" },
+  { start: 45.64, end: 47.92, text: "Girl, come-" },
+  { start: 47.92, end: 50.21, text: "(Do in our imagination)" },
+  { start: 50.21, end: 52.50, text: "(Show me through)" },
+  { start: 52.50, end: 54.78, text: "(Do in our imagination)" },
+  { start: 54.78, end: 57.07, text: "Girl, come-" },
+  { start: 57.07, end: 59.35, text: "(Do in our imagination)" },
+  { start: 59.35, end: 61.64, text: "(Show me through)" },
+  { start: 61.64, end: 63.92, text: "(Do in our imagination)" },
+  { start: 63.92, end: 66.21, text: "Girl, come through" },
+  { start: 66.21, end: 68.50, text: "And let's do what we do" },
+  { start: 68.50, end: 70.78, text: "In our imagination" },
+  { start: 70.78, end: 73.07, text: "When I'm gone" },
+  { start: 73.07, end: 75.35, text: "Show me through what we do" },
+  { start: 75.35, end: 77.64, text: "In our imagination" },
+  { start: 77.64, end: 79.92, text: "Girl, come through" },
+  { start: 79.92, end: 82.21, text: "And let's do what we do" },
+  { start: 82.21, end: 84.50, text: "In our imagination" },
+  { start: 84.50, end: 86.78, text: "When I'm gone" },
+  { start: 86.78, end: 89.07, text: "Show me through what we do" },
+  { start: 89.07, end: 91.45, text: "In our imagination" }
 ];
 
 let W = 0;
@@ -167,7 +167,7 @@ function spawnHeartBurst(x, y, count = 140) {
 }
 
 
-const FINAL_CINEMATIC_AT = 91.46;
+const FINAL_CINEMATIC_AT = 91.45;
 let finalCinematicActive = false;
 
 function formatTime(value) {
@@ -325,7 +325,7 @@ function lyricIndexAt(t) {
   for (let i = 0; i < timeline.length; i++) {
     if (t >= timeline[i].start && t < timeline[i].end) return i;
   }
-  return t >= timeline[timeline.length - 1].start ? timeline.length - 1 : -1;
+  return -1;
 }
 
 function renderPhoneLyrics() {
