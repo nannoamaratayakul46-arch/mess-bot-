@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node bootstrap.js",
-    "prestart": "node --check index.js && node --check triggers.js && node --check banat-runtime-hotfix.js && node --check bootstrap.js",
+    "prestart": "node --check index.js && node --check triggers.js && node --check banat-human.js && node --check bootstrap.js",
     "test": "node --test",
     "audit": "node scripts/audit-repo.js",
     "verify": "npm run audit && npm test && npm run check:syntax",
