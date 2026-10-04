@@ -8602,8 +8602,10 @@ async function runBanatBurstQueue(threadID) {
       ? eligible
       : state.queue;
 
-    const selected =
-      pool[Math.floor(Math.random() * pool.length)];
+    // FIFO: if A, B, C speak during the same burst, answer A -> B -> C.
+    // Do not randomly jump between senders; that makes Banat feel unnatural
+    // and can make a later message get answered before an earlier one.
+    const selected = pool[0];
 
     const selectedIndex =
       state.queue.indexOf(selected);
