@@ -8,10 +8,25 @@
  */
 
 function parseIds(value) {
+  let raw = String(value ?? "").trim();
+
+  // Accept normal Render env values as well as accidentally quoted/JSON-ish
+  // comma-separated values, without ever logging or hardcoding the IDs.
+  raw = raw.replace(/^['"]|['"]$/g, "").trim();
+
+  if (raw.startsWith("[") && raw.endsWith("]")) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) raw = parsed.join(",");
+    } catch {
+      // Fall back to the normal comma-separated parser.
+    }
+  }
+
   return new Set(
-    String(value || "")
+    raw
       .split(",")
-      .map((id) => id.trim())
+      .map((id) => id.trim().replace(/^['"]|['"]$/g, ""))
       .filter(Boolean)
   );
 }
