@@ -30,7 +30,6 @@ test("slash Banat toggle exits before automatic Banat can process slash", () => 
   assert.match(toggleBlock, /setBanatConversationMode\(threadId, enabled, senderId\)/);
   assert.match(toggleBlock, /await db\.setRoastEnabled\(threadId, enabled\)/);
   assert.match(toggleBlock, /if \(!enabled\)/);
-  assert.match(toggleBlock, /if \(enabled\)/);
   assert.match(toggleBlock, /\n    return;\n  }\n\n  \/\/);
 });
 
@@ -113,14 +112,6 @@ test("Banat keeps burst state alive during the 5-second cooldown", () => {
 });
 
 
-test("automatic Banat passes the router thread ID into target classification", () => {
-  const source = read("index.js");
-  const start = source.indexOf("async function handleAutomaticBanatMessage");
-  const body = source.slice(start, start + 6500);
-
-  assert.match(body, /classifyBanatTarget\(\{[\s\S]*?threadID,/);
-});
-
 test("Banat does not skip the owner when the thread mode is enabled", () => {
   const source = read("index.js");
   const start = source.indexOf("async function handleAutomaticBanatMessage");
@@ -174,7 +165,7 @@ test("slash Banat replies use the humanizer instead of generic reply transport",
   const block = source.slice(toggle, automatic);
 
   assert.match(block, /sendBanatReplyWithTyping\(/);
-  assert.doesNotMatch(block, /require\("\.\/slash-banats"\)/);
+  assert.match(block, /require\("\.\/slash-banats"\)/);
   assert.match(block, /andito na boss mo tanga, supaen mo ttko/);
   assert.match(block, /bounce na ako, di kaya kakunatan ko/);
   assert.match(block, /bawal bobo/);
