@@ -1300,7 +1300,6 @@ const naturalBanatGroup = {
     "life goes on",
     "moving on tayo",
     "anyway 😭",
-,
     "bro ano ba 😭",
     "beh i cannot 😭",
     "hoy wait lang",
