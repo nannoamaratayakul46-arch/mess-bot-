@@ -5701,7 +5701,7 @@ async function handleMessage(
         lastRandomRoastByThread.delete(threadId);
         sendReplyWithTyping(
           api,
-          "bawi ka pag malakas ka na tanga",
+          "okay, banat off muna 😭",
           threadID
         );
       } else {
