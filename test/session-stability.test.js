@@ -64,6 +64,7 @@ assert(indexForAuth.includes('durable_checkpoint: durableState'));
 assert(indexForAuth.includes('fb_cookies_configured: Boolean(deploymentAppState)'));
 assert(indexForAuth.includes("No usable Facebook session is available"));
 assert(indexForAuth.includes('action: "session_required"'));
+assert(indexForAuth.includes('diagnostics.durable_checkpoint !== "available"'));
 assert(indexForAuth.includes("No durable Messenger session or FB_COOKIES is available"));
 assert(!indexForAuth.includes("dashboardFacebookCredentials"));
 assert(!indexForAuth.includes("preferDashboardCredentials"));
