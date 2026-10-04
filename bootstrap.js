@@ -8,11 +8,6 @@
  * on a successful Messenger session.
  */
 
-// Install runtime compatibility patches before index.js loads any of the
-// Banat modules. This keeps the large router untouched and makes the fix
-// active on the very first process start.
-require("./banat-runtime-hotfix");
-
 const db = require("./db");
 
 async function boot() {
