@@ -2280,3 +2280,441 @@ body.isPlaying .coverWrap .coverVideo {
     font-size: 18px;
   }
 }
+
+
+/* ============================================================
+   ECLIPSE PHONE — iPhone / modern music-player polish
+   ============================================================ */
+.phone {
+  position: relative;
+  isolation: isolate;
+  border: 1px solid rgba(255,255,255,.07);
+  background:
+    linear-gradient(145deg,#3a3835 0%,#11100f 16%,#050505 54%,#292622 100%);
+}
+
+.phoneFrame {
+  position: relative;
+  background: linear-gradient(145deg,rgba(255,255,255,.10),rgba(255,255,255,.015) 28%,rgba(0,0,0,.32));
+}
+
+.phoneFrame::before {
+  content: "";
+  position: absolute;
+  inset: 1px;
+  border-radius: 34px;
+  border: 1px solid rgba(255,255,255,.06);
+  pointer-events: none;
+}
+
+.phoneScreen {
+  padding: 18px 16px 15px;
+  background:
+    radial-gradient(circle at 50% 18%,rgba(255,255,255,.035),transparent 30%),
+    #080808;
+  box-shadow: inset 0 0 0 1px rgba(255,255,255,.025);
+}
+
+.phoneStatusBar {
+  height: 19px;
+  margin: -10px 0 2px;
+}
+
+.phoneStatusIcons {
+  gap: 5px;
+}
+
+.statusWifi {
+  width: 16px;
+  height: 12px;
+}
+
+.statusWifi::before {
+  top: -3px;
+  width: 18px;
+  height: 15px;
+  border-width: 1.7px;
+}
+.statusWifi::after {
+  top: 1px;
+  width: 12px;
+  height: 10px;
+  border-width: 1.7px;
+}
+.statusWifi i {
+  bottom: -1px;
+  width: 3.5px;
+  height: 3.5px;
+}
+
+.statusBattery {
+  width: 19px;
+  height: 10px;
+  border-radius: 3px;
+}
+
+.statusBattery i {
+  width: 91%;
+}
+
+.spotifyTopBar {
+  height: 34px;
+  margin: 0 -1px 12px;
+}
+
+.spotifyTopTitle span {
+  color: rgba(255,255,255,.44);
+  font-size: 5.5px;
+  letter-spacing: .22em;
+}
+
+.spotifyTopTitle strong {
+  color: rgba(255,255,255,.82);
+  font-size: 7px;
+  letter-spacing: .11em;
+}
+
+.phoneNavIcon {
+  position: relative;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  transition: background .2s ease,transform .2s ease;
+}
+.phoneNavIcon:active {
+  transform: scale(.9);
+  background: rgba(255,255,255,.08);
+}
+.phoneChevron span {
+  display:block;
+  width:8px;
+  height:8px;
+  border-left:1.5px solid rgba(255,255,255,.82);
+  border-bottom:1.5px solid rgba(255,255,255,.82);
+  transform:rotate(135deg) translate(-1px,-1px);
+}
+.phoneMore {
+  gap:2px;
+}
+.phoneMore span {
+  width:2.5px;
+  height:2.5px;
+  border-radius:50%;
+  background:rgba(255,255,255,.78);
+}
+
+.spotifyCover {
+  aspect-ratio: 1 / .94;
+  border-radius: 4px;
+  box-shadow:
+    0 26px 55px rgba(0,0,0,.62),
+    0 2px 4px rgba(255,255,255,.04);
+}
+
+.coverBadge {
+  top: 10px;
+  left: 10px;
+  border-radius: 999px;
+  padding: 4px 7px;
+  background: rgba(0,0,0,.42);
+  backdrop-filter: blur(12px);
+}
+
+.coverNowPlaying {
+  bottom: 9px !important;
+  left: 10px !important;
+  right: 10px !important;
+  text-align: left !important;
+  font-size: 5px !important;
+  letter-spacing: .17em !important;
+  opacity: .62 !important;
+}
+
+.spotifySongInfo {
+  margin: 17px 1px 10px;
+}
+
+.songTitle {
+  color:#fff;
+  font-size: 19px;
+  font-weight: 600;
+  letter-spacing:-.035em;
+}
+
+.songArtist {
+  margin-top: 4px;
+  color: rgba(255,255,255,.46);
+  font-size: 7px;
+  letter-spacing:.14em;
+}
+
+.songHeart {
+  position:relative;
+  width:32px;
+  height:32px;
+  margin-right:0;
+  display:grid;
+  place-items:center;
+  color:rgba(255,255,255,.84);
+  font-size:23px;
+  transition:transform .18s ease,color .18s ease;
+}
+.songHeart:active { transform:scale(.86); }
+.songHeart .heartFill { display:none; }
+.songHeart.isLiked .heartOutline { display:none; }
+.songHeart.isLiked .heartFill { display:block; color:#fff; }
+
+.progressArea {
+  margin-top: 2px;
+}
+
+#progress {
+  display:block;
+  width:100%;
+  height:14px;
+  margin:0;
+  appearance:none;
+  -webkit-appearance:none;
+  background:transparent;
+  cursor:pointer;
+  --progress:0%;
+}
+#progress::-webkit-slider-runnable-track {
+  height:3px;
+  border-radius:999px;
+  background:linear-gradient(to right,#fff 0 var(--progress),rgba(255,255,255,.20) var(--progress) 100%);
+}
+#progress::-webkit-slider-thumb {
+  appearance:none;
+  -webkit-appearance:none;
+  width:9px;
+  height:9px;
+  margin-top:-3px;
+  border:0;
+  border-radius:50%;
+  background:#fff;
+  box-shadow:0 0 0 2px rgba(255,255,255,.08),0 2px 8px rgba(0,0,0,.55);
+}
+#progress::-moz-range-track {
+  height:3px;
+  border:0;
+  border-radius:999px;
+  background:rgba(255,255,255,.20);
+}
+#progress::-moz-range-progress {
+  height:3px;
+  border-radius:999px;
+  background:#fff;
+}
+#progress::-moz-range-thumb {
+  width:9px;
+  height:9px;
+  border:0;
+  border-radius:50%;
+  background:#fff;
+}
+.timeRow {
+  margin-top:2px;
+  color:rgba(255,255,255,.36);
+  font-variant-numeric:tabular-nums;
+}
+
+.spotifyControls {
+  margin-top:13px;
+  padding:0 0;
+}
+
+.control {
+  transition:transform .16s ease,opacity .16s ease;
+}
+.control:active { transform:scale(.86); }
+.control.tiny {
+  width:26px;
+  height:36px;
+  opacity:.78;
+}
+.spotifyControls .control.ghost {
+  width:30px;
+  height:38px;
+  color:#fff;
+}
+.spotifyControls .control.main {
+  position:relative;
+  width:48px;
+  height:48px;
+  background:#fff;
+  color:#050505;
+}
+.pauseGlyph {
+  display:flex;
+  gap:3px;
+}
+.pauseGlyph i {
+  display:block;
+  width:3px;
+  height:13px;
+  border-radius:1px;
+  background:#050505;
+}
+.playGlyph {
+  display:none;
+  width:0;
+  height:0;
+  margin-left:2px;
+  border-top:7px solid transparent;
+  border-bottom:7px solid transparent;
+  border-left:10px solid #050505;
+}
+.shuffleControl span {
+  position:relative;
+  display:block;
+  width:15px;
+  height:12px;
+}
+.shuffleControl span::before,
+.shuffleControl span::after {
+  content:"";
+  position:absolute;
+  inset:0;
+  border-top:1.5px solid currentColor;
+  border-bottom:1.5px solid currentColor;
+  transform:skewY(28deg);
+}
+.shuffleControl span::after {
+  transform:skewY(-28deg);
+  clip-path:inset(50% 0 0 0);
+}
+.skipControl span {
+  position:relative;
+  display:block;
+  width:18px;
+  height:15px;
+}
+.skipControl span::before {
+  content:"";
+  position:absolute;
+  top:2px;
+  width:0;height:0;
+  border-top:5.5px solid transparent;
+  border-bottom:5.5px solid transparent;
+  border-left:8px solid currentColor;
+}
+.skipControl.previous span::before {
+  left:0;
+  transform:rotate(180deg);
+}
+.skipControl.next span::before {
+  left:7px;
+}
+.skipControl span::after {
+  content:"";
+  position:absolute;
+  top:1px;
+  width:2px;
+  height:13px;
+  border-radius:1px;
+  background:currentColor;
+}
+.skipControl.previous span::after { left:0; }
+.skipControl.next span::after { right:0; }
+
+.muteControl span {
+  position:relative;
+  display:block;
+  width:16px;
+  height:14px;
+}
+.muteControl span::before {
+  content:"";
+  position:absolute;
+  left:0;top:4px;
+  width:4px;height:6px;
+  background:currentColor;
+  border-radius:1px;
+  box-shadow:4px -3px 0 -1px currentColor;
+}
+.muteControl span::after {
+  content:"";
+  position:absolute;
+  left:8px;top:2px;
+  width:6px;height:10px;
+  border:1.4px solid currentColor;
+  border-left:0;
+  border-top-color:transparent;
+  border-bottom-color:transparent;
+  border-radius:50%;
+}
+.muteControl.isMuted { opacity:.45; }
+
+.shuffleControl.isActive {
+  color:#fff;
+}
+
+.deviceRow {
+  margin-top:7px;
+  min-height:22px;
+  color:rgba(255,255,255,.43);
+  font-size:5.5px;
+}
+.deviceDot {
+  width:5px;height:5px;
+  background:#1ed760;
+  box-shadow:0 0 10px rgba(30,215,96,.28);
+}
+.queueGlyph {
+  position:relative;
+  display:grid;
+  gap:2px;
+  width:18px;
+  height:16px;
+  padding:2px 1px;
+  border:0;
+  background:transparent;
+  cursor:pointer;
+}
+.queueGlyph span {
+  display:block;
+  width:100%;
+  height:1.5px;
+  border-radius:2px;
+  background:rgba(255,255,255,.7);
+}
+.phoneFooter {
+  margin-top:6px;
+  padding-top:6px;
+  border-top:1px solid rgba(255,255,255,.07);
+}
+.phoneFooter > span:first-child {
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+.losslessDot {
+  width:3px;
+  height:3px;
+  border-radius:50%;
+  background:#1ed760;
+  box-shadow:0 0 7px rgba(30,215,96,.4);
+}
+
+.phoneBottomNav {
+  left:9px;
+  right:9px;
+  bottom:3px;
+  padding:7px 0 4px;
+  backdrop-filter:blur(10px);
+}
+.phoneBottomNav .active {
+  color:#fff;
+}
+
+body.isPlaying .phoneScreen {
+  background:
+    radial-gradient(circle at 50% 15%,rgba(255,255,255,.045),transparent 30%),
+    #080808;
+}
+
+@media (max-width:390px) {
+  .phoneScreen { padding-left:13px; padding-right:13px; }
+  .spotifyCover { aspect-ratio:1/.90; }
+}
