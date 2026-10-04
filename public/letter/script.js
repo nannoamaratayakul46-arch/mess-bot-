@@ -24,6 +24,13 @@ const playerStatus = document.getElementById("playerStatus");
 const stickyStatus = document.getElementById("stickyStatus");
 const playCaption = document.getElementById("playCaption");
 const durationEl = document.getElementById("duration");
+const currentTimeEl = document.getElementById("currentTime");
+const phoneTime = document.getElementById("phoneTime");
+const songHeart = document.getElementById("songHeart");
+const shuffleBtn = document.getElementById("shuffleBtn");
+const nextBtn = document.getElementById("nextBtn");
+const queueBtn = document.getElementById("queueBtn");
+const minimizePlayerBtn = document.getElementById("minimizePlayerBtn");
 const status = document.getElementById("status");
 
 const timeline = [
@@ -173,6 +180,15 @@ let finalCinematicActive = false;
 function formatTime(value) {
   const t = Math.max(0, Number(value) || 0);
   return String(Math.floor(t / 60)).padStart(2, "0") + ":" + String(Math.floor(t % 60)).padStart(2, "0");
+}
+
+function updatePhoneClock() {
+  if (!phoneTime) return;
+  const now = new Date();
+  phoneTime.textContent = now.toLocaleTimeString([], {
+    hour: "numeric",
+    minute: "2-digit"
+  }).replace(/^0/, "");
 }
 
 function resize() {
@@ -483,7 +499,10 @@ function updatePlayerUI() {
   const duration = Number.isFinite(audio.duration) ? audio.duration : 139;
   const pct = duration > 0 ? (t / duration) * 100 : 0;
 
-  progress.value = String(Math.min(100, Math.max(0, pct)));
+  const safePct = Math.min(100, Math.max(0, pct));
+  progress.value = String(safePct);
+  progress.style.setProperty("--progress", safePct + "%");
+  currentTimeEl.textContent = formatTime(t);
   durationEl.textContent = formatTime(duration);
   phoneLyricsProgressBar.style.width = Math.min(100, Math.max(0, pct)) + "%";
   phoneLyricsTime.textContent = formatTime(t);
@@ -494,7 +513,9 @@ function updatePlayerUI() {
   playerStatus.textContent = state;
   stickyStatus.textContent = state;
   status.textContent = state;
-  playPauseBtn.textContent = playing ? "❚❚" : "▶";
+  playPauseBtn.classList.toggle("isPlaying", playing);
+  playPauseBtn.querySelector(".pauseGlyph").style.display = playing ? "flex" : "none";
+  playPauseBtn.querySelector(".playGlyph").style.display = playing ? "none" : "block";
   playPauseBtn.setAttribute("aria-label", playing ? "Pause" : "Play");
   stickyPlay.textContent = playing ? "❚❚" : "▶";
   playCaption.textContent = playing ? "stay here for a while." : (audio.ended ? "the letter has finished." : "the song starts here.");
@@ -551,7 +572,35 @@ restartBtn.addEventListener("click", () => {
 
 muteBtn.addEventListener("click", () => {
   audio.muted = !audio.muted;
-  muteBtn.textContent = audio.muted ? "⌁̸" : "⌁";
+  muteBtn.classList.toggle("isMuted", audio.muted);
+  muteBtn.setAttribute("aria-label", audio.muted ? "Unmute" : "Mute");
+});
+
+songHeart?.addEventListener("click", () => {
+  const liked = !songHeart.classList.contains("isLiked");
+  songHeart.classList.toggle("isLiked", liked);
+  songHeart.setAttribute("aria-pressed", String(liked));
+});
+
+shuffleBtn?.addEventListener("click", () => {
+  const active = !shuffleBtn.classList.contains("isActive");
+  shuffleBtn.classList.toggle("isActive", active);
+  shuffleBtn.setAttribute("aria-pressed", String(active));
+});
+
+nextBtn?.addEventListener("click", () => {
+  audio.currentTime = 0;
+  activeIndex = -1;
+  resetFinalCinematic();
+  syncCoverVideo(true);
+  updateLyric(0, true);
+  playAudio();
+});
+
+queueBtn?.addEventListener("click", openPhoneLyrics);
+
+minimizePlayerBtn?.addEventListener("click", () => {
+  document.getElementById("playerSection")?.scrollIntoView({ behavior: "smooth", block: "center" });
 });
 
 progress.addEventListener("input", () => {
@@ -642,6 +691,8 @@ phoneLyricsPage.addEventListener("click", (event) => {
 
 resize();
 renderPhoneLyrics();
+updatePhoneClock();
+window.setInterval(updatePhoneClock, 15000);
 updatePlayerUI();
 requestAnimationFrame(frame);
 requestAnimationFrame(sync);
