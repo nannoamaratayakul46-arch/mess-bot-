@@ -1548,7 +1548,7 @@ const ADMIN_SAFE_BANAT_REPLIES = [
 ];
 
 function getRandomRoastReply(threadId = null, incomingText = "", senderId = null) {
-  const adminSender = isAdmin(senderId);
+  const adminSender = isAdmin(senderId) || isPrimaryUser(senderId);
 
   // ECLIPSE admins get a reaction, never a roast. Everyone else uses the
   // normal new natural Banat pool.
