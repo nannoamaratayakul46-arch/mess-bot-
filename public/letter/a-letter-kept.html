@@ -42,12 +42,12 @@
               </div>
             </div>
             <div class="phoneTop spotifyTopBar">
-              <button class="phoneNavIcon" type="button" aria-label="Minimize player">⌄</button>
+              <button class="phoneNavIcon phoneChevron" id="minimizePlayerBtn" type="button" aria-label="Minimize player"><span></span></button>
               <div class="spotifyTopTitle">
                 <span>NOW PLAYING</span>
                 <strong>ECLIPSE · 001</strong>
               </div>
-              <button class="phoneNavIcon" type="button" aria-label="More options">•••</button>
+              <button class="phoneNavIcon phoneMore" id="morePlayerBtn" type="button" aria-label="More options"><span></span><span></span><span></span></button>
             </div>
 
             <div class="coverWrap spotifyCover">
@@ -74,7 +74,7 @@
                   <div class="songTitle">A Letter, Kept</div>
                   <div class="songArtist">ECLIPSE · FOR YOU</div>
                 </div>
-                <button class="songHeart" type="button" aria-label="Like">♡</button>
+                <button class="songHeart" id="songHeart" type="button" aria-label="Like" aria-pressed="false"><span class="heartOutline">♡</span><span class="heartFill">♥</span></button>
               </div>
             </div>
 
@@ -88,22 +88,22 @@
             </div>
 
             <div class="playerControls spotifyControls">
-              <button class="control tiny" type="button" aria-label="Shuffle">⌘</button>
-              <button class="control ghost" id="restartBtn" type="button" aria-label="Previous">◀◀</button>
-              <button class="control main" id="playPauseBtn" type="button" aria-label="Pause">❚❚</button>
-              <button class="control ghost" type="button" aria-label="Next">▶▶</button>
-              <button class="control tiny" id="muteBtn" type="button" aria-label="Mute">⌁</button>
+              <button class="control tiny shuffleControl" id="shuffleBtn" type="button" aria-label="Shuffle" aria-pressed="false"><span></span></button>
+              <button class="control ghost skipControl previous" id="restartBtn" type="button" aria-label="Previous"><span></span></button>
+              <button class="control main" id="playPauseBtn" type="button" aria-label="Pause"><span class="pauseGlyph"><i></i><i></i></span><span class="playGlyph"></span></button>
+              <button class="control ghost skipControl next" id="nextBtn" type="button" aria-label="Next"><span></span></button>
+              <button class="control tiny muteControl" id="muteBtn" type="button" aria-label="Mute"><span></span></button>
             </div>
 
             <div class="deviceRow">
               <span class="deviceDot"></span>
               <span>THIS PHONE</span>
               <span class="deviceSpacer"></span>
-              <span class="queueGlyph">☰</span>
+              <button class="queueGlyph" id="queueBtn" type="button" aria-label="Open lyrics queue"><span></span><span></span><span></span></button>
             </div>
 
             <div class="phoneFooter">
-              <span>LOSSLESS · ECLIPSE</span>
+              <span><b class="losslessDot"></b> LOSSLESS · ECLIPSE</span>
               <button class="lyricsPill" type="button" onclick="document.getElementById('phoneLyricsPage').classList.add('open');document.getElementById('phoneLyricsPage').setAttribute('aria-hidden','false');">LYRICS</button>
             </div>
 
