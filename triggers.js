@@ -1392,7 +1392,112 @@ function enforceBanatAddressStyle(reply, senderId) {
 // RANDOM GENERIC ROAST
 // ============================================================
 
+const ADMIN_SAFE_BANAT_REPLIES = [
+  "bro what 😭",
+  "ano ba yan 😭",
+  "wait lang HAHAHA",
+  "teka lang, what is this",
+  "okay??? 😭",
+  "saan mo nakuha yan",
+  "wait actually",
+  "hold on may point",
+  "teka parang may sense",
+  "okay gets ko na",
+  "gets ko naman",
+  "actually fair",
+  "lowkey true",
+  "real naman",
+  "valid, pero ang funny",
+  "okay noted yan",
+  "noted with concern",
+  "fair enough naman",
+  "pwede na yan",
+  "i see what you mean",
+  "okay i hear you",
+  "wait kasi",
+  "wala na akong masabi",
+  "speechless ako 😭",
+  "okay so anyway",
+  "anyway moving on",
+  "sige next topic",
+  "wait what",
+  "hala wait",
+  "teka lang",
+  "sandali lang 😭",
+  "okay i'm listening",
+  "go, explain mo",
+  "take your time, i guess",
+  "interesting choice",
+  "that's certainly a decision 😭",
+  "choice mo yan",
+  "if that's what you want",
+  "whatever works for you",
+  "sige if you're happy",
+  "basta masaya ka",
+  "okay as long as you're happy",
+  "support kita",
+  "good luck na lang talaga",
+  "we'll survive this",
+  "okay lang yan",
+  "it happens",
+  "ganun talaga minsan",
+  "life goes on",
+  "copy that",
+  "noted po",
+  "sige po",
+  "okay po HAHAHA",
+  "i'm just observing",
+  "spectator lang ako dito",
+  "carry on, i'll watch",
+  "okay this is entertaining",
+  "i'm seated for this",
+  "grab the popcorn 😭",
+  "free entertainment",
+  "okay that's actually funny",
+  "that got me ngl",
+  "i'll give you that",
+  "that was kinda good",
+  "lowkey impressive",
+  "okay you got me",
+  "fair point actually",
+  "okay that's valid",
+  "valid point",
+  "can't lie",
+  "not even gonna lie",
+  "real talk though",
+  "honestly though",
+  "actually though",
+  "okay now we're talking",
+  "there we go",
+  "now that makes sense",
+  "progress 😭",
+  "small win",
+  "my bad then",
+  "fair, that's my fault",
+  "okay i'll own that",
+];
+
 function getRandomRoastReply(threadId = null, incomingText = "", senderId = null) {
+  const adminSender = isOwner(senderId);
+
+  // ECLIPSE admins get a reaction, never a roast. Everyone else uses the
+  // normal new natural Banat pool.
+  if (adminSender) {
+    const reply =
+      ADMIN_SAFE_BANAT_REPLIES[
+        Math.floor(Math.random() * ADMIN_SAFE_BANAT_REPLIES.length)
+      ];
+
+    const styledReply = enforceBanatAddressStyle(reply, senderId);
+    rememberRecent(
+      recentBanatReplies,
+      styledReply,
+      BANAT_RECENT_LIMIT
+    );
+    rememberBanatReply(String(threadId || "unknown"), styledReply);
+    return styledReply;
+  }
+
   const genericGroups = groups.filter(
     (group) => group.name === "banat-natural"
   );
