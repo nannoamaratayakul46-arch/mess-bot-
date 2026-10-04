@@ -109,11 +109,9 @@ const BANAT_SHORTHANDS = Object.freeze({
   "what is up": ["sup", "wsup"],
 
   // ----------------------------------------------------------
-  // WORDS THAT FIT THE EXISTING BANAT REPLY LANGUAGE
+  // GENERAL CHAT VOCABULARY
   // ----------------------------------------------------------
 
-  "baby": ["bby"],
-  "babies": ["bbys"],
   "brother": ["bro"],
   "brothers": ["bros"],
   "sister": ["sis"],
