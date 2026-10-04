@@ -60,13 +60,14 @@ async function connect() {
   // broken one.
   let initializingPool = null;
 
-  if (!process.env.DATABASE_URL) {
-    throw new Error(
-      "DATABASE_URL is not set. Add your Neon connection string to Render Environment Variables."
-    );
-  }
+  try {
+    if (!process.env.DATABASE_URL) {
+      throw new Error(
+        "DATABASE_URL is not set. Add your Neon connection string to Render Environment Variables."
+      );
+    }
 
-  pool = new Pool({
+    pool = new Pool({
     connectionString: process.env.DATABASE_URL,
     ssl: { rejectUnauthorized: false },
     max: Number(process.env.DB_POOL_MAX) || 10,
@@ -1243,9 +1244,9 @@ async function connect() {
       ON ai_sessions(character_id, thread_id, user_id, active);
   `);
 
-  console.log("[DB] Neon PostgreSQL ONLINE ✓");
-  return pool;
-} catch (error) {
+    console.log("[DB] Neon PostgreSQL ONLINE ✓");
+    return pool;
+  } catch (error) {
   if (initializingPool) {
     try {
       await initializingPool.end();
