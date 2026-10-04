@@ -5150,6 +5150,82 @@ async function handleMessage(
   }
 
   // ==========================================================
+  // BANAT CONTROL
+  // ==========================================================
+  //
+  // Handle / before pause/bot-control gates so the Banat switch and
+  // unauthorized slash response remain available even when normal command
+  // processing is paused/disabled.
+  // The toggle controls both the persistent roast setting and the
+  // in-memory conversational target mode.
+  // ==========================================================
+
+  const banatControlMatch =
+    originalText.match(/^\/$/);
+
+  if (banatControlMatch) {
+    if (!isAdmin(senderId)) {
+      sendBanatReplyWithTyping(
+        api,
+        require("./slash-banats").pickUnauthorizedSlashBanat(),
+        threadID,
+        event.messageID,
+        false,
+        null,
+        0,
+        originalText
+      );
+
+      return;
+    }
+
+    try {
+      const currentlyEnabled = await db.isRoastEnabled(threadId);
+      const enabled = !currentlyEnabled;
+
+      await db.setRoastEnabled(threadId, enabled);
+      setBanatConversationMode(threadId, enabled, senderId);
+
+      // Turning Banat off must also kill any delayed/randomized burst that
+      // was already queued before the toggle. Otherwise an old reply can
+      // fire after / has disabled the mode and make the toggle look broken.
+      if (!enabled && typeof clearBanatBurstState === "function") {
+        clearBanatBurstState(threadId);
+      }
+
+      sendBanatReplyWithTyping(
+        api,
+        require("./slash-banats")(enabled ? "on" : "off"),
+        threadID,
+        event.messageID,
+        false,
+        null,
+        0,
+        originalText
+      );
+
+      console.log(
+        "[BANAT] Conversation mode " +
+          (enabled ? "ENABLED" : "DISABLED") +
+          " in " +
+          threadId +
+          " by " +
+          senderId
+      );
+    } catch (error) {
+      console.error("[BANAT] Update failed:", error);
+      sendReplyWithTyping(
+        api,
+        "🔴 Failed to update banat settings.",
+        threadID
+      );
+    }
+
+    return;
+  }
+
+
+  // ==========================================================
   // PAUSE / RESUME / BOT CONTROL
   // These MUST be checked before normal AI/training so that
   // pause actually pauses normal message processing.
@@ -5651,80 +5727,6 @@ async function handleMessage(
       ].join("\n"),
       threadID
     );
-
-    return;
-  }
-
-  // ==========================================================
-  // BANAT CONTROL
-  // ==========================================================
-  //
-  // Handle / BEFORE automatic Banat. Otherwise the same slash message
-  // can be processed using the previous state and then toggle afterward.
-  // The toggle controls both the persistent roast setting and the
-  // in-memory conversational target mode.
-  // ==========================================================
-
-  const banatControlMatch =
-    originalText.match(/^\/$/);
-
-  if (banatControlMatch) {
-    if (!isAdmin(senderId)) {
-      sendBanatReplyWithTyping(
-        api,
-        require("./slash-banats").pickUnauthorizedSlashBanat(),
-        threadID,
-        event.messageID,
-        false,
-        null,
-        0,
-        originalText
-      );
-
-      return;
-    }
-
-    try {
-      const currentlyEnabled = await db.isRoastEnabled(threadId);
-      const enabled = !currentlyEnabled;
-
-      await db.setRoastEnabled(threadId, enabled);
-      setBanatConversationMode(threadId, enabled, senderId);
-
-      // Turning Banat off must also kill any delayed/randomized burst that
-      // was already queued before the toggle. Otherwise an old reply can
-      // fire after / has disabled the mode and make the toggle look broken.
-      if (!enabled && typeof clearBanatBurstState === "function") {
-        clearBanatBurstState(threadId);
-      }
-
-      sendBanatReplyWithTyping(
-        api,
-        require("./slash-banats")(enabled ? "on" : "off"),
-        threadID,
-        event.messageID,
-        false,
-        null,
-        0,
-        originalText
-      );
-
-      console.log(
-        "[BANAT] Conversation mode " +
-          (enabled ? "ENABLED" : "DISABLED") +
-          " in " +
-          threadId +
-          " by " +
-          senderId
-      );
-    } catch (error) {
-      console.error("[BANAT] Update failed:", error);
-      sendReplyWithTyping(
-        api,
-        "🔴 Failed to update banat settings.",
-        threadID
-      );
-    }
 
     return;
   }
