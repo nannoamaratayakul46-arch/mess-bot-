@@ -293,19 +293,18 @@ function sendBanatReplyWithTyping(
                     }
                   };
 
-                  if (typeof api?.setMessageReactionMqtt === "function") {
-                    api.setMessageReactionMqtt(
-                      "😆",
-                      String(sentMessageID),
-                      String(threadID),
-                      reactionCallback
-                    );
-                  } else if (typeof api?.setMessageReaction === "function") {
+                  if (typeof api?.setMessageReaction === "function") {
                     api.setMessageReaction(
                       "😆",
                       String(sentMessageID),
                       reactionCallback,
                       true
+                    );
+                  } else if (typeof api?.setMessageReactionMqtt === "function") {
+                    api.setMessageReactionMqtt(
+                      "😆",
+                      String(sentMessageID),
+                      reactionCallback
                     );
                   }
                 } catch (reactionError) {
