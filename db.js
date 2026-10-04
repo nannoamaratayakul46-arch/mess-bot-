@@ -3387,6 +3387,13 @@ async function setThreadSettings(threadId, fields) {
 }
 
 
+function isAdminForBible(userId) {
+  const target = String(userId || "").trim();
+  if (!target) return false;
+  const raw = String(process.env.ADMIN_IDS || "");
+  return raw.split(",").map((id) => id.trim()).filter(Boolean).includes(target);
+}
+
 async function isBibleVerseEnabled(threadId) {
   const conn = requireConn();
   const id = String(threadId);
@@ -3941,6 +3948,7 @@ module.exports = {
   setThreadSettings,
 
   // Roast / Banat
+  isAdminForBible,
   isBibleVerseEnabled,
   setBibleVerseEnabled,
   getBibleVerseEnabledThreadIds,
