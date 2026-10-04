@@ -180,9 +180,8 @@ const groups = [
 // Rap/cypher drops were intentionally removed. Banat now stays in its
 // normal conversational voice and focuses on the full one-liner pool.
 //
-// The pool is de-duplicated before selection because "trash-talk" and
-// "banat-expanded" contain overlapping material. That was making a large
-// list behave like a much smaller list in practice.
+// The natural Banat pool is the single generic source. This keeps
+// automatic Banat conversational instead of mixing in legacy one-liner pools.
 // ============================================================
 
 const BANAT_RECENT_LIMIT = Math.max(
