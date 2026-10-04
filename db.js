@@ -337,6 +337,7 @@ async function connect() {
       region_id TEXT NOT NULL DEFAULT 'greenvale',
       property_tier INTEGER NOT NULL DEFAULT 0,
       property_name TEXT,
+      level INTEGER NOT NULL DEFAULT 1,
       created_at BIGINT NOT NULL,
       updated_at BIGINT NOT NULL,
       PRIMARY KEY(thread_id, user_id)
@@ -374,6 +375,7 @@ async function connect() {
 
   await pool.query(`
     ALTER TABLE rpg_players
+      ADD COLUMN IF NOT EXISTS level INTEGER NOT NULL DEFAULT 1,
       ADD COLUMN IF NOT EXISTS location_id TEXT NOT NULL DEFAULT 'eclipse_castle',
       ADD COLUMN IF NOT EXISTS subclass TEXT,
       ADD COLUMN IF NOT EXISTS hp INTEGER NOT NULL DEFAULT 130,
