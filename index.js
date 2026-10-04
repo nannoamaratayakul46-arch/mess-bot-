@@ -3564,7 +3564,7 @@ app.post(
     pendingFacebookAppState = incoming;
 
     dashboardBotPaused = false;
-    pushDashboardEvent("messenger", "Facebook session validation requested from Command Center.");
+    pushDashboardEvent("messenger", "Facebook session validation requested from Command Center. The session will be checkpointed after successful login.");
     listenerGeneration++;
 
     if (loginRetryTimer) {
@@ -3574,7 +3574,14 @@ app.post(
 
     loginAttempt = 0;
     listenFailureCount = 0;
-    attemptLogin();
+    async function initializeMessengerSession() {
+  // Prefer the newest durable checkpoint. If it is unavailable or invalid,
+  // retain the deployment-provided FB_COOKIES fallback.
+  await loadPersistedFacebookSessionState();
+  attemptLogin();
+}
+
+void initializeMessengerSession();
 
     return res.status(202).json({
       ok: true,
@@ -3625,7 +3632,7 @@ app.post(
     res.json({
       ok: true,
       action: "listener_disconnected",
-      note: "The Messenger listener was detached. The stored FB_COOKIES credential remains on Render for the next reconnect.",
+      note: "The Messenger listener was detached. The durable session checkpoint remains available for the next reconnect.",
     });
   }
 );
@@ -4012,6 +4019,114 @@ function parseFacebookCookieHeader(header, source) {
     throw new Error(`${source} must be a cookie array, a wrapped cookie export, JSON text, or a cookie-header string.`);
     }
 
+function getSessionCryptoKey() {
+  const secret =
+    String(
+      process.env.ECLIPSE_SESSION_ENCRYPTION_KEY ||
+      process.env.ECLIPSE_DASHBOARD_API_KEY ||
+      process.env.DATABASE_URL ||
+      ""
+    ).trim();
+
+  if (!secret) return null;
+
+  return crypto
+    .createHash("sha256")
+    .update(secret)
+    .digest();
+}
+
+function encryptSessionState(state) {
+  const key = getSessionCryptoKey();
+  if (!key) throw new Error("No session encryption key is configured.");
+
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv("aes-256-gcm", key, iv);
+  const plaintext = JSON.stringify(state);
+  const ciphertext = Buffer.concat([
+    cipher.update(plaintext, "utf8"),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+
+  return [
+    iv.toString("base64url"),
+    tag.toString("base64url"),
+    ciphertext.toString("base64url"),
+  ].join(".");
+}
+
+function decryptSessionState(payload) {
+  const key = getSessionCryptoKey();
+  if (!key) throw new Error("No session encryption key is configured.");
+
+  const [ivText, tagText, ciphertextText] = String(payload || "").split(".");
+  if (!ivText || !tagText || !ciphertextText) {
+    throw new Error("Stored session state is malformed.");
+  }
+
+  const decipher = crypto.createDecipheriv(
+    "aes-256-gcm",
+    key,
+    Buffer.from(ivText, "base64url")
+  );
+  decipher.setAuthTag(Buffer.from(tagText, "base64url"));
+
+  const plaintext = Buffer.concat([
+    decipher.update(Buffer.from(ciphertextText, "base64url")),
+    decipher.final(),
+  ]).toString("utf8");
+
+  return normalizeFacebookAppState(
+    JSON.parse(plaintext),
+    "Stored Messenger session"
+  );
+}
+
+async function persistFacebookSessionState(state) {
+  try {
+    if (!Array.isArray(state) || state.length === 0) return false;
+
+    const encrypted = encryptSessionState(state);
+    await db.setMessengerSessionState(encrypted);
+
+    console.log("[AUTH] Current Messenger session checkpoint persisted.");
+    return true;
+  } catch (error) {
+    console.error(
+      "[AUTH] Could not persist Messenger session checkpoint:",
+      error?.message || error
+    );
+    return false;
+  }
+}
+
+async function loadPersistedFacebookSessionState() {
+  try {
+    await db.connect();
+
+    const encrypted = await db.getMessengerSessionState();
+    if (!encrypted) return false;
+
+    const restored = decryptSessionState(encrypted);
+
+    if (!Array.isArray(restored) || restored.length === 0) {
+      throw new Error("Stored session state is empty.");
+    }
+
+    appState = restored;
+
+    console.log("[AUTH] Durable Messenger session checkpoint restored.");
+    return true;
+  } catch (error) {
+    console.warn(
+      "[AUTH] Durable session restore unavailable; falling back to FB_COOKIES:",
+      error?.message || error
+    );
+    return false;
+  }
+}
+
     function readAppState() {
     const rawCookies = process.env.FB_COOKIES;
     if (typeof rawCookies !== "string" || !rawCookies.trim()) return null;
@@ -4167,6 +4282,7 @@ function getFacebookLoginErrorMessage(error) {
 }
 
 function attemptLogin() {
+  const isReplacementSession = Boolean(pendingFacebookAppState);
   const candidateAppState =
     pendingFacebookAppState || appState;
 
@@ -4270,6 +4386,20 @@ function attemptLogin() {
           loginError || "No API object returned."
         );
 
+        // A replacement session must never take down a currently working
+        // Messenger session. If Facebook rejects the replacement, discard it
+        // and keep the known-good listener alive.
+        if (isReplacementSession && activeMessengerApi) {
+          pendingFacebookAppState = null;
+          loginInProgress = false;
+          dashboardLoginError =
+            "Replacement session was rejected; the existing Messenger session remains active.";
+          console.warn(
+            "[AUTH] Replacement session rejected; keeping the existing Messenger session."
+          );
+          return;
+        }
+
         loginAttempt++;
 
         const backoffMs = Math.min(
@@ -4331,6 +4461,10 @@ function attemptLogin() {
           error?.message || error
         );
       }
+
+      // Persist the newest session returned by ws3-fca. This is what makes
+      // a refreshed cookie survive Render restarts and redeploys.
+      await persistFacebookSessionState(appState);
 
       preferDashboardCredentials = false;
       pendingFacebookAppState = null;

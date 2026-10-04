@@ -72,6 +72,16 @@ async function connect() {
     console.error("[DB] Unexpected pool error:", error.message);
   });
 
+  // Durable encrypted session blob. The secret material itself is encrypted
+  // before it reaches this table; db.js only stores the opaque ciphertext.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messenger_session_state (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      encrypted_state TEXT NOT NULL,
+      updated_at BIGINT NOT NULL
+    );
+  `);
+
   // ═════════════════════════════════════════════════════════
   // USERS
   // ═════════════════════════════════════════════════════════
@@ -3738,6 +3748,37 @@ async function healthCheck() {
   return true;
 }
 
+async function getMessengerSessionState() {
+  const result = await requireConn().query(`
+    SELECT encrypted_state
+    FROM messenger_session_state
+    WHERE id = 1
+    LIMIT 1
+  `);
+  return result.rows[0]?.encrypted_state || null;
+}
+
+async function setMessengerSessionState(encryptedState) {
+  const value = String(encryptedState || "").trim();
+  if (!value) throw new Error("Encrypted session state cannot be empty.");
+
+  await requireConn().query(`
+    INSERT INTO messenger_session_state (id, encrypted_state, updated_at)
+    VALUES (1, $1, $2)
+    ON CONFLICT (id)
+    DO UPDATE SET
+      encrypted_state = EXCLUDED.encrypted_state,
+      updated_at = EXCLUDED.updated_at
+  `, [value, Date.now()]);
+
+  return true;
+}
+
+async function clearMessengerSessionState() {
+  await requireConn().query("DELETE FROM messenger_session_state WHERE id = 1");
+  return true;
+}
+
 
 /**
  * Dashboard user inspector. Read-only; the bot remains the source of truth.
@@ -3871,6 +3912,9 @@ module.exports = {
   close,
   withTransaction,
   healthCheck,
+  getMessengerSessionState,
+  setMessengerSessionState,
+  clearMessengerSessionState,
   getDashboardSnapshot,
   getDashboardUser,
   getDashboardAnalytics,
