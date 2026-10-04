@@ -4286,6 +4286,29 @@ function getFacebookLoginErrorMessage(error) {
   return message || "Facebook login failed.";
 }
 
+function fallbackFromRejectedDurableSession() {
+  if (
+    !deploymentAppState ||
+    appStateSource !== "durable" ||
+    durableSessionRejected
+  ) {
+    return false;
+  }
+
+  durableSessionRejected = true;
+  appState = deploymentAppState;
+  appStateSource = "fb_cookies";
+  loginAttempt = 0;
+  dashboardLoginError =
+    "Durable Messenger session was rejected; retrying with FB_COOKIES.";
+
+  console.warn(
+    "[AUTH] Durable session rejected; falling back to FB_COOKIES."
+  );
+
+  return true;
+}
+
 function attemptLogin() {
   const isReplacementSession = Boolean(pendingFacebookAppState);
   const candidateAppState =
@@ -4326,6 +4349,11 @@ function attemptLogin() {
 
     loginSettled = true;
     dashboardLoginError = getFacebookLoginErrorMessage(error);
+
+    // A stale durable checkpoint can also fail before ws3-fca invokes the
+    // normal login callback. Fall back to FB_COOKIES for that case too.
+    fallbackFromRejectedDurableSession();
+
     loginInProgress = false;
 
     // If this was only a replacement-session test, keep the currently
@@ -4405,6 +4433,10 @@ function attemptLogin() {
           return;
         }
 
+        if (!isReplacementSession) {
+          fallbackFromRejectedDurableSession();
+        }
+
         loginAttempt++;
 
         const backoffMs = Math.min(
@@ -4415,26 +4447,6 @@ function attemptLogin() {
         console.error(
           `[LOGIN] Login failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
         );
-
-        // A durable checkpoint can be older than the deployment-provided
-        // FB_COOKIES value. If that checkpoint is rejected, immediately fall
-        // back to FB_COOKIES once instead of retrying stale cookies forever.
-        if (
-          !isReplacementSession &&
-          appStateSource === "durable" &&
-          deploymentAppState &&
-          !durableSessionRejected
-        ) {
-          durableSessionRejected = true;
-          appState = deploymentAppState;
-          appStateSource = "fb_cookies";
-          loginAttempt = 0;
-          dashboardLoginError =
-            "Durable Messenger session was rejected; retrying with FB_COOKIES.";
-          console.warn(
-            "[AUTH] Durable session rejected; falling back to FB_COOKIES."
-          );
-        }
 
         if (!activeMessengerApi && appStateSource !== "durable") {
           watchdogSetMessengerConnected(false);
