@@ -3419,7 +3419,7 @@ app.post(
 app.get(
   "/api/dashboard/status",
   requireDashboardAccess,
-  (_req, res) => {
+  async (_req, res) => {
     // Messenger session state is owned by the active API/listener generation.
     // The watchdog can briefly mark the transport unhealthy during a transient
     // listener hiccup; that must not make the dashboard treat a valid session
@@ -3442,6 +3442,7 @@ app.get(
       bot_paused: dashboardBotPaused,
       last_connected_at: dashboardLastConnectedAt,
       last_disconnected_at: dashboardLastDisconnectedAt,
+      auth: await getMessengerAuthDiagnostics(),
       watchdog: getWatchdogStatus(),
       updated_at: new Date().toISOString(),
     });
@@ -3529,17 +3530,6 @@ app.get(
 );
 
 app.post(
-  "/api/dashboard/connect-credentials",
-  requireDashboardAccess,
-  (_req, res) => {
-    return res.status(410).json({
-      ok: false,
-      error: "Facebook password login is disabled. Export a Facebook session cookie file and upload it instead.",
-    });
-  }
-);
-
-app.post(
   "/api/dashboard/connect-session",
   requireDashboardAccess,
   (req, res) => {
@@ -3586,20 +3576,42 @@ app.post(
 app.post(
   "/api/dashboard/reconnect",
   requireDashboardAccess,
-  (_req, res) => {
+  async (_req, res) => {
     dashboardBotPaused = false;
+
+    const diagnostics = await getMessengerAuthDiagnostics();
+
+    if (!diagnostics.connected && !diagnostics.durable_checkpoint && !diagnostics.fb_cookies_configured) {
+      dashboardLoginError =
+        "No durable Messenger session or FB_COOKIES is available. Upload a fresh Facebook session export or cookie header.";
+      pushDashboardEvent("messenger", dashboardLoginError);
+
+      return res.status(409).json({
+        ok: false,
+        action: "session_required",
+        error: dashboardLoginError,
+        auth: await getMessengerAuthDiagnostics(),
+      });
+    }
+
     pushDashboardEvent("messenger", "Messenger reconnect requested from Command Center.");
 
     if (
       !activeMessengerApi ||
       activeListenerGeneration <= 0
     ) {
+      if (loginRetryTimer) {
+        clearTimeout(loginRetryTimer);
+        loginRetryTimer = null;
+      }
+      loginAttempt = 0;
       attemptLogin();
     }
 
-    res.json({
+    return res.json({
       ok: true,
       action: "reconnect_requested",
+      auth: await getMessengerAuthDiagnostics(),
     });
   }
 );
@@ -4097,7 +4109,11 @@ async function loadPersistedFacebookSessionState() {
     await db.connect();
 
     const encrypted = await db.getMessengerSessionState();
-    if (!encrypted) return false;
+    if (!encrypted) {
+      appState = deploymentAppState;
+      appStateSource = deploymentAppState ? "fb_cookies" : "none";
+      return false;
+    }
 
     const restored = decryptSessionState(encrypted);
 
@@ -4112,9 +4128,6 @@ async function loadPersistedFacebookSessionState() {
     console.log("[AUTH] Durable Messenger session checkpoint restored.");
     return true;
   } catch (error) {
-    // Keep the deployment-provided FB_COOKIES value untouched. A durable
-    // checkpoint is optional; if it cannot be restored, FB_COOKIES remains
-    // the authoritative fallback.
     appState = deploymentAppState;
     appStateSource = deploymentAppState ? "fb_cookies" : "none";
 
@@ -4124,6 +4137,67 @@ async function loadPersistedFacebookSessionState() {
     );
     return false;
   }
+}
+
+async function getMessengerAuthDiagnostics() {
+  let durableCheckpoint = false;
+  let durableState = "unknown";
+  let durableError = null;
+
+  try {
+    await db.connect();
+    durableCheckpoint = Boolean(await db.getMessengerSessionState());
+    durableState = durableCheckpoint ? "available" : "missing";
+  } catch (error) {
+    durableState = "database_unavailable";
+    durableError = getFacebookLoginErrorMessage(error);
+  }
+
+  const connected =
+    Boolean(activeMessengerApi) &&
+    activeListenerGeneration > 0;
+
+  let state = "needs_session";
+  let recoveryAction = "Upload a valid Facebook session export or cookie header.";
+
+  if (connected) {
+    state = "connected";
+    recoveryAction = "No action required.";
+  } else if (loginInProgress) {
+    state = "connecting";
+    recoveryAction = "Wait for the current validation attempt to finish.";
+  } else if (pendingFacebookAppState) {
+    state = "replacement_pending";
+    recoveryAction = "Wait for the uploaded Facebook session validation.";
+  } else if (appStateSource === "durable" && durableSessionRejected) {
+    state = "durable_rejected";
+    recoveryAction = deploymentAppState
+      ? "The durable session was rejected. ECLIPSE is ready to retry with FB_COOKIES."
+      : "Upload a fresh Facebook session export or cookie header.";
+  } else if (appStateSource === "fb_cookies" && deploymentAppState) {
+    state = "session_available";
+    recoveryAction = "Press Reconnect to validate the available FB_COOKIES session.";
+  } else if (durableState === "database_unavailable") {
+    state = "database_unavailable";
+    recoveryAction = "Restore database connectivity, then press Reconnect or upload a fresh session.";
+  } else if (durableState === "missing" && !deploymentAppState) {
+    state = "no_session";
+    recoveryAction = "Upload a valid Facebook session export or cookie header. No durable session or FB_COOKIES is available.";
+  }
+
+  return {
+    state,
+    source: appStateSource,
+    connected,
+    login_in_progress: loginInProgress,
+    durable_checkpoint: durableState,
+    durable_error: durableError,
+    durable_session_rejected: durableSessionRejected,
+    fb_cookies_configured: Boolean(deploymentAppState),
+    pending_session_validation: Boolean(pendingFacebookAppState),
+    login_error: dashboardLoginError,
+    recovery_action: recoveryAction,
+  };
 }
 
     function readAppState() {
@@ -4146,7 +4220,7 @@ try {
 
   if (!appState) {
     console.warn(
-      "[LOGIN] FB_COOKIES is not configured; dashboard credential login remains available."
+      "[LOGIN] FB_COOKIES is not configured; dashboard session upload is required for authentication."
     );
   }
 } catch (error) {
@@ -4183,11 +4257,6 @@ let dashboardBotPaused = false;
 let dashboardLastConnectedAt = null;
 let dashboardLastDisconnectedAt = null;
 let dashboardLoginError = null;
-
-// Dashboard-supplied Facebook credentials are kept only in process memory.
-// They are never written to logs, GitHub, browser storage, or the database.
-let dashboardFacebookCredentials = null;
-let preferDashboardCredentials = false;
 
 // A dashboard-submitted session is kept here until Facebook accepts it.
 // This prevents an invalid replacement cookie set from immediately
@@ -4315,12 +4384,12 @@ function attemptLogin() {
     pendingFacebookAppState || appState;
 
   if (
-    !candidateAppState &&
-    !dashboardFacebookCredentials
+    !Array.isArray(candidateAppState) ||
+    candidateAppState.length === 0
   ) {
-    console.warn(
-      "[LOGIN] No Facebook session or dashboard credentials configured. Waiting for a dashboard login."
-    );
+    dashboardLoginError =
+      "No usable Facebook session is available. Upload a valid session export or cookie header.";
+    console.warn("[LOGIN] No usable Facebook session is available; waiting for dashboard recovery.");
     return;
   }
 
@@ -4332,10 +4401,7 @@ function attemptLogin() {
   loginInProgress = true;
   const thisGeneration = ++listenerGeneration;
 
-  const loginInput =
-    preferDashboardCredentials && dashboardFacebookCredentials
-      ? dashboardFacebookCredentials
-      : candidateAppState;
+  const loginInput = candidateAppState;
 
   let loginSettled = false;
 
@@ -4349,6 +4415,15 @@ function attemptLogin() {
 
     loginSettled = true;
     dashboardLoginError = getFacebookLoginErrorMessage(error);
+
+    // Missing authentication input is a configuration/recovery state, not a
+    // reason to hammer Facebook with exponential retries.
+    if (/no cookie or credentials found/i.test(dashboardLoginError)) {
+      loginInProgress = false;
+      dashboardLoginError =
+        "No usable Facebook session was supplied to ws3-fca. Upload a session export or cookie header.";
+      return;
+    }
 
     // A stale durable checkpoint can also fail before ws3-fca invokes the
     // normal login callback. Fall back to FB_COOKIES for that case too.
@@ -4435,8 +4510,44 @@ function attemptLogin() {
           return;
         }
 
-        if (!isReplacementSession) {
+        if (isReplacementSession) {
+          pendingFacebookAppState = null;
+          loginInProgress = false;
+
+          if (activeMessengerApi) {
+            dashboardLoginError =
+              "Uploaded Facebook session was rejected; the existing Messenger session remains active.";
+            console.warn("[AUTH] Uploaded replacement session rejected; keeping the existing Messenger session.");
+            return;
+          }
+
+          dashboardLoginError =
+            "Uploaded Facebook session was rejected. Upload a fresh session export or cookie header.";
+          console.warn("[AUTH] Uploaded Facebook session rejected; waiting for dashboard recovery.");
+          return;
+        }
+
+        const fellBackToCookies =
           fallbackFromRejectedDurableSession();
+
+        if (!fellBackToCookies && appStateSource !== "durable") {
+          loginInProgress = false;
+          dashboardLoginError =
+            appStateSource === "fb_cookies"
+              ? "FB_COOKIES was rejected by Facebook. Upload a fresh session export or cookie header."
+              : "No usable Facebook session is available. Upload a fresh session export or cookie header.";
+          console.warn("[AUTH] Facebook session is unavailable; waiting for dashboard recovery.");
+          return;
+        }
+
+        if (fellBackToCookies) {
+          loginInProgress = false;
+          if (loginRetryTimer) clearTimeout(loginRetryTimer);
+          loginRetryTimer = setTimeout(() => {
+            loginRetryTimer = null;
+            attemptLogin();
+          }, 100);
+          return;
         }
 
         loginAttempt++;
@@ -4507,7 +4618,6 @@ function attemptLogin() {
       appStateSource = "durable";
       durableSessionRejected = false;
 
-      preferDashboardCredentials = false;
       pendingFacebookAppState = null;
 
       if (loginRetryTimer) {
