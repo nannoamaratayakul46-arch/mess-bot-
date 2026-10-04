@@ -5671,17 +5671,26 @@ async function handleMessage(
   if (banatControlMatch) {
     if (!isAdmin(senderId)) {
       const unauthorizedSlashReplies = [
-        "pota bawal panget gumamit command hoy",
-        "sabi ko ayoko kalbo",
-        "aaaaaa bingi ka? sabi bawal moka paa gumamit command",
+        "bawal bobo",
+        "tuwad ka muna",
+        "bilang ka mga sampo, tangina mong banlag ka",
+        "gamit pa slash, walang bot dito gago",
+        "kunware may bot sa acc ko na to",
+        "slash mo pa mukha mo",
+        "hev abi owns you, wag mo na off, nakakaturn off naman pagmumukha mo kaya ako na mag bbounce",
       ];
 
-      sendReplyWithTyping(
+      sendBanatReplyWithTyping(
         api,
         unauthorizedSlashReplies[
           Math.floor(Math.random() * unauthorizedSlashReplies.length)
         ],
-        threadID
+        threadID,
+        event.messageID,
+        false,
+        null,
+        0,
+        originalText
       );
 
       return;
@@ -5701,20 +5710,32 @@ async function handleMessage(
         clearBanatBurstState(threadId);
       }
 
-      if (!enabled) {
-        lastRandomRoastByThread.delete(threadId);
-        sendReplyWithTyping(
-          api,
-          "okay, banat off muna 😭",
-          threadID
-        );
-      } else {
-        sendReplyWithTyping(
-          api,
-          require("./slash-banats")(),
-          threadID
-        );
-      }
+      const slashReplies = enabled
+        ? [
+            "andito na boss mo tanga, supaen mo ttko",
+            "e kung suntukin ko ulo niyo?",
+            "hev owns you mga garapata",
+            "sabi ko wag ka tanga",
+          ]
+        : [
+            "bounce na ako, di kaya kakunatan ko",
+            "yoko na, baduy na",
+            "pass na, bumaho na kasi andito na ea ni tanga",
+            "ano ba yan, tukmol squad yan?",
+          ];
+
+      sendBanatReplyWithTyping(
+        api,
+        slashReplies[
+          Math.floor(Math.random() * slashReplies.length)
+        ],
+        threadID,
+        event.messageID,
+        false,
+        null,
+        0,
+        originalText
+      );
 
       console.log(
         "[BANAT] Conversation mode " +
@@ -8410,7 +8431,7 @@ async function handleAutomaticBanatMessage({
   try {
     // Admin messages are allowed to trigger Banat, but never receive a
     // trigger/roast response. They go through the admin-safe natural pool.
-    const triggerReply = isOwner(senderId)
+    const triggerReply = isAdmin(senderId)
       ? null
       : await getTriggerReply(
           body,
