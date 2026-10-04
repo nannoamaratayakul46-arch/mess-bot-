@@ -154,3 +154,34 @@ test("Banat reactions use the compatible setMessageReaction callback signature",
     /setMessageReactionMqtt\(\s*"😆",\s*String\(sentMessageID\),\s*String\(threadID\),\s*reactionCallback/
   );
 });
+
+test("all Banat-selected text reaches the Banat human send layer", () => {
+  const source = read("index.js");
+  const start = source.indexOf("async function handleAutomaticBanatMessage");
+  const end = source.indexOf("// ============================================================\n// HUMAN / BANAT WIRING", start);
+  const body = source.slice(start, end);
+
+  assert.match(body, /message:\s*triggerReply/);
+  assert.match(body, /message:\s*randomRoastReply/);
+  assert.match(source, /const prepared = prepareBanatReply\(/);
+  assert.match(source, /humanize\(message/);
+});
+
+test("slash Banat replies use the humanizer instead of generic reply transport", () => {
+  const source = read("index.js");
+  const toggle = source.indexOf("const banatControlMatch");
+  const automatic = source.indexOf("const banatHandled = await handleAutomaticBanatMessage");
+  const block = source.slice(toggle, automatic);
+
+  assert.match(block, /sendBanatReplyWithTyping\(/);
+  assert.doesNotMatch(block, /require\("\.\/slash-banats"\)/);
+  assert.match(block, /andito na boss mo tanga, supaen mo ttko/);
+  assert.match(block, /bounce na ako, di kaya kakunatan ko/);
+  assert.match(block, /bawal bobo/);
+});
+
+test("Banat admin safety uses the centralized admin registry", () => {
+  const source = read("triggers.js");
+  assert.match(source, /const \{ isAdmin \} = require\("\.\/permissions"\)/);
+  assert.match(source, /const adminSender = isAdmin\(senderId\)/);
+});
