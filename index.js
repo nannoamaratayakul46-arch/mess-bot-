@@ -4761,24 +4761,37 @@ async function handleMessage(
     const action =
       String(nicknameGuardMatch[1] || "on").toLowerCase();
 
+    const nickReplies = {
+      on: [
+        "change nn mo pre, tatadyakan ko leeg mo na parang bola",
+        "dogmode isa rito oh",
+        "set mo jammy on top",
+      ],
+      defaultOn: [
+        "bawal change nn sa tropa ko, baka upakan ko mukha niyo?",
+        "change nang change, bungal ka ba?",
+        "change pa sa nn namin dogsko",
+        "kunware affected kami sa change nn mong pang tanga",
+        "change nn samin tapos kunware heard na siya",
+      ],
+      status: [
+        "efas, walang bago, maangas pa rin",
+      ],
+      off: [
+        "bawal change nn, kuha mo gagong mukhang aspalto?",
+      ],
+    };
+
+    const pickNickReply = (pool) =>
+      pool[Math.floor(Math.random() * pool.length)];
+
     try {
       if (action === "status") {
         const guard = await getNicknameGuard(threadID);
 
         sendReplyWithTyping(
           api,
-          [
-            "╭────── 🎀  NICK GUARD  🎀 ──────╮",
-            "",
-            "୨୧ this GC",
-            "    ♡ " + (guard?.enabled ? "🟢 PROTECTED" : "🔴 OFF"),
-            "",
-            guard?.enabled
-              ? "♡ your nickname will be cleared automatically."
-              : "♡ run .nn to protect your nickname here.",
-            "",
-            "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
-          ].join("\n"),
+          pickNickReply(nickReplies.status),
           threadID
         );
 
@@ -4790,10 +4803,15 @@ async function handleMessage(
 
         sendReplyWithTyping(
           api,
-          removed
-            ? "🎀 Nickname guard is OFF for this GC."
-            : "🎀 Nickname guard was already OFF for this GC.",
+          pickNickReply(nickReplies.off),
           threadID
+        );
+
+        console.log(
+          "[NICK GUARD] " +
+            (removed ? "Disabled" : "Already disabled") +
+            " nickname guard in " +
+            threadID
         );
 
         return;
@@ -4803,23 +4821,9 @@ async function handleMessage(
 
       sendReplyWithTyping(
         api,
-        [
-          "╭────── 🎀  NICK GUARD  🎀 ──────╮",
-          "",
-          "🛡️ NICKNAME PROTECTED",
-          "",
-          "୨୧ this GC is now registered.",
-          "    ♡ your nickname = protected",
-          "",
-          "♡ if someone changes it,",
-          "  ECLIPSE will clear it automatically.",
-          "",
-          "୨୧ controls",
-          "    ♡ .nn status",
-          "    ♡ .nn off",
-          "",
-          "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
-        ].join("\n"),
+        action === "on"
+          ? pickNickReply(nickReplies.on)
+          : pickNickReply(nickReplies.defaultOn),
         threadID
       );
     } catch (error) {
