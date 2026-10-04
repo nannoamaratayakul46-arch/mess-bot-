@@ -190,6 +190,12 @@ const BANAT_RECENT_LIMIT = Math.max(
   Math.min(60, Number(process.env.ECLIPSE_BANAT_RECENT_LIMIT || 36))
 );
 
+// Per-thread diversity memory used by pickDiverseBanatReply. Keep this
+// separate from the persistent banat-memory module: it is only a short-lived
+// in-process selection cache and is recreated safely on restart.
+const banatContextState = new Map();
+const BANAT_CONTEXT_LIMIT = Math.max(6, Math.min(20, BANAT_RECENT_LIMIT));
+
 function dedupeBanatReplies(replies) {
   const seen = new Set();
   const output = [];
@@ -258,7 +264,28 @@ function pickDiverseBanatReply(replies, threadId, incomingText) {
 
   // Choose from the top band rather than always taking #1.
   const band = scored.slice(0, Math.min(7, scored.length));
-  return band[Math.floor(Math.random() * band.length)].reply;
+  const selected = band[Math.floor(Math.random() * band.length)].reply;
+
+  const state = banatContextState.get(key) || { recentReplies: [] };
+  state.recentReplies = [
+    ...state.recentReplies.filter((reply) => reply !== selected),
+    selected,
+  ].slice(-BANAT_CONTEXT_LIMIT);
+  state.updatedAt = Date.now();
+  banatContextState.set(key, state);
+
+  // Bound the number of idle thread entries so long-running bots do not
+  // accumulate an unbounded in-memory map.
+  if (banatContextState.size > 1000) {
+    const cutoff = Date.now() - 30 * 60 * 1000;
+    for (const [threadKey, threadState] of banatContextState) {
+      if ((threadState.updatedAt || 0) < cutoff) {
+        banatContextState.delete(threadKey);
+      }
+    }
+  }
+
+  return selected;
 }
 
 // ============================================================
