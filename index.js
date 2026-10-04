@@ -4746,7 +4746,7 @@ async function handleMessage(
   // ==========================================================
 
   const nicknameGuardMatch =
-    originalText.match(/^\\.nn(?:\\s+(status|off|on))?$/i);
+    originalText.match(/^\.nn(?:\s+(status|off|on))?$/i);
 
   if (nicknameGuardMatch) {
     if (!isOwner(senderId)) {
