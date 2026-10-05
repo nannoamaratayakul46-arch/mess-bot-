@@ -205,3 +205,36 @@ test("slash Banat sends selected words through the Banat human layer", () => {
   assert.match(block, /require\\("\\.\\/slash-banats"\\)\\.pickUnauthorizedSlashBanat\\(\\)/);
   assert.match(block, /sendBanatReplyWithTyping\\(/);
 });
+
+
+test("Banat randomizer selects randomly from eligible unused items", () => {
+  const source = read("banat-randomizer.js");
+  assert.match(source, /const selectedCandidate = weightedPick\(/);
+  assert.match(source, /typeof options\.weight === "function"/);
+  assert.match(source, /freshCandidates\.length \? freshCandidates : candidates/);
+});
+
+test("Banat natural selection uses incoming behavior and recent reply families", () => {
+  const source = read("triggers.js");
+  assert.match(source, /const \{ chooseSocialResponse \} = require\("\.\/banat-social"\)/);
+  assert.match(source, /function banatContextWeight\(reply, incomingText, recentFamilies = \[\]\)/);
+  assert.match(source, /weight: \(reply\) => banatContextWeight\(reply, incomingText, recentFamilies\)/);
+  assert.match(source, /recentFamilies/);
+});
+
+test("Banat shorthand dictionary covers global chat and Filipino shorthand", () => {
+  const source = read("banat-abbreviations.js");
+  assert.match(source, /"what do you mean": \["wdym"\]/);
+  assert.match(source, /"not gonna lie": \["ngl"\]/);
+  assert.match(source, /"hindi": \["di"\]/);
+  assert.match(source, /"ngayon": \["ngyn"\]/);
+  assert.match(source, /"for real": \["fr", "frfr"\]/);
+});
+
+test("Banat human layer varies behavior by incoming energy and social type", () => {
+  const source = read("banat-human.js");
+  assert.match(source, /function incomingEnergy\(text\)/);
+  assert.match(source, /chooseSocialResponse\(incomingText, String\(message \|\| ""\), context\)/);
+  assert.match(source, /socialTimingMultiplier\(social\)/);
+  assert.match(source, /BANAT_HESITATION_RATE/);
+});
