@@ -8,6 +8,8 @@ const PICTURES_DIRECTORY = path.join(
   "pictures"
 );
 
+const MAX_PICTURE_BYTES = Math.max(1, Number(process.env.MAX_PICTURE_BYTES || String(2 * 1024 * 1024)));
+
 const SUPPORTED_EXTENSIONS = new Set([
   ".jpg",
   ".jpeg",
@@ -24,11 +26,15 @@ function getPictureFiles() {
 
     return fs
       .readdirSync(PICTURES_DIRECTORY)
-      .filter((fileName) =>
-        SUPPORTED_EXTENSIONS.has(
-          path.extname(fileName).toLowerCase()
-        )
-      );
+      .filter((fileName) => {
+        if (!SUPPORTED_EXTENSIONS.has(path.extname(fileName).toLowerCase())) return false;
+        try {
+          const stat = fs.statSync(path.join(PICTURES_DIRECTORY, fileName));
+          return stat.isFile() && stat.size > 0 && stat.size <= MAX_PICTURE_BYTES;
+        } catch {
+          return false;
+        }
+      });
   } catch (error) {
     console.error(
       "[PICTURES] Failed to read pictures directory:",
