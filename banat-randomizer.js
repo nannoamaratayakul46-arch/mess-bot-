@@ -107,13 +107,53 @@ function pickFromBag(scope, poolName, pool, options = {}) {
   if (!samePool || !state || !state.remaining.length) {
     state = {
       pool: normalized,
-      remaining: buildBag(normalized, options.random || Math.random, state?.last || null),
+      remaining: buildBag(
+        normalized,
+        options.random || Math.random,
+        state?.last || null
+      ),
       last: state?.last || null,
       updatedAt: Date.now(),
     };
   }
 
-  const selected = state.remaining.shift() || null;
+  const avoid = new Set(
+    Array.isArray(options.avoidValues)
+      ? options.avoidValues.map((value) =>
+          String(value || "").toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim()
+        )
+      )
+      : []
+  );
+
+  let selectedIndex = -1;
+
+  // Prefer an unused item that is not in the caller's short-term memory.
+  // The bag itself still guarantees that every pool item is consumed once.
+  for (let i = 0; i < state.remaining.length; i += 1) {
+    const keyValue = String(state.remaining[i] || "")
+      .toLowerCase()
+      .normalize("NFKC")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!avoid.has(keyValue)) {
+      selectedIndex = i;
+      break;
+    }
+  }
+
+  // If every remaining item is temporarily avoided, use the next bag item
+  // rather than stalling the response.
+  if (selectedIndex === -1 && state.remaining.length) {
+    selectedIndex = 0;
+  }
+
+  const selected =
+    selectedIndex >= 0
+      ? state.remaining.splice(selectedIndex, 1)[0]
+      : null;
+
   state.last = selected || state.last;
   state.updatedAt = Date.now();
   bags.set(key, state);
@@ -129,16 +169,70 @@ function pickFromBag(scope, poolName, pool, options = {}) {
 }
 
 function pickUnusedWeighted(scope, poolName, entries, options = {}) {
-  const values = normalizePool(
-    entries.map((entry) =>
-      entry && typeof entry === "object" && !Array.isArray(entry)
-        ? entry.value
-        : entry
-    )
+  if (!Array.isArray(entries) || !entries.length) return null;
+
+  const normalized = entries
+    .map((entry) => {
+      if (entry && typeof entry === "object" && !Array.isArray(entry)) {
+        return {
+          value: String(entry.value == null ? "" : entry.value).trim(),
+          weight: Math.max(0, Number(entry.weight) || 0),
+        };
+      }
+      return {
+        value: String(entry == null ? "" : entry).trim(),
+        weight: 1,
+      };
+    })
+    .filter((entry) => entry.value && entry.weight > 0);
+
+  if (!normalized.length) return null;
+
+  const values = normalizePool(normalized.map((entry) => entry.value));
+  const weightMap = new Map(normalized.map((entry) => [entry.value.toLowerCase(), entry.weight]));
+  const random = options.random || Math.random;
+  const key = keyFor(scope, poolName);
+  let state = bags.get(key);
+
+  const samePool =
+    state &&
+    state.pool.length === values.length &&
+    state.pool.every((item, index) => item === values[index]);
+
+  if (!samePool || !state || !state.remaining.length) {
+    state = {
+      pool: values,
+      remaining: [...values],
+      last: state?.last || null,
+      updatedAt: Date.now(),
+    };
+  }
+
+  const avoid = new Set(
+    Array.isArray(options.avoidValues)
+      ? options.avoidValues.map((value) => String(value || "").toLowerCase().trim())
+      : []
   );
 
-  if (!values.length) return null;
-  return pickFromBag(scope, poolName, values, options);
+  const candidates = state.remaining.filter((value) => !avoid.has(value.toLowerCase()));
+  const source = candidates.length ? candidates : state.remaining;
+  if (!source.length) return null;
+
+  const selected = weightedPick(
+    source.map((value) => ({
+      value,
+      weight: weightMap.get(value.toLowerCase()) || 1,
+    })),
+    random
+  );
+
+  const index = state.remaining.indexOf(selected);
+  if (index >= 0) state.remaining.splice(index, 1);
+
+  state.last = selected || state.last;
+  state.updatedAt = Date.now();
+  bags.set(key, state);
+  return selected || null;
 }
 
 function pickTriggerVariant(scope, triggerName, variants, options = {}) {
