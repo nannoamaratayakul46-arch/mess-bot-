@@ -112,15 +112,23 @@ test("Banat keeps burst state alive during the 5-second cooldown", () => {
 });
 
 
-test("Banat does not skip the owner when the thread mode is enabled", () => {
+test("Banat is owner-only while ECLIPSE normal reactions remain separate", () => {
   const source = read("index.js");
   const start = source.indexOf("async function handleAutomaticBanatMessage");
   const end = source.indexOf("// ============================================================\n// HUMAN / BANAT WIRING", start);
   const body = source.slice(start, end);
 
-  assert.doesNotMatch(
+  assert.match(
     body,
-    /if \(\s*isOwner\(senderId\)\s*\)\s*\{[\s\S]*?return false;/
+    /if \(!isPrimaryUser\(senderId\)\)\s*\{\s*return false;/
+  );
+  assert.match(
+    body,
+    /const triggerReply = null;/
+  );
+  assert.match(
+    body,
+    /getRandomRoastReply\(threadID, body, senderId\)/
   );
 });
 
