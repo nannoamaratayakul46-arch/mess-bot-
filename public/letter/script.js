@@ -510,8 +510,8 @@ function updatePlayerUI() {
   const playing = !audio.paused && !audio.ended;
   const state = playing ? "PLAYING" : (audio.ended ? "ENDED" : "PAUSED");
 
-  playerStatus.textContent = state;
-  stickyStatus.textContent = state;
+  if (playerStatus) playerStatus.textContent = state;
+  if (stickyStatus) stickyStatus.textContent = state;
   status.textContent = state;
   playPauseBtn.classList.toggle("isPlaying", playing);
   playPauseBtn.querySelector(".pauseGlyph").style.display = playing ? "flex" : "none";
