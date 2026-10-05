@@ -126,6 +126,15 @@ function pickFromBag(scope, poolName, pool, options = {}) {
       : []
   );
 
+  // Keep the full pool as the bag identity while allowing only currently
+  // eligible values to be selected. This prevents matching-trigger subsets
+  // from resetting the no-repeat rotation.
+  const eligible = Array.isArray(options.eligibleValues)
+    ? new Set(options.eligibleValues.map((value) =>
+        String(value || "").toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim()
+      ))
+    : null;
+
   let selectedIndex = -1;
 
   // Prefer an unused item that is not in the caller's short-term memory.
@@ -137,7 +146,7 @@ function pickFromBag(scope, poolName, pool, options = {}) {
       .replace(/\s+/g, " ")
       .trim();
 
-    if (!avoid.has(keyValue)) {
+    if ((!eligible || eligible.has(keyValue)) && !avoid.has(keyValue)) {
       selectedIndex = i;
       break;
     }
