@@ -122,7 +122,6 @@ function pickFromBag(scope, poolName, pool, options = {}) {
       ? options.avoidValues.map((value) =>
           String(value || "").toLowerCase().normalize("NFKC").replace(/\s+/g, " ").trim()
         )
-      )
       : []
   );
 
