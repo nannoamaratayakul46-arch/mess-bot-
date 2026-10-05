@@ -1871,7 +1871,7 @@ const MUSIC_SEND_TIMEOUT_MS = 60_000;
 const MUSIC_REQUEST_MAX_LENGTH = 300;
 
 const parsedMusicFileLimit = Number(
-  process.env.MAX_MUSIC_FILE_BYTES || "26214400"
+  process.env.MAX_MUSIC_FILE_BYTES || String(15 * 1024 * 1024)
 );
 
 const MAX_MUSIC_FILE_BYTES =
@@ -8109,6 +8109,18 @@ async function stageBroadcastImage(attachment) {
       );
     }
 
+    const contentLength = Number(response.headers.get("content-length") || "0");
+    const MAX_BROADCAST_IMAGE_BYTES = Math.max(
+      1,
+      Number(process.env.MAX_BROADCAST_IMAGE_BYTES || String(2 * 1024 * 1024))
+    );
+
+    if (contentLength > MAX_BROADCAST_IMAGE_BYTES) {
+      throw new Error(
+        `Broadcast image is too large (${Math.round(contentLength / 1024 / 1024)} MB). Maximum allowed is ${Math.round(MAX_BROADCAST_IMAGE_BYTES / 1024 / 1024)} MB.`
+      );
+    }
+
     const contentType = String(
       response.headers.get("content-type") || ""
     ).toLowerCase();
@@ -8122,6 +8134,12 @@ async function stageBroadcastImage(attachment) {
     const buffer = Buffer.from(
       await response.arrayBuffer()
     );
+
+    if (buffer.length > MAX_BROADCAST_IMAGE_BYTES) {
+      throw new Error(
+        `Broadcast image exceeded the ${Math.round(MAX_BROADCAST_IMAGE_BYTES / 1024 / 1024)} MB bandwidth safety limit.`
+      );
+    }
 
     if (!buffer.length) {
       throw new Error(
@@ -8924,16 +8942,19 @@ function getRandomMemePath() {
         .readdirSync(
           memeDirectory
         )
-        .filter(
-          (fileName) =>
-            supportedExtensions.has(
-              path
-                .extname(
-                  fileName
-                )
-                .toLowerCase()
-            )
-        );
+        .filter((fileName) => {
+          if (!supportedExtensions.has(path.extname(fileName).toLowerCase())) return false;
+          try {
+            const stat = fs.statSync(path.join(memeDirectory, fileName));
+            const maxMemeBytes = Math.max(
+              1,
+              Number(process.env.MAX_BANAT_MEME_BYTES || String(2 * 1024 * 1024))
+            );
+            return stat.isFile() && stat.size > 0 && stat.size <= maxMemeBytes;
+          } catch {
+            return false;
+          }
+        });
 
     if (
       files.length === 0
