@@ -3,13 +3,9 @@
 /**
  * ECLIPSE Banat Human Layer
  *
- * Orchestrates the already-separated human modules:
- *   human-mimic.js  -> text transformation
- *   human-delay.js  -> reaction/typing timing
- *   human-typing.js -> Messenger typing lifecycle
- *
- * This file owns only Banat conversation state and the send orchestration.
- * It does NOT duplicate typo, shorthand, timing, or typing implementations.
+ * Orchestrates the existing human modules. This layer owns Banat-specific
+ * behavior selection and state; text transformation, timing, and typing stay
+ * in their existing modules.
  */
 
 const fs = require("fs");
@@ -19,6 +15,7 @@ const {
   humanize,
   createHumanContext,
   calculateHumanDelay,
+  humanizationProfile,
   startTyping,
   stopTyping,
 } = require("./human-mimic/index");
@@ -36,36 +33,37 @@ const BANAT_TYPO_RATE = Math.min(
   0.18,
   Math.max(0, Number(process.env.ECLIPSE_BANAT_TYPO_RATE || 0.085))
 );
-
 const BANAT_SHORTHAND_RATE = Math.min(
   0.22,
   Math.max(0, Number(process.env.ECLIPSE_BANAT_SHORTHAND_RATE || 0.035))
 );
-
 const BANAT_CASE_VARIATION_RATE = Math.min(
   0.18,
   Math.max(0, Number(process.env.ECLIPSE_BANAT_CASE_VARIATION_RATE || 0.035))
 );
-
 const BANAT_SPACE_SLIP_RATE = Math.min(
   0.08,
   Math.max(0, Number(process.env.ECLIPSE_BANAT_SPACE_SLIP_RATE || 0.018))
 );
-
 const BANAT_HESITATION_RATE = Math.min(
   0.35,
   Math.max(0, Number(process.env.ECLIPSE_BANAT_HESITATION_RATE || 0.11))
 );
-
-// Keep response length/style varied. Short reactions are intentionally
-// favored for short incoming messages so Banat does not answer everything
-// with a full sentence.
-// Full Banat lines are preferred. The old short-reply shaper was truncating
-// the large response pool into the same handful of opening phrases, which
-// made Banat feel repetitive even when it selected a different source line.
 const BANAT_FULL_REPLY_RATE = Math.min(
   1,
   Math.max(0.80, Number(process.env.ECLIPSE_BANAT_FULL_REPLY_RATE || 0.96))
+);
+
+// Human behavior should be sparse and contextual, not applied at full strength
+// to every message. These rates are deliberately capped so the mimic layer
+// never turns normal Banat lines into visibly corrupted text.
+const BANAT_REPEATED_LETTER_RATE = Math.min(
+  0.045,
+  Math.max(0, Number(process.env.ECLIPSE_BANAT_REPEATED_LETTER_RATE || 0.012))
+);
+const BANAT_REACTION_STYLE_RATE = Math.min(
+  0.12,
+  Math.max(0, Number(process.env.ECLIPSE_BANAT_REACTION_STYLE_RATE || 0.02))
 );
 
 function countReplyWords(text) {
@@ -74,8 +72,7 @@ function countReplyWords(text) {
 
 function isShortIncoming(text) {
   const value = String(text || "").trim();
-  const words = countReplyWords(value);
-  return words <= 7 || value.length <= 42;
+  return countReplyWords(value) <= 7 || value.length <= 42;
 }
 
 function incomingEnergy(text) {
@@ -84,24 +81,64 @@ function incomingEnergy(text) {
 
   if (/[!?]{2,}/.test(value)) score += 1;
   if (/\b(?:HAHA+|LMFAO+|LMAO+)\b/i.test(value)) score += 1;
-  if (/[😭💀🤣]/u.test(value)) score += 1;
-  if (/\b(?:bro|bruh|wtf|nah)\b/i.test(value)) score += 1;
+  if (/[😭💀🤣😂]/u.test(value)) score += 1;
+  if (/\b(?:bro|bruh|wtf|nah|wtf|omg)\b/i.test(value)) score += 1;
   if (value === value.toUpperCase() && /[A-Z]/.test(value)) score += 1;
 
   return Math.min(5, score);
 }
 
+function buildHumanMimicOptions(incomingText, context, social) {
+  const energy = incomingEnergy(incomingText);
+  const short = isShortIncoming(incomingText);
+  const momentum = Number(context?.momentum || 1);
+
+  // High-energy messages can naturally produce more expressive casing,
+  // repeated letters and reactions. Calm messages stay mostly clean.
+  const energyBoost = energy * 0.006;
+  const momentumBoost = Math.min(0.018, Math.max(0, momentum - 2) * 0.004);
+
+  return {
+    abbreviations: BANAT_SHORTHANDS,
+    abbreviationRate: Math.min(
+      0.16,
+      BANAT_SHORTHAND_RATE + (short ? 0.012 : 0) + energyBoost
+    ),
+    typoRate: Math.min(
+      0.12,
+      BANAT_TYPO_RATE + (energy >= 3 ? 0.012 : 0) + momentumBoost
+    ),
+    caseVariationRate: Math.min(
+      0.10,
+      BANAT_CASE_VARIATION_RATE + energy * 0.008
+    ),
+    spaceVariationRate: Math.min(
+      0.045,
+      BANAT_SPACE_SLIP_RATE + (momentum >= 4 ? 0.004 : 0)
+    ),
+    repeatedLetterRate: Math.min(
+      0.045,
+      BANAT_REPEATED_LETTER_RATE + energy * 0.004
+    ),
+    reactionStyleRate: Math.min(
+      0.12,
+      BANAT_REACTION_STYLE_RATE + energy * 0.012
+    ),
+    // Short answers should not be aggressively transformed. Social behavior
+    // still decides the response family; this only shapes the chosen text.
+    styleRate: short ? 0.78 : 1,
+    abbreviate: true,
+    typos: true,
+    punctuation: true,
+    social,
+  };
+}
+
 function chooseReplyShape(text, incomingText, context = {}) {
   const words = countReplyWords(text);
-
   if (!text || words <= 2) return text;
 
-  // Preserve the complete selected Banat line. Only allow the old
-  // conversational shortening in the rarest cases, and never chop a line
-  // merely because the incoming message was short.
-  if (Math.random() < BANAT_FULL_REPLY_RATE) {
-    return text;
-  }
+  if (Math.random() < BANAT_FULL_REPLY_RATE) return text;
 
   if (context.momentum >= 6 && words >= 18) {
     const parts = String(text).trim().split(/\s+/);
@@ -121,45 +158,31 @@ function cleanupHumanState() {
 }
 
 function prepareBanatReply(threadID, message, incomingText = "") {
-  const context = createHumanContext(
-    threadID,
-    incomingText,
-    humanState
-  );
+  const context = createHumanContext(threadID, incomingText, humanState);
+  const incomingProfile = humanizationProfile(incomingText);
+  const social = chooseSocialResponse(incomingText, String(message || ""), context);
 
-  let text = humanize(message, {
-    abbreviations: BANAT_SHORTHANDS,
-    abbreviationRate: BANAT_SHORTHAND_RATE,
-    typoRate: BANAT_TYPO_RATE,
-    caseVariationRate: BANAT_CASE_VARIATION_RATE,
-    spaceVariationRate: BANAT_SPACE_SLIP_RATE,
-    abbreviate: true,
-    typos: true,
-    punctuation: true,
-  });
+  let text = humanize(
+    message,
+    buildHumanMimicOptions(incomingText, context, social)
+  );
 
   text = chooseReplyShape(text, incomingText, context);
 
-  const social = chooseSocialResponse(
-    incomingText,
-    text,
-    context
-  );
-
+  // Keep the calculated profile attached to the context so timing can react
+  // to message complexity without reimplementing timing math here.
   const socialContext = {
     ...context,
+    incomingProfile,
     social,
+    incomingEnergy: incomingEnergy(incomingText),
   };
 
-  const timing = calculateHumanDelay(
-    text,
-    socialContext,
-    {
-      max: BANAT_MAX_HUMAN_DELAY_MS,
-      maxTypingMs: BANAT_MAX_HUMAN_DELAY_MS,
-      hesitationRate: BANAT_HESITATION_RATE,
-    }
-  );
+  const timing = calculateHumanDelay(text, socialContext, {
+    max: BANAT_MAX_HUMAN_DELAY_MS,
+    maxTypingMs: BANAT_MAX_HUMAN_DELAY_MS,
+    hesitationRate: BANAT_HESITATION_RATE,
+  });
 
   const timingMultiplier = socialTimingMultiplier(social);
 
@@ -184,21 +207,26 @@ function prepareBanatReply(threadID, message, incomingText = "") {
   };
 }
 
-
 function calculateBanatDecisionDelay(incomingText = "", candidateCount = 1) {
   const text = String(incomingText || "").trim();
   const length = text.length;
   const candidates = Math.max(1, Number(candidateCount) || 1);
+  const energy = incomingEnergy(text);
+
   const base = 850 + Math.min(900, length * 12);
   const crowdPause = Math.min(700, (candidates - 1) * 140);
+  const energyAdjustment = energy >= 4 ? -120 : energy === 0 ? 100 : 0;
   const hesitation = Math.random() < BANAT_HESITATION_RATE
     ? [120, 180, 240, 320, 450, 600][Math.floor(Math.random() * 6)]
     : 0;
+
   return Math.max(
     700,
     Math.min(
       2800,
-      Math.round(base + crowdPause + hesitation + (Math.random() * 360 - 180))
+      Math.round(
+        base + crowdPause + energyAdjustment + hesitation + (Math.random() * 360 - 180)
+      )
     )
   );
 }
@@ -217,17 +245,10 @@ function sendBanatReplyWithTyping(
   const trafficSendMessage = dependencies.trafficSendMessage;
   const getRandomMemePath = dependencies.getRandomMemePath;
 
-  if (typeof trafficSendMessage !== "function") {
-    return Promise.resolve(false);
-  }
+  if (typeof trafficSendMessage !== "function") return Promise.resolve(false);
 
   return new Promise((resolve) => {
-    const prepared = prepareBanatReply(
-      threadID,
-      message,
-      incomingText
-    );
-
+    const prepared = prepareBanatReply(threadID, message, incomingText);
     const requestedReaction = Number(replyDelayMs);
     const reactionMs = Number.isFinite(requestedReaction) && requestedReaction > 0
       ? Math.max(120, Math.min(1800, requestedReaction))
@@ -238,7 +259,6 @@ function sendBanatReplyWithTyping(
 
       setTimeout(() => {
         let settled = false;
-
         const finish = (value) => {
           if (settled) return;
           settled = true;
@@ -247,20 +267,14 @@ function sendBanatReplyWithTyping(
         };
 
         try {
-          const memePath =
-            attachMeme &&
-            !linkUrl &&
-            typeof getRandomMemePath === "function"
-              ? getRandomMemePath()
-              : null;
+          const memePath = attachMeme && !linkUrl && typeof getRandomMemePath === "function"
+            ? getRandomMemePath()
+            : null;
 
           const outgoingMessage = linkUrl
             ? { body: prepared.text, url: linkUrl }
             : memePath
-            ? {
-                body: prepared.text,
-                attachment: fs.createReadStream(memePath),
-              }
+            ? { body: prepared.text, attachment: fs.createReadStream(memePath) }
             : prepared.text;
 
           trafficSendMessage(
@@ -274,77 +288,41 @@ function sendBanatReplyWithTyping(
                 return;
               }
 
-              const sentMessageID =
-                typeof messageInfo === "string"
-                  ? messageInfo
-                  : messageInfo?.messageID ||
-                    messageInfo?.messageId ||
-                    messageInfo?.id ||
-                    null;
+              const sentMessageID = typeof messageInfo === "string"
+                ? messageInfo
+                : messageInfo?.messageID || messageInfo?.messageId || messageInfo?.id || null;
 
               if (sentMessageID) {
                 try {
                   const reactionCallback = (reactionError) => {
-                    if (reactionError) {
-                      console.error(
-                        "[BANAT] Self-reaction failed:",
-                        reactionError
-                      );
-                    }
+                    if (reactionError) console.error("[BANAT] Self-reaction failed:", reactionError);
                   };
 
                   if (typeof api?.setMessageReaction === "function") {
-                    api.setMessageReaction(
-                      "😆",
-                      String(sentMessageID),
-                      reactionCallback,
-                      true
-                    );
+                    api.setMessageReaction("😆", String(sentMessageID), reactionCallback, true);
                   } else if (typeof api?.setMessageReactionMqtt === "function") {
-                    api.setMessageReactionMqtt(
-                      "😆",
-                      String(sentMessageID),
-                      reactionCallback
-                    );
+                    api.setMessageReactionMqtt("😆", String(sentMessageID), reactionCallback);
                   }
                 } catch (reactionError) {
-                  console.error(
-                    "[BANAT] Self-reaction error:",
-                    reactionError
-                  );
+                  console.error("[BANAT] Self-reaction error:", reactionError);
                 }
               }
 
-              if (
-                attachMeme &&
-                linkUrl &&
-                typeof getRandomMemePath === "function"
-              ) {
+              if (attachMeme && linkUrl && typeof getRandomMemePath === "function") {
                 const followUpMemePath = getRandomMemePath();
-
                 if (followUpMemePath) {
                   setTimeout(() => {
                     try {
                       trafficSendMessage(
                         api,
-                        {
-                          attachment: fs.createReadStream(followUpMemePath),
-                        },
+                        { attachment: fs.createReadStream(followUpMemePath) },
                         threadID,
                         (followUpError) => {
-                          if (followUpError) {
-                            console.error(
-                              "[BANAT] Meme follow-up failed:",
-                              followUpError
-                            );
-                          }
+                          if (followUpError) console.error("[BANAT] Meme follow-up failed:", followUpError);
                         }
                       );
                     } catch (followUpError) {
-                      console.error(
-                        "[BANAT] Meme follow-up error:",
-                        followUpError
-                      );
+                      console.error("[BANAT] Meme follow-up error:", followUpError);
                     }
                   }, 400);
                 }
