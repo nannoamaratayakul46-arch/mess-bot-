@@ -157,23 +157,41 @@ async function dispatchVerse(api, trafficSendMessage, { slotKey, recordDrop }) {
   dispatchInFlight = true;
 
   try {
-    const recentIds = await db.getRecentBibleVerseIds(8);
-  const verse = chooseVerse(recentIds);
-  const threadIDs = await db.getBibleVerseEnabledThreadIds();
+      const recentIds = await db.getRecentBibleVerseIds(8);
+    const verse = chooseVerse(recentIds);
+    const threadIDs = await db.getBibleVerseEnabledThreadIds();
 
-  if (!threadIDs.length) {
-    console.warn("[BIBLE] No enabled GCs are configured for verse dispatch.");
-    return {
-      skipped: true,
-      reason: "no-enabled-threads",
-      slotKey,
-      verse,
-      sent: 0,
-      total: 0,
-    };
-  }
+    if (!threadIDs.length) {
+      console.warn("[BIBLE] No enabled GCs are configured for verse dispatch.");
+      return {
+        skipped: true,
+        reason: "no-enabled-threads",
+        slotKey,
+        verse,
+        sent: 0,
+        total: 0,
+      };
+    }
 
-  let sent = 0;
+    // Claim the scheduled slot BEFORE sending anything. This is the
+    // cross-process guard: even if Render briefly has two ECLIPSE workers,
+    // only one worker can own this slot.
+    if (recordDrop) {
+      const claimed = await db.recordBibleVerseDrop(slotKey, verse.id);
+      if (!claimed) {
+        console.warn("[BIBLE] Scheduled slot was already claimed; no duplicate dispatch.");
+        return {
+          skipped: true,
+          reason: "slot-already-claimed",
+          slotKey,
+          verse,
+          sent: 0,
+          total: threadIDs.length,
+        };
+      }
+    }
+
+    let sent = 0;
 
   for (let index = 0; index < threadIDs.length; index++) {
     const threadID = threadIDs[index];
@@ -185,13 +203,6 @@ async function dispatchVerse(api, trafficSendMessage, { slotKey, recordDrop }) {
     // Stagger GC sends so a scheduled drop never bursts into every GC at once.
     if (index < threadIDs.length - 1) {
       await new Promise((resolve) => setTimeout(resolve, THREAD_DISPATCH_GAP_MS));
-    }
-  }
-
-  if (recordDrop && sent > 0) {
-    const claimed = await db.recordBibleVerseDrop(slotKey, verse.id);
-    if (!claimed) {
-      console.warn(`[BIBLE] Slot ${slotKey} was already recorded by another worker.`);
     }
   }
 
