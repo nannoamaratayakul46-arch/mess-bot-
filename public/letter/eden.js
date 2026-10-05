@@ -21,9 +21,19 @@
   ctx.imageSmoothingEnabled = false;
 
   const PW = 192, PH = 144;
-  const START = 76.45;
-  const FULL = 91.45;
+  const EDEN_DURATION = 15;
+  const FALLBACK_AUDIO_DURATION = 139;
   const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function getFullTime() {
+    return Number.isFinite(audio.duration) && audio.duration > 0
+      ? audio.duration
+      : FALLBACK_AUDIO_DURATION;
+  }
+
+  function getStartTime() {
+    return Math.max(0, getFullTime() - EDEN_DURATION);
+  }
 
   let w = 0, h = 0, dpr = 1;
   let coverShot = null;
@@ -330,20 +340,19 @@
   function render(now){
     const dt=Math.min(64,now-last); last=now;
     const current=Number(audio.currentTime)||0;
+    const full=getFullTime();
+    const start=getStartTime();
 
-    if(current>=START && current<FULL){
+    if(current>=start && current<full){
       setActive(true);
-      t=current-START;
-      drawPortal(clamp(t/(FULL-START),0,1));
-    } else if(current>=FULL){
-      setActive(true);
-      t=FULL-START;
-      ctx.clearRect(0,0,w,h);
-      drawEden(1,1.18);
+      t=current-start;
+      drawPortal(clamp(t/(full-start),0,1));
     } else {
+      // Never leave the Eden canvas parked over the page after the song ends
+      // or when the user seeks away from the final 15 seconds.
       setActive(false);
-      coverShot=null;
       ctx.clearRect(0,0,w,h);
+      if(current<start) coverShot=null;
     }
 
     requestAnimationFrame(render);
@@ -353,7 +362,7 @@
   audio.addEventListener("loadeddata",grabCover,{passive:true});
   audio.addEventListener("seeked",() => {
     coverShot=null;
-    if(audio.currentTime>=START) grabCover();
+    if(audio.currentTime>=getStartTime() && !audio.ended) grabCover();
   });
 
   requestAnimationFrame(render);
