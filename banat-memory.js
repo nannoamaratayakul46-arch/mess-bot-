@@ -97,33 +97,20 @@ function isRecent(threadId, reply, fallbackRecent = []) {
 function pickBanatReply(threadId, replies, fallbackRecent = []) {
   if (!Array.isArray(replies) || replies.length === 0) return null;
 
-  const fresh = replies.filter(
-    (reply) => !isRecent(threadId, reply, fallbackRecent)
+  const recent = [
+    ...getRecent(threadId).replies,
+    ...(Array.isArray(fallbackRecent) ? fallbackRecent : []),
+  ].slice(-MAX_RECENT);
+
+  // Keep the complete pool attached to one shuffle bag. Filtering the pool
+  // before calling pickFromBag would rebuild the bag whenever the recent
+  // window changed and would defeat the no-repeat guarantee.
+  return pickFromBag(
+    keyFor(threadId),
+    "reply-pool",
+    replies,
+    { avoidValues: recent }
   );
-
-  // The shared shuffle bag guarantees that a reply is consumed once before
-  // the pool is recycled. This is stronger than ordinary Math.random().
-  if (fresh.length > 0) {
-    const selected = pickFromBag(
-      keyFor(threadId),
-      "reply-pool",
-      fresh
-    );
-    if (selected) return selected;
-  }
-
-  // If the recent memory is temporarily exhausted, prefer an exact-fresh
-  // item before allowing a true repeat.
-  const exactFresh = replies.filter((reply) => {
-    const text = String(reply || "").trim();
-    return !getRecent(threadId).replies.includes(text);
-  });
-
-  if (exactFresh.length > 0) {
-    return pickFromBag(keyFor(threadId), "reply-pool-fallback", exactFresh);
-  }
-
-  return pickFromBag(keyFor(threadId), "reply-pool-recycle", replies);
 }
 
 module.exports = {
