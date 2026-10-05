@@ -8383,17 +8383,6 @@ function registerActiveThreadCleanup() {
 // ============================================================
 
 
-const BANAT_BURST_MAX_REPLIES = Math.max(
-  2,
-  Math.min(
-    4,
-    Number(process.env.ECLIPSE_BANAT_BURST_MAX_REPLIES || 3)
-  )
-);
-const BANAT_BURST_COALESCE_MS = Math.max(
-  250,
-  Number(process.env.ECLIPSE_BANAT_BURST_COALESCE_MS || 750)
-);
 const BANAT_MIN_INTER_REPLY_GAP_MS = Math.max(
   5_000,
   Number(process.env.ECLIPSE_BANAT_MIN_INTER_REPLY_GAP_MS || 5_000)
@@ -8403,17 +8392,6 @@ const BANAT_STALE_JOB_MS = Math.max(
   Number(process.env.ECLIPSE_BANAT_STALE_JOB_MS || 30_000)
 );
 
-// One Banat burst is shared by everyone in the same conversation.
-// A small bounded number of incoming messages is accepted per burst.
-// Accepted jobs are serialized so rapid chat activity cannot turn into
-// machine-gun replies. The burst state is removed once the queue drains.
-const BANAT_PENDING_PER_THREAD = Math.max(
-  4,
-  Math.min(
-    32,
-    Number(process.env.ECLIPSE_BANAT_PENDING_PER_THREAD || 16)
-  )
-);
 
 const BANAT_DECISION_MIN_MS = Math.max(
   500,
