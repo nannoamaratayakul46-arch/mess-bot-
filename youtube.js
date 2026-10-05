@@ -11,6 +11,8 @@ const ffmpegPath = require("ffmpeg-static");
 
 const SEARCH_TIMEOUT = 30_000;
 const DOWNLOAD_TIMEOUT = 180_000;
+const MAX_DOWNLOAD_BYTES = Math.max(1, Number(process.env.MAX_YOUTUBE_DOWNLOAD_BYTES || String(15 * 1024 * 1024)));
+const MAX_DOWNLOAD_SIZE_YTDLP = `${Math.ceil(MAX_DOWNLOAD_BYTES / (1024 * 1024))}M`;
 
 const MAX_CONCURRENT_DOWNLOADS = 2;
 
@@ -439,8 +441,9 @@ async function downloadYouTubeAudioOnce(
       audioFormat: "mp3",
       audioQuality: "0",
       ffmpegLocation: ffmpegPath,
-      retries: 2,
-      fragmentRetries: 2,
+      retries: 1,
+      fragmentRetries: 1,
+      maxFilesize: MAX_DOWNLOAD_SIZE_YTDLP,
       socketTimeout: 30,
       forceIpv4: true,
       noPlaylist: true,
@@ -666,6 +669,10 @@ async function downloadYouTubeAudioOnce(
 
     if (sourceStats.size <= 0) {
       throw new Error("The downloaded audio file is empty.");
+    }
+
+    if (sourceStats.size > MAX_DOWNLOAD_BYTES) {
+      throw new Error(`Downloaded audio exceeds the ${Math.ceil(MAX_DOWNLOAD_BYTES / (1024 * 1024))} MB bandwidth safety limit.`);
     }
 
     console.log(`[YouTube] Source size: ${sourceStats.size} bytes`);
