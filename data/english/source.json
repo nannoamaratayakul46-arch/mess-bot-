@@ -2,7 +2,8 @@
   "source": "dwyl/english-words",
   "sourceFile": "words_alpha.txt",
   "sourceUrl": "https://raw.githubusercontent.com/dwyl/english-words/master/words_alpha.txt",
-  "generatedAt": null,
-  "wordCount": 107,
-  "note": "Small bootstrap seed; run npm run sync:english to replace with the full upstream snapshot."
+  "generatedAt": "2026-10-05T11:28:52.751Z",
+  "wordCount": 370063,
+  "minLength": 2,
+  "maxLength": 24
 }
