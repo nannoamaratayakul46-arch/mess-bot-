@@ -1,6 +1,7 @@
 const { generateTriggerReply } = require("./ai/provider");
 const { isPrimaryUser } = require("./ai/access");
 const { rememberBanatReply, pickBanatReply } = require("./banat-memory");
+const { pickFromBag, pickTriggerVariant } = require("./banat-randomizer");
 const { isAdmin } = require("./permissions");
 
 // ============================================================
@@ -265,48 +266,17 @@ function pickDiverseBanatReply(replies, threadId, incomingText) {
   const key = String(threadId || "unknown");
   const recent = banatContextState.get(key)?.recentReplies || [];
 
-  // Prefer replies that are not only unseen, but also materially longer or
-  // structurally different from the last few responses. This makes the bot
-  // actually explore the large pool instead of living in its shortest,
-  // safest-looking answers.
-  const unseen = pool.filter((reply) => !recent.includes(reply));
-  const source = unseen.length ? unseen : pool;
+  // The shared shuffle bag owns exact reply rotation. Do not rebuild the
+  // candidate pool from recent history: doing so would reset the bag and
+  // allow the same replies to reappear before the full pool is consumed.
+  const selected = pickFromBag(
+    key,
+    "banat-natural",
+    pool,
+    { avoidValues: recent.slice(-BANAT_CONTEXT_LIMIT) }
+  );
 
-  const recentWords = recent
-    .slice(-6)
-    .map((reply) => new Set(String(reply).toLowerCase().split(/\s+/).filter(Boolean)));
-
-  const scored = source.map((reply) => {
-    const words = String(reply).split(/\s+/).filter(Boolean);
-    const wordCount = words.length;
-    const normalized = String(reply).toLowerCase();
-    let score = Math.min(12, wordCount / 4);
-
-    // Penalize replies that share too much vocabulary with recent replies.
-    for (const prior of recentWords) {
-      const overlap = words.reduce(
-        (count, word) => count + (prior.has(word.toLowerCase()) ? 1 : 0),
-        0
-      );
-      score -= Math.min(4, overlap * 0.35);
-    }
-
-    // Small boost for substantial replies; do not make every answer huge.
-    if (wordCount >= 10) score += 1.5;
-    if (wordCount >= 18) score += 1;
-    if (wordCount <= 3) score -= 1.5;
-
-    // Tiny randomness prevents a deterministic "longest first" cycle.
-    score += Math.random() * 2.5;
-
-    return { reply, score };
-  });
-
-  scored.sort((a, b) => b.score - a.score);
-
-  // Choose from the top band rather than always taking #1.
-  const band = scored.slice(0, Math.min(7, scored.length));
-  const selected = band[Math.floor(Math.random() * band.length)].reply;
+  if (!selected) return null;
 
   const state = banatContextState.get(key) || { recentReplies: [] };
   state.recentReplies = [
@@ -316,8 +286,6 @@ function pickDiverseBanatReply(replies, threadId, incomingText) {
   state.updatedAt = Date.now();
   banatContextState.set(key, state);
 
-  // Bound the number of idle thread entries so long-running bots do not
-  // accumulate an unbounded in-memory map.
   if (banatContextState.size > 1000) {
     const cutoff = Date.now() - 30 * 60 * 1000;
     for (const [threadKey, threadState] of banatContextState) {
@@ -1229,8 +1197,14 @@ async function getTriggerReply(
       // If Groq is unavailable, rate-limited, times out, or returns
       // anything unusable, the existing pool remains the fallback.
       try {
-        const matchedTrigger = group.triggers.find((trigger) =>
+        const matchingTriggers = group.triggers.filter((trigger) =>
           matchesTrigger(text, trigger)
+        );
+
+        const matchedTrigger = pickTriggerVariant(
+          threadId || normalizedSenderId || "global",
+          group.name,
+          matchingTriggers.length ? matchingTriggers : group.triggers
         );
 
         const aiReply = await generateTriggerReply({
@@ -1553,10 +1527,11 @@ function getRandomRoastReply(threadId = null, incomingText = "", senderId = null
   // ECLIPSE admins get a reaction, never a roast. Everyone else uses the
   // normal new natural Banat pool.
   if (adminSender) {
-    const reply =
-      ADMIN_SAFE_BANAT_REPLIES[
-        Math.floor(Math.random() * ADMIN_SAFE_BANAT_REPLIES.length)
-      ];
+    const reply = pickFromBag(
+      String(threadId || senderId || "global"),
+      "admin-safe-replies",
+      ADMIN_SAFE_BANAT_REPLIES
+    );
 
     const styledReply = enforceBanatAddressStyle(reply, senderId);
     rememberRecent(
