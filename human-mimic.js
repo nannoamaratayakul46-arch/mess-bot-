@@ -53,6 +53,7 @@ const DEFAULT_ABBREVIATIONS = Object.freeze([
 ]);
 
 const { isLikelyEnglishWord } = require("./english-vocabulary");
+const { BANAT_SHORTHANDS } = require("./banat-abbreviations");
 
 const WORD_RE = /[A-Za-z']+/g;
 
@@ -106,7 +107,7 @@ function preserveCase(original, replacement) {
 function normalizeAbbreviations(abbreviations) {
   if (Array.isArray(abbreviations)) return abbreviations;
   if (!abbreviations || typeof abbreviations !== "object") {
-    return DEFAULT_ABBREVIATIONS;
+    return BANAT_SHORTHANDS;
   }
 
   const pairs = [];
@@ -445,6 +446,7 @@ function humanizationProfile(text) {
 
 module.exports = {
   DEFAULT_ABBREVIATIONS,
+  BANAT_SHORTHANDS,
   KEYBOARD_NEIGHBORS,
   clamp,
   humanize,
