@@ -5,6 +5,10 @@ const db = require("./db");
 const DROP_HOURS = [6, 14, 22];
 const TIME_ZONE = process.env.ECLIPSE_BIBLE_TIME_ZONE || "Asia/Manila";
 const SCHEDULER_INTERVAL_MS = 30_000;
+const THREAD_DISPATCH_GAP_MS = Math.max(
+  10_000,
+  Number(process.env.ECLIPSE_BIBLE_THREAD_GAP_MS || 10_000)
+);
 
 const VERSES = [
   { id: "psalm-23-1", ref: "Psalm 23:1", text: "The LORD is my shepherd; I shall not want." },
@@ -158,9 +162,16 @@ async function dispatchVerse(api, trafficSendMessage, { slotKey, recordDrop }) {
 
   let sent = 0;
 
-  for (const threadID of threadIDs) {
+  for (let index = 0; index < threadIDs.length; index++) {
+    const threadID = threadIDs[index];
+
     if (await send(api, trafficSendMessage, threadID, formatVerse(verse))) {
       sent++;
+    }
+
+    // Stagger GC sends so a scheduled drop never bursts into every GC at once.
+    if (index < threadIDs.length - 1) {
+      await new Promise((resolve) => setTimeout(resolve, THREAD_DISPATCH_GAP_MS));
     }
   }
 
