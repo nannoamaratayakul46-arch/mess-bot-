@@ -267,7 +267,7 @@ function sendBanatReplyWithTyping(
         };
 
         try {
-          const memePath = attachMeme && !linkUrl && typeof getRandomMemePath === "function"
+          const memePath = attachMeme && typeof getRandomMemePath === "function"
             ? getRandomMemePath()
             : null;
 
