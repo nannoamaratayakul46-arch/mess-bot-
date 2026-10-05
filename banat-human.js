@@ -271,11 +271,18 @@ function sendBanatReplyWithTyping(
             ? getRandomMemePath()
             : null;
 
-          const outgoingMessage = linkUrl
-            ? { body: prepared.text, url: linkUrl }
-            : memePath
-            ? { body: prepared.text, attachment: fs.createReadStream(memePath) }
-            : prepared.text;
+          // One Banat turn = one Messenger send. Keep optional link
+          // and meme on the same payload instead of sending a follow-up.
+          const outgoingMessage =
+            linkUrl || memePath
+              ? {
+                  body: prepared.text,
+                  ...(linkUrl ? { url: linkUrl } : {}),
+                  ...(memePath
+                    ? { attachment: fs.createReadStream(memePath) }
+                    : {}),
+                }
+              : prepared.text;
 
           trafficSendMessage(
             api,
@@ -308,25 +315,7 @@ function sendBanatReplyWithTyping(
                 }
               }
 
-              if (attachMeme && linkUrl && typeof getRandomMemePath === "function") {
-                const followUpMemePath = getRandomMemePath();
-                if (followUpMemePath) {
-                  setTimeout(() => {
-                    try {
-                      trafficSendMessage(
-                        api,
-                        { attachment: fs.createReadStream(followUpMemePath) },
-                        threadID,
-                        (followUpError) => {
-                          if (followUpError) console.error("[BANAT] Meme follow-up failed:", followUpError);
-                        }
-                      );
-                    } catch (followUpError) {
-                      console.error("[BANAT] Meme follow-up error:", followUpError);
-                    }
-                  }, 400);
-                }
-              }
+              // No follow-up meme send: the current turn already carries the meme/link.
 
               finish(true);
             },
