@@ -1236,7 +1236,7 @@ async function getTriggerReply(
           // remember it too; this prevents AI variation from bypassing
           // the Banat repetition guard.
           if (isFlirtyBanatGroup) {
-            rememberBanatReply(threadId, reply);
+            rememberBanatReply(threadId, reply, senderId);
           }
         }
       } catch (aiError) {
@@ -1544,7 +1544,7 @@ function getRandomRoastReply(threadId = null, incomingText = "", senderId = null
       styledReply,
       BANAT_RECENT_LIMIT
     );
-    rememberBanatReply(String(threadId || "unknown"), styledReply);
+    rememberBanatReply(String(threadId || "unknown"), styledReply, senderId);
     return styledReply;
   }
 
@@ -1584,7 +1584,7 @@ function getRandomRoastReply(threadId = null, incomingText = "", senderId = null
     styledReply,
     BANAT_RECENT_LIMIT
   );
-  rememberBanatReply(String(threadId || "unknown"), styledReply);
+  rememberBanatReply(String(threadId || "unknown"), styledReply, senderId);
 
   return styledReply;
 }
@@ -1643,7 +1643,7 @@ async function getBanatConversationReply(
     );
   }
 
-  rememberBanatReply(String(threadId || "unknown"), reply);
+  rememberBanatReply(String(threadId || "unknown"), reply, senderId);
 
   const state = banatContextState.get(String(threadId || "unknown"));
   if (state) {
