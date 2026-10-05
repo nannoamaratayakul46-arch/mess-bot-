@@ -3,12 +3,11 @@
 /**
  * Small per-thread Banat memory.
  *
- * Keeps recent replies out of immediate rotation so the bot does not
- * keep throwing the same insult/comeback at someone in a row.
- *
- * Memory is intentionally in-process: it resets on restart and does not
- * store message history or user profiles.
+ * Keeps recent replies out of immediate rotation and delegates pool rotation
+ * to the shared no-repeat randomizer. Memory is intentionally in-process.
  */
+
+const { pickFromBag } = require("./banat-randomizer");
 
 const MAX_RECENT = Math.max(
   20,
@@ -42,11 +41,7 @@ function signature(value) {
     .replace(/\s+/g, " ")
     .trim();
 
-  const words = text.split(" ").filter(Boolean);
-
-  // Catch exact repeats plus lightly reworded versions of the same
-  // one-liner without blocking every reply from the same family.
-  return words.slice(0, 7).join(" ");
+  return text.split(" ").filter(Boolean).slice(0, 7).join(" ");
 }
 
 function getRecent(threadId) {
@@ -96,7 +91,6 @@ function isRecent(threadId, reply, fallbackRecent = []) {
 
   if (current.replies.includes(text)) return true;
   if (sig && current.signatures.includes(sig)) return true;
-
   return Array.isArray(fallbackRecent) && fallbackRecent.includes(text);
 }
 
@@ -107,21 +101,29 @@ function pickBanatReply(threadId, replies, fallbackRecent = []) {
     (reply) => !isRecent(threadId, reply, fallbackRecent)
   );
 
+  // The shared shuffle bag guarantees that a reply is consumed once before
+  // the pool is recycled. This is stronger than ordinary Math.random().
   if (fresh.length > 0) {
-    return fresh[Math.floor(Math.random() * fresh.length)];
+    const selected = pickFromBag(
+      keyFor(threadId),
+      "reply-pool",
+      fresh
+    );
+    if (selected) return selected;
   }
 
-  // If the pool is exhausted, relax to exact-repeat avoidance first.
+  // If the recent memory is temporarily exhausted, prefer an exact-fresh
+  // item before allowing a true repeat.
   const exactFresh = replies.filter((reply) => {
     const text = String(reply || "").trim();
     return !getRecent(threadId).replies.includes(text);
   });
 
   if (exactFresh.length > 0) {
-    return exactFresh[Math.floor(Math.random() * exactFresh.length)];
+    return pickFromBag(keyFor(threadId), "reply-pool-fallback", exactFresh);
   }
 
-  return replies[Math.floor(Math.random() * replies.length)];
+  return pickFromBag(keyFor(threadId), "reply-pool-recycle", replies);
 }
 
 module.exports = {
