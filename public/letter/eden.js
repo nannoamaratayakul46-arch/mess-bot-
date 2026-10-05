@@ -2,10 +2,13 @@
   "use strict";
 
   /*
-   * MYSTICAL EDEN
-   * -------------
-   * The final 15 seconds of the letter become a portal into the pixel world.
-   * Audio time is the only clock; seeking/replaying stays deterministic.
+   * MYSTICAL EDEN — FINAL TRANSITION + TWO-MINUTE POSTLUDE
+   * -----------------------------------------------------
+   * The last 15 seconds of the first song become a continuous
+   * camera move into Eden. After the first song ends, Eden stays
+   * alive for a 2-minute postlude. A future second-song URL can be
+   * supplied through #edenPostludeAudio data-src without changing
+   * the transition logic.
    */
 
   const audio = document.getElementById("audio");
@@ -21,9 +24,26 @@
   ctx.imageSmoothingEnabled = false;
 
   const PW = 192, PH = 144;
-  const EDEN_DURATION = 15;
+  const EDEN_TRANSITION = 15;
+  const POSTLUDE_DURATION = 120;
   const FALLBACK_AUDIO_DURATION = 139;
   const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  /*
+   * Leave this blank for now. When the second song is provided,
+   * put its relative path/URL in data-src on #edenPostludeAudio.
+   */
+  const postludeAudio = document.createElement("audio");
+  postludeAudio.id = "edenPostludeAudio";
+  postludeAudio.preload = "metadata";
+  postludeAudio.loop = true;
+  postludeAudio.setAttribute("aria-hidden", "true");
+  postludeAudio.dataset.src = "";
+  document.body.appendChild(postludeAudio);
+
+  let postludeStartedAt = 0;
+  let postludeActive = false;
+  let transitionActive = false;
 
   function getFullTime() {
     return Number.isFinite(audio.duration) && audio.duration > 0
@@ -32,12 +52,11 @@
   }
 
   function getStartTime() {
-    return Math.max(0, getFullTime() - EDEN_DURATION);
+    return Math.max(0, getFullTime() - EDEN_TRANSITION);
   }
 
   let w = 0, h = 0, dpr = 1;
   let coverShot = null;
-  let started = false;
   let last = performance.now();
   let t = 0;
 
@@ -65,39 +84,53 @@
   };
 
   const stars = Array.from({length:105}, () => ({
-    x:rnd()*PW, y:rnd()*86, s:rnd()<.75?1:2, p:rnd()*6.28
+    x:rnd()*PW, y:rnd()*88, s:rnd()<.78?1:2, p:rnd()*Math.PI*2
   }));
   const motes = Array.from({length:75}, () => ({
-    x:rnd()*PW, y:70+rnd()*67, p:rnd()*6.28, s:.4+rnd()*1.2
+    x:8+rnd()*176, y:62+rnd()*75, p:rnd()*Math.PI*2, s:.4+rnd()*1.2
   }));
   const wisps = Array.from({length:14}, () => ({
-    x:75+rnd()*115, y:76+rnd()*55, p:rnd()*6.28
+    x:74+rnd()*112, y:76+rnd()*55, p:rnd()*Math.PI*2
   }));
 
   function buildSky() {
-    const bands = ["#111b38","#172348","#202954","#2d315c","#393361","#453565","#503766","#5c3b68"];
+    const bands = ["#0d1530","#121d3b","#192445","#242a50","#30305a","#3c3260","#483465","#56386a"];
     for(let y=0;y<PH;y++){
       const i=Math.min(bands.length-1,Math.floor(y/(PH/bands.length)));
       px(sx,0,y,bands[i],PW,1);
     }
 
     const MX=55, MY=39;
-    for(let r=20;r>=1;r--){
-      const c = r>15?"#fff4d1":r>10?"#e7e7d0":r>5?"#bcbfd0":"#777da4";
-      sx.beginPath(); sx.fillStyle=c; sx.arc(MX,MY,r,0,Math.PI*2); sx.fill();
+    for(let r=22;r>=1;r--){
+      const c = r>17?"#6f7398":r>12?"#bcbfd0":r>6?"#e7e7d0":"#fff4d1";
+      sx.beginPath();
+      sx.fillStyle=c;
+      sx.arc(MX,MY,r,0,Math.PI*2);
+      sx.fill();
     }
+
+    // constellation
+    const constellation=[[16,18],[27,11],[39,20],[50,13],[61,19],[73,10]];
+    sx.strokeStyle="#8e9ab2";
+    sx.globalAlpha=.32;
+    sx.lineWidth=1;
+    sx.beginPath();
+    constellation.forEach(([x,y],i)=>i?sx.lineTo(x,y):sx.moveTo(x,y));
+    sx.stroke();
+    sx.globalAlpha=1;
+    constellation.forEach(([x,y])=>px(sx,x,y,"#fff4d1",1,1));
 
     for(const s of stars) px(sx,s.x,s.y,"#f5efd5",s.s,s.s);
 
-    // distant mountain silhouettes
-    const ridges = [
-      {base:109, amp:19, col:"#1b2040", step:8},
-      {base:113, amp:15, col:"#151a34", step:11},
-      {base:119, amp:12, col:"#10152b", step:9}
+    const ridges=[
+      {base:109,amp:20,col:"#1a1f3d",step:7},
+      {base:114,amp:16,col:"#12182f",step:10},
+      {base:120,amp:12,col:"#0d1327",step:8}
     ];
     for(const r of ridges){
       sx.fillStyle=r.col;
-      sx.beginPath(); sx.moveTo(0,r.base);
+      sx.beginPath();
+      sx.moveTo(0,r.base);
       for(let x=0;x<=PW;x+=r.step){
         const y=r.base-r.amp*(.25+.75*Math.abs(Math.sin(x*.055+r.amp)));
         sx.lineTo(x,y);
@@ -109,24 +142,23 @@
   function buildWorld() {
     wx.clearRect(0,0,PW,PH);
 
-    // water
+    // moonlit water
     for(let y=108;y<PH;y++){
-      const q = Math.floor((y-108)/7)%2;
-      px(wx,0,y,q?"#111d38":"#142443",PW,1);
+      const q=Math.floor((y-108)/6)%2;
+      px(wx,0,y,q?"#0f1b35":"#142443",PW,1);
     }
 
-    // moon reflection
-    for(let y=93;y<137;y+=3){
-      const width = Math.max(1, Math.floor(13*(1-Math.abs(y-113)/30)));
+    for(let y=93;y<139;y+=3){
+      const width=Math.max(1,Math.floor(14*(1-Math.abs(y-113)/31)));
       px(wx,55-width/2,y,"#b8b79c",width,1);
       if(y%6===0) px(wx,55-width/3,y+1,"#6f7590",Math.max(1,width/2),1);
     }
 
-    // enchanted shore
-    wx.fillStyle="#11162d";
+    // enchanted shore / cliff
+    wx.fillStyle="#10152c";
     wx.beginPath();
     wx.moveTo(105,108);
-    wx.lineTo(192,101);
+    wx.lineTo(192,100);
     wx.lineTo(192,144);
     wx.lineTo(105,144);
     wx.closePath();
@@ -148,7 +180,7 @@
       px(wx,x+1,y+1,c,2,2);
     }
 
-    // mythic tree trunk
+    // mythic tree
     px(wx,158,55,"#332821",8,69);
     px(wx,155,63,"#483127",4,48);
     px(wx,162,48,"#2a211e",5,61);
@@ -157,7 +189,6 @@
       px(wx,bx,by,"#352522",1+rnd()*4,12+rnd()*12);
     }
 
-    // canopy
     const canopy=[
       [151,51,15],[164,45,18],[176,55,16],[145,63,13],
       [169,66,18],[184,66,12],[158,39,12]
@@ -169,10 +200,12 @@
       wx.beginPath(); wx.arc(x-2,y-2,r*.65,0,Math.PI*2); wx.fill();
     }
 
-    // fruit
-    for(const [x,y] of [[150,55],[172,47],[181,61],[162,67]]){
-      wx.fillStyle="#d9b878";
-      wx.fillRect(x,y,2,2);
+    for(const [x,y] of [[150,55],[172,47],[181,61],[162,67]]) px(wx,x,y,"#d9b878",2,2);
+
+    // little altar stones
+    for(const [x,y] of [[118,122],[128,117],[137,126],[176,115],[187,125]]) {
+      px(wx,x,y,"#566070",3,2);
+      px(wx,x+1,y-1,"#71788a",2,1);
     }
   }
 
@@ -192,9 +225,10 @@
   resize();
 
   function ease(x){ return x<.5 ? 4*x*x*x : 1-Math.pow(-2*x+2,3)/2; }
+  function smoothstep(x){ x=clamp(x,0,1); return x*x*(3-2*x); }
 
   function grabCover(){
-    if(coverShot || !cover || cover.readyState < 2) return;
+    if(coverShot || !cover || cover.readyState<2) return;
     const c=document.createElement("canvas");
     c.width=cover.videoWidth||512;
     c.height=cover.videoHeight||512;
@@ -211,30 +245,45 @@
       return;
     }
 
-    const focalX=.5, focalY=.48;
-    const scale=1+progress*3.8;
+    const p=clamp(progress,0,1);
+    // Gentle push first; the camera accelerates only near the hand-off.
+    const camera=ease(p);
+    const scale=1+camera*2.65;
     const dw=w*scale, dh=h*scale;
+    const focalX=.5, focalY=.47;
     const dx=w*focalX-dw*focalX;
     const dy=h*focalY-dh*focalY;
 
     ctx.save();
     ctx.imageSmoothingEnabled=false;
-    ctx.globalAlpha=1-progress*.18;
+    ctx.globalAlpha=1;
     ctx.drawImage(coverShot,dx,dy,dw,dh);
 
-    // pixel grid becomes visible as the portal deepens
-    if(progress>.22){
-      const a=(progress-.22)/.78;
-      ctx.globalAlpha=.10*a;
-      ctx.fillStyle="#fff";
-      const step=Math.max(3,Math.floor(3+progress*9));
-      for(let x=0;x<w;x+=step) ctx.fillRect(x,0,1,h);
-      for(let y=0;y<h;y+=step) ctx.fillRect(0,y,w,1);
+    // Soft atmospheric veil, not a hard flash.
+    const veil=smoothstep(clamp((p-.52)/.48,0,1));
+    ctx.globalAlpha=veil*.18;
+    ctx.fillStyle="#d9ce91";
+    ctx.fillRect(0,0,w,h);
+
+    // Fine pixel drift.
+    if(p>.35){
+      const q=smoothstep((p-.35)/.65);
+      ctx.globalCompositeOperation="screen";
+      for(let i=0;i<110;i++){
+        const a=i*12.9898;
+        const r=(q*q)*(Math.max(w,h)*.08+(i%19)*7);
+        const x=w*.5+Math.cos(a)*r;
+        const y=h*.46+Math.sin(a*1.21)*r*.58;
+        ctx.globalAlpha=.015+.075*q;
+        ctx.fillStyle=i%3===0?"#e8d9a8":i%3===1?"#8e9ab2":"#f4ead0";
+        const s=1+((i*7)%4)*q;
+        ctx.fillRect(Math.round(x),Math.round(y),Math.max(1,Math.round(s)),Math.max(1,Math.round(s)));
+      }
     }
     ctx.restore();
   }
 
-  function drawEden(alpha,zoom){
+  function drawEden(alpha,zoom,postludeTime){
     const scale=Math.max(w/PW,h/PH)*zoom;
     const dw=PW*scale, dh=PH*scale;
     const dx=(w-dw)/2, dy=(h-dh)/2;
@@ -244,112 +293,153 @@
     ctx.imageSmoothingEnabled=false;
     ctx.drawImage(sky,dx,dy,dw,dh);
 
-    // living sky
-    const time=t;
+    const time=postludeTime;
+    // living stars + slow moon atmosphere
     for(const s of stars){
-      const a=.35+.45*Math.sin(time*1.4+s.p);
+      const a=.32+.52*Math.sin(time*.7+s.p);
       ctx.globalAlpha=alpha*a;
       ctx.fillStyle="#fff4d1";
       const x=dx+s.x*scale, y=dy+s.y*scale;
-      ctx.fillRect(Math.round(x),Math.round(y),Math.max(1,Math.ceil(s.s*scale*.12)),Math.max(1,Math.ceil(s.s*scale*.12)));
+      const sz=Math.max(1,Math.ceil(s.s*scale*.13));
+      ctx.fillRect(Math.round(x),Math.round(y),sz,sz);
     }
 
     ctx.globalAlpha=alpha;
     ctx.drawImage(world,dx,dy,dw,dh);
 
-    // animated runes
+    // Runes climb toward the tree, pulsing slowly.
     const runePts=[[159,96],[156,88],[162,80],[166,72],[158,64],[151,58]];
     for(let i=0;i<runePts.length;i++){
       const [rx,ry]=runePts[i];
-      const pulse=.45+.55*Math.sin(time*2+i);
-      ctx.globalAlpha=alpha*(.28+.42*pulse);
+      const pulse=.5+.5*Math.sin(time*.9+i*.8);
+      ctx.globalAlpha=alpha*(.22+.42*pulse);
       ctx.fillStyle="#d7c88e";
       const xx=dx+rx*scale, yy=dy+ry*scale;
-      ctx.fillRect(Math.round(xx),Math.round(yy),Math.max(1,Math.ceil(scale*.45)),Math.max(1,Math.ceil(scale*.45)));
+      ctx.fillRect(Math.round(xx),Math.round(yy),Math.max(1,Math.ceil(scale*.5)),Math.max(1,Math.ceil(scale*.5)));
     }
 
-    // foreground motes / wisps
+    // Water shimmer.
+    for(let i=0;i<18;i++){
+      const yy=111+((i*7+Math.floor(time*2))%27);
+      const xx=30+((i*31+Math.floor(time*9))%95);
+      ctx.globalAlpha=alpha*(.06+.06*Math.sin(time+i));
+      ctx.fillStyle="#a8b4c5";
+      ctx.fillRect(Math.round(dx+xx*scale),Math.round(dy+yy*scale),Math.max(1,Math.ceil(scale*.8)),1);
+    }
+
     for(const m of motes){
-      const xx=dx+(m.x+Math.sin(time*.55+m.p)*2)*scale;
-      const yy=dy+(m.y+Math.sin(time*.8+m.p)*2)*scale;
-      ctx.globalAlpha=alpha*(.12+.28*(.5+.5*Math.sin(time*1.6+m.p)));
+      const xx=dx+(m.x+Math.sin(time*.32+m.p)*2.5)*scale;
+      const yy=dy+(m.y+Math.sin(time*.52+m.p)*2.5)*scale;
+      ctx.globalAlpha=alpha*(.10+.28*(.5+.5*Math.sin(time*1.2+m.p)));
       ctx.fillStyle="#d9ce91";
       const s=Math.max(1,Math.ceil(m.s*scale*.18));
       ctx.fillRect(Math.round(xx),Math.round(yy),s,s);
     }
+
     for(const q of wisps){
-      const xx=dx+(q.x+Math.sin(time*.4+q.p)*5)*scale;
-      const yy=dy+(q.y+Math.cos(time*.55+q.p)*4)*scale;
+      const xx=dx+(q.x+Math.sin(time*.22+q.p)*6)*scale;
+      const yy=dy+(q.y+Math.cos(time*.3+q.p)*4)*scale;
       ctx.globalAlpha=alpha*.22;
       ctx.fillStyle="#8fa3b4";
       ctx.fillRect(Math.round(xx),Math.round(yy),Math.max(1,Math.ceil(scale*.35)),Math.max(1,Math.ceil(scale*.35)));
     }
 
-    // subtle vignette
+    // Gentle vignette makes the world feel like a place, not a fullscreen overlay.
     ctx.globalAlpha=alpha;
-    const v=ctx.createRadialGradient(w*.5,h*.45,Math.min(w,h)*.12,w*.5,h*.45,Math.max(w,h)*.78);
+    const v=ctx.createRadialGradient(w*.5,h*.43,Math.min(w,h)*.16,w*.5,h*.43,Math.max(w,h)*.82);
     v.addColorStop(0,"rgba(0,0,0,0)");
-    v.addColorStop(1,"rgba(0,0,0,.62)");
+    v.addColorStop(1,"rgba(0,0,0,.66)");
     ctx.fillStyle=v;
     ctx.fillRect(0,0,w,h);
     ctx.restore();
   }
 
-  function drawPortal(progress){
+  function drawTransition(progress){
     ctx.clearRect(0,0,w,h);
+    const p=clamp(progress,0,1);
 
-    if(progress<.48){
-      drawCover(progress/.48);
-      const p=clamp(progress/.48,0,1);
-      // Album pixels peel outward from the focal point.
-      ctx.save();
-      ctx.globalCompositeOperation="screen";
-      const count=Math.floor(30+p*170);
-      for(let i=0;i<count;i++){
-        const a=i*12.9898;
-        const r=(p*p)*(Math.max(w,h)*.18+(i%17)*8);
-        const x=w*.5+Math.cos(a)*r;
-        const y=h*.46+Math.sin(a*1.17)*r*.62;
-        const s=1+((i*7)%6)*p;
-        ctx.globalAlpha=(.03+.13*p)*(1-Math.min(1,r/(Math.max(w,h)*.85)));
-        ctx.fillStyle=i%3===0?"#d9ce91":i%3===1?"#8796b5":"#f1e7c6";
-        ctx.fillRect(Math.round(x),Math.round(y),Math.max(1,Math.round(s)),Math.max(1,Math.round(s)));
-      }
-      ctx.restore();
+    if(p<.56){
+      drawCover(p/.56);
     } else {
-      const p=(progress-.48)/.52;
-      const coverFade=1-ease(clamp(p/.42,0,1));
-      if(coverFade>0) drawCover(.48+.52*(1-coverFade));
-      drawEden(ease(clamp(p/.82,0,1)),1+.38*ease(p));
-
-      // white-gold portal flash, brief and pixelated
-      if(p>.68 && p<.82){
-        const flash=1-Math.abs((p-.75)/.07);
-        ctx.fillStyle="rgba(255,244,209,"+Math.max(0,flash*.16)+")";
+      const q=smoothstep((p-.56)/.44);
+      // Keep a ghost of the artwork while Eden emerges from the same pixels.
+      drawCover(.56 + .44*(1-q));
+      drawEden(q,1+.10*q,t);
+      const veil=smoothstep(clamp((p-.72)/.28,0,1));
+      if(veil){
+        ctx.globalAlpha=veil*.12;
+        ctx.fillStyle="#fff4d1";
         ctx.fillRect(0,0,w,h);
+        ctx.globalAlpha=1;
       }
     }
   }
 
+  function drawPostlude(){
+    ctx.clearRect(0,0,w,h);
+    const elapsed=Math.max(0,(performance.now()-postludeStartedAt)/1000);
+    const breathe=REDUCED?1:1+Math.sin(elapsed*.12)*.018;
+    drawEden(1,breathe,elapsed);
+
+    // Dawn-like breathing haze across the two-minute letter.
+    if(!REDUCED){
+      const pulse=.5+.5*Math.sin(elapsed*.22);
+      const g=ctx.createRadialGradient(w*.50,h*.36,0,w*.50,h*.36,Math.max(w,h)*.55);
+      g.addColorStop(0,"rgba(217,206,145,"+(0.025+0.025*pulse)+")");
+      g.addColorStop(1,"rgba(0,0,0,0)");
+      ctx.fillStyle=g;
+      ctx.fillRect(0,0,w,h);
+    }
+  }
+
   function setActive(on){
-    if(on===started) return;
-    started=on;
     document.body.classList.toggle("edenPortalActive",on);
   }
 
+  function stopPostlude(){
+    postludeActive=false;
+    postludeStartedAt=0;
+    try { postludeAudio.pause(); } catch {}
+    try { postludeAudio.currentTime=0; } catch {}
+  }
+
+  async function startPostlude(){
+    if(postludeActive) return;
+    postludeActive=true;
+    postludeStartedAt=performance.now();
+    setActive(true);
+
+    const src=postludeAudio.dataset.src.trim();
+    if(src && !postludeAudio.src) postludeAudio.src=src;
+
+    if(postludeAudio.src){
+      try { await postludeAudio.play(); }
+      catch(error){ console.warn("[EDEN] Postlude audio blocked:",error); }
+    }
+  }
+
   function render(now){
-    const dt=Math.min(64,now-last); last=now;
+    last=now;
     const current=Number(audio.currentTime)||0;
     const full=getFullTime();
     const start=getStartTime();
 
-    if(current>=start && current<full){
+    if(postludeActive){
+      const elapsed=(now-postludeStartedAt)/1000;
+      if(elapsed>=POSTLUDE_DURATION){
+        stopPostlude();
+        setActive(false);
+        ctx.clearRect(0,0,w,h);
+      } else {
+        drawPostlude();
+      }
+    } else if(current>=start && current<full && !audio.ended){
+      transitionActive=true;
       setActive(true);
       t=current-start;
-      drawPortal(clamp(t/(full-start),0,1));
+      drawTransition(clamp(t/EDEN_TRANSITION,0,1));
     } else {
-      // Never leave the Eden canvas parked over the page after the song ends
-      // or when the user seeks away from the final 15 seconds.
+      transitionActive=false;
       setActive(false);
       ctx.clearRect(0,0,w,h);
       if(current<start) coverShot=null;
@@ -361,9 +451,25 @@
   audio.addEventListener("play",grabCover,{passive:true});
   audio.addEventListener("loadeddata",grabCover,{passive:true});
   audio.addEventListener("seeked",() => {
+    if(postludeActive) stopPostlude();
     coverShot=null;
     if(audio.currentTime>=getStartTime() && !audio.ended) grabCover();
   });
 
+  audio.addEventListener("ended",() => {
+    // The first letter/song is finished: enter the two-minute Eden room.
+    startPostlude();
+  });
+
   requestAnimationFrame(render);
+
+  // Expose a tiny hook for the next song/letter without coupling it to script.js.
+  window.ECLIPSE_EDEN = {
+    setPostludeSong(src){
+      postludeAudio.dataset.src=String(src||"").trim();
+      postludeAudio.removeAttribute("src");
+      if(postludeAudio.dataset.src) postludeAudio.src=postludeAudio.dataset.src;
+    },
+    stopPostlude
+  };
 })();
