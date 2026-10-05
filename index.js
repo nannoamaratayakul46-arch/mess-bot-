@@ -8747,16 +8747,9 @@ async function handleAutomaticBanatMessage({
   };
 
   try {
-    // The owner is the only automatic Banat target. Use the same
-    // existing trigger engine and Banat pools for the owner's message;
-    // do not create a second owner-only response system.
-    const triggerReply = await getTriggerReply(
-      body,
-      senderId,
-      threadId,
-      api,
-      event
-    );
+    // The owner is protected from roast/trigger generation. The existing
+    // admin-safe Banat pool below provides the reaction instead.
+    const triggerReply = null;
 
     // Explicit triggers remain opt-in for non-admin senders.
     if (triggerReply) {
