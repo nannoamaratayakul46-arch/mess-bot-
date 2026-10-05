@@ -21,6 +21,11 @@ const TTL_MS = Math.max(
 
 const state = new Map();
 
+const SENDER_COOLDOWN_MS = Math.max(
+  5_000,
+  Number(process.env.ECLIPSE_BANAT_SENDER_COOLDOWN_MS || 8_000)
+);
+
 function keyFor(threadId) {
   return String(threadId || "unknown");
 }
@@ -59,7 +64,7 @@ function getRecent(threadId) {
   return current;
 }
 
-function rememberBanatReply(threadId, reply) {
+function rememberBanatReply(threadId, reply, senderId = null) {
   const text = String(reply || "").trim();
   if (!text) return;
 
@@ -77,11 +82,29 @@ function rememberBanatReply(threadId, reply) {
   current.replies = current.replies.slice(-MAX_RECENT);
   current.signatures = current.signatures.slice(-MAX_RECENT);
 
+  if (senderId) {
+    current.lastSenderId = String(senderId).trim();
+    current.lastSenderAt = Date.now();
+  }
+
   if (state.size > 1000) {
     for (const [key, value] of state) {
       if (Date.now() - value.at > TTL_MS) state.delete(key);
     }
   }
+}
+
+function getSenderCooldown(threadId, senderId) {
+  if (!senderId) return 0;
+  const current = getRecent(threadId);
+  if (
+    current.lastSenderId &&
+    String(current.lastSenderId) === String(senderId).trim() &&
+    current.lastSenderAt
+  ) {
+    return Math.max(0, SENDER_COOLDOWN_MS - (Date.now() - current.lastSenderAt));
+  }
+  return 0;
 }
 
 function isRecent(threadId, reply, fallbackRecent = []) {
@@ -119,4 +142,5 @@ module.exports = {
   rememberBanatReply,
   pickBanatReply,
   isRecent,
+  getSenderCooldown,
 };
