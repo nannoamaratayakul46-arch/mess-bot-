@@ -8717,6 +8717,14 @@ async function handleAutomaticBanatMessage({
     setBanatConversationMode(threadId, true);
   }
 
+  // Banat is intentionally owner-only.
+  // ECLIPSE's normal reaction/AI pipeline can still react to other
+  // participants elsewhere in the router, but automatic Banat must
+  // never enter the queue for anyone except the configured primary user.
+  if (!isPrimaryUser(senderId)) {
+    return false;
+  }
+
   // Never let ECLIPSE react to its own incoming self-listen event.
   if (
     eclipseUserID &&
@@ -8739,17 +8747,16 @@ async function handleAutomaticBanatMessage({
   };
 
   try {
-    // Admin messages are allowed to trigger Banat, but never receive a
-    // trigger/roast response. They go through the admin-safe natural pool.
-    const triggerReply = isAdmin(senderId) || isPrimaryUser(senderId)
-      ? null
-      : await getTriggerReply(
-          body,
-          senderId,
-          threadId,
-          api,
-          event
-        );
+    // The owner is the only automatic Banat target. Use the same
+    // existing trigger engine and Banat pools for the owner's message;
+    // do not create a second owner-only response system.
+    const triggerReply = await getTriggerReply(
+      body,
+      senderId,
+      threadId,
+      api,
+      event
+    );
 
     // Explicit triggers remain opt-in for non-admin senders.
     if (triggerReply) {
