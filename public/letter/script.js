@@ -174,8 +174,15 @@ function spawnHeartBurst(x, y, count = 140) {
 }
 
 
-const FINAL_CINEMATIC_AT = 91.45;
+const FINAL_CINEMATIC_DURATION = 15;
 let finalCinematicActive = false;
+
+function getFinalCinematicStart() {
+  const duration = Number.isFinite(audio.duration) && audio.duration > 0
+    ? audio.duration
+    : 139;
+  return Math.max(0, duration - FINAL_CINEMATIC_DURATION);
+}
 
 function formatTime(value) {
   const t = Math.max(0, Number(value) || 0);
@@ -449,7 +456,8 @@ function triggerFinalCinematic() {
 }
 
 function syncFinalCinematic(t) {
-  if (t >= FINAL_CINEMATIC_AT) triggerFinalCinematic();
+  const start = getFinalCinematicStart();
+  if (t >= start && !audio.ended) triggerFinalCinematic();
   else if (finalCinematicActive) resetFinalCinematic();
 }
 
