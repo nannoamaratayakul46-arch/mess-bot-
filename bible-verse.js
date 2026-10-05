@@ -49,6 +49,11 @@ const VERSES = [
 let schedulerTimer = null;
 let schedulerStarted = false;
 
+// Prevent overlapping scheduled/manual dispatches. A dispatch can take longer
+// than the 30s scheduler interval when several GCs are enabled.
+let dispatchInFlight = false;
+let schedulerTickInFlight = false;
+
 function localParts(date = new Date()) {
   const parts = new Intl.DateTimeFormat("en-US", {
     timeZone: TIME_ZONE,
@@ -144,7 +149,15 @@ async function runManualVerse(api, trafficSendMessage) {
 }
 
 async function dispatchVerse(api, trafficSendMessage, { slotKey, recordDrop }) {
-  const recentIds = await db.getRecentBibleVerseIds(8);
+  if (dispatchInFlight) {
+    console.warn("[BIBLE] Dispatch skipped because another Bible dispatch is already running.");
+    return { skipped: true, reason: "dispatch-in-flight", slotKey, sent: 0, total: 0 };
+  }
+
+  dispatchInFlight = true;
+
+  try {
+    const recentIds = await db.getRecentBibleVerseIds(8);
   const verse = chooseVerse(recentIds);
   const threadIDs = await db.getBibleVerseEnabledThreadIds();
 
@@ -182,8 +195,11 @@ async function dispatchVerse(api, trafficSendMessage, { slotKey, recordDrop }) {
     }
   }
 
-  console.log(`[BIBLE] Verse ${verse.ref} dispatched for slot ${slotKey}: ${sent}/${threadIDs.length} threads.`);
-  return { slotKey, verse, sent, total: threadIDs.length };
+    console.log(`[BIBLE] Verse ${verse.ref} dispatched for slot ${slotKey}: ${sent}/${threadIDs.length} threads.`);
+    return { slotKey, verse, sent, total: threadIDs.length };
+  } finally {
+    dispatchInFlight = false;
+  }
 }
 
 async function handleVerseCommand(api, trafficSendMessage, event, rawText) {
@@ -259,10 +275,19 @@ function startBibleVerseScheduler(api, trafficSendMessage) {
   schedulerStarted = true;
 
   const tick = async () => {
+    if (schedulerTickInFlight) {
+      console.warn("[BIBLE] Scheduler tick skipped because the previous tick is still running.");
+      return;
+    }
+
+    schedulerTickInFlight = true;
+
     try {
       await runCurrentSlot(api, trafficSendMessage);
     } catch (error) {
       console.error("[BIBLE] Scheduler tick failed:", error);
+    } finally {
+      schedulerTickInFlight = false;
     }
   };
 
