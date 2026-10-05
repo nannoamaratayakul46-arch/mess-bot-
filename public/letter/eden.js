@@ -27,6 +27,7 @@
   const EDEN_TRANSITION = 15;
   const POSTLUDE_DURATION = 120;
   const FALLBACK_AUDIO_DURATION = 139;
+  const POSTLUDE_SONG = "audio/AUD-20221231-WA0000.mp3";
   const REDUCED = matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   /*
@@ -38,7 +39,7 @@
   postludeAudio.preload = "metadata";
   postludeAudio.loop = true;
   postludeAudio.setAttribute("aria-hidden", "true");
-  postludeAudio.dataset.src = "";
+  postludeAudio.dataset.src = POSTLUDE_SONG;
   document.body.appendChild(postludeAudio);
 
   let postludeStartedAt = 0;
