@@ -1,0 +1,36 @@
+
+/* ============================================================
+   MYSTICAL EDEN PORTAL
+   The existing letter/player remains underneath. Eden only
+   takes over during the final audio-timed transition.
+   ============================================================ */
+
+#edenPortal{
+  position:fixed;
+  inset:0;
+  z-index:9999;
+  width:100vw;
+  height:100vh;
+  display:block;
+  pointer-events:none;
+  opacity:0;
+  visibility:hidden;
+  background:#090817;
+  image-rendering:pixelated;
+  image-rendering:crisp-edges;
+}
+
+body.edenPortalActive #edenPortal{
+  opacity:1;
+  visibility:visible;
+}
+
+body.edenPortalActive{
+  overflow:hidden;
+}
+
+@media (prefers-reduced-motion:reduce){
+  #edenPortal{
+    image-rendering:pixelated;
+  }
+}
