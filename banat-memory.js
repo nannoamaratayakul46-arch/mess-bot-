@@ -123,6 +123,5 @@ module.exports = {
   TTL_MS,
   rememberBanatReply,
   pickBanatReply,
-  isRecent,
-  getSenderCooldown,
+  isRecent
 };
