@@ -1204,7 +1204,12 @@ async function getTriggerReply(
         const matchedTrigger = pickTriggerVariant(
           threadId || normalizedSenderId || "global",
           group.name,
-          matchingTriggers.length ? matchingTriggers : group.triggers
+          group.triggers,
+          {
+            eligibleValues: matchingTriggers.length
+              ? matchingTriggers
+              : group.triggers,
+          }
         );
 
         const aiReply = await generateTriggerReply({
