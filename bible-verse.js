@@ -1,5 +1,7 @@
 "use strict";
 
+const db = require("./db");
+
 const DROP_HOURS = [6, 14, 22];
 const TIME_ZONE = process.env.ECLIPSE_BIBLE_TIME_ZONE || "Asia/Manila";
 const SCHEDULER_INTERVAL_MS = 30_000;
@@ -113,32 +115,59 @@ function send(api, trafficSendMessage, threadID, message) {
   });
 }
 
-async function runCurrentSlot(api, trafficSendMessage, force = false) {
+async function runCurrentSlot(api, trafficSendMessage) {
   const slotKey = slotKeyFor();
   if (!slotKey) return { skipped: true, reason: "before-first-slot" };
 
   const existing = await db.getBibleVerseDrop(slotKey);
-  if (existing && !force) {
+  if (existing) {
     return { skipped: true, reason: "already-dropped", slotKey, verseId: existing.verse_id };
   }
 
-  const recentIds = await db.getRecentBibleVerseIds(8);
-  const verse = force
-    ? chooseVerse(recentIds)
-    : chooseVerse(recentIds);
+  return dispatchVerse(api, trafficSendMessage, {
+    slotKey,
+    recordDrop: true,
+  });
+}
 
-  const claimed = await db.recordBibleVerseDrop(slotKey, verse.id);
-  if (!claimed) {
-    const saved = await db.getBibleVerseDrop(slotKey);
-    return { skipped: true, reason: "already-claimed", slotKey, verseId: saved?.verse_id };
+async function runManualVerse(api, trafficSendMessage) {
+  const manualKey = `manual:${Date.now()}:${Math.random().toString(36).slice(2, 10)}`;
+
+  return dispatchVerse(api, trafficSendMessage, {
+    slotKey: manualKey,
+    recordDrop: false,
+  });
+}
+
+async function dispatchVerse(api, trafficSendMessage, { slotKey, recordDrop }) {
+  const recentIds = await db.getRecentBibleVerseIds(8);
+  const verse = chooseVerse(recentIds);
+  const threadIDs = await db.getBibleVerseEnabledThreadIds();
+
+  if (!threadIDs.length) {
+    console.warn("[BIBLE] No enabled GCs are configured for verse dispatch.");
+    return {
+      skipped: true,
+      reason: "no-enabled-threads",
+      slotKey,
+      verse,
+      sent: 0,
+      total: 0,
+    };
   }
 
-  const threadIDs = await db.getBibleVerseEnabledThreadIds();
   let sent = 0;
 
   for (const threadID of threadIDs) {
     if (await send(api, trafficSendMessage, threadID, formatVerse(verse))) {
       sent++;
+    }
+  }
+
+  if (recordDrop && sent > 0) {
+    const claimed = await db.recordBibleVerseDrop(slotKey, verse.id);
+    if (!claimed) {
+      console.warn(`[BIBLE] Slot ${slotKey} was already recorded by another worker.`);
     }
   }
 
@@ -193,7 +222,7 @@ async function handleVerseCommand(api, trafficSendMessage, event, rawText) {
   }
 
   if (action === "now") {
-    const result = await runCurrentSlot(api, trafficSendMessage, true);
+    const result = await runManualVerse(api, trafficSendMessage);
     await send(api, trafficSendMessage, threadID,
       result.verse
         ? `✝️ Dropped ${result.verse.ref} to ${result.sent}/${result.total} enabled GCs.`
