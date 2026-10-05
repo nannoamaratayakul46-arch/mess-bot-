@@ -2,6 +2,7 @@ const { generateTriggerReply } = require("./ai/provider");
 const { isPrimaryUser } = require("./ai/access");
 const { rememberBanatReply, pickBanatReply } = require("./banat-memory");
 const { pickFromBag, pickTriggerVariant } = require("./banat-randomizer");
+const { chooseSocialResponse } = require("./banat-social");
 const { isAdmin } = require("./permissions");
 
 // ============================================================
@@ -239,6 +240,55 @@ function banatContextualPick(replies, threadId, incomingText) {
   return pickDiverseBanatReply(replies, threadId, incomingText);
 }
 
+function banatContextWeight(reply, incomingText, recentFamilies = []) {
+  const text = String(reply || "").trim();
+  if (!text) return 0.01;
+
+  const decision = chooseSocialResponse(incomingText, text, {
+    momentum: Math.max(1, Number(recentFamilies.length || 0) + 1),
+    recentMessages: recentFamilies.length,
+  });
+
+  let weight = 1;
+  const lower = text.toLowerCase();
+  const family = banatReplyFamily(text);
+
+  switch (decision.type) {
+    case "reaction":
+      if (family === "laugh" || family === "short") weight += 3.5;
+      break;
+    case "answer":
+      if (/[?]/.test(text) || /\\b(?:because|kasi|actually|fair|real|yes|no)\\b/i.test(text)) weight += 2.2;
+      break;
+    case "agree":
+      if (/\\b(?:real|valid|fair|same|exactly|agree|true|point|gets|tama)\\b/i.test(lower)) weight += 3;
+      break;
+    case "deflect":
+      if (/\\b(?:anyway|moving on|next topic|idk|wala|never mind|nvm|okay so)\\b/i.test(lower)) weight += 2.8;
+      break;
+    case "callback":
+      if (/\\b(?:again|na naman|here we go|consistent|remember|earlier|you)\\b/i.test(lower)) weight += 2.2;
+      break;
+    case "short":
+      if (family === "short" || text.split(/\\s+/).length <= 7) weight += 2.5;
+      break;
+    case "react":
+      if (family === "laugh" || /[!?😭💀🤣😂]/u.test(text)) weight += 2.5;
+      break;
+    default:
+      break;
+  }
+
+  // Avoid repeating the same behavioral family back-to-back even when the
+  // exact text is different. This is one of the main cues that makes a pool
+  // feel less like a script and more like a conversation.
+  if (recentFamilies.length && recentFamilies[recentFamilies.length - 1] === family) {
+    weight *= 0.35;
+  }
+
+  return Math.max(0.05, weight);
+}
+
 function dedupeBanatReplies(replies) {
   const seen = new Set();
   const output = [];
@@ -264,7 +314,13 @@ function pickDiverseBanatReply(replies, threadId, incomingText) {
   if (!pool.length) return null;
 
   const key = String(threadId || "unknown");
-  const recent = banatContextState.get(key)?.recentReplies || [];
+  const state = banatContextState.get(key) || {
+    recentReplies: [],
+    recentFamilies: [],
+    updatedAt: Date.now(),
+  };
+  const recent = state.recentReplies || [];
+  const recentFamilies = state.recentFamilies || [];
 
   // The shared shuffle bag owns exact reply rotation. Do not rebuild the
   // candidate pool from recent history: doing so would reset the bag and
@@ -273,18 +329,28 @@ function pickDiverseBanatReply(replies, threadId, incomingText) {
     key,
     "banat-natural",
     pool,
-    { avoidValues: recent.slice(-BANAT_CONTEXT_LIMIT) }
+    {
+      avoidValues: recent.slice(-BANAT_CONTEXT_LIMIT),
+      weight: (reply) => banatContextWeight(reply, incomingText, recentFamilies),
+    }
   );
 
   if (!selected) return null;
 
-  const state = banatContextState.get(key) || { recentReplies: [] };
-  state.recentReplies = [
+  const nextState = banatContextState.get(key) || {
+    recentReplies: [],
+    recentFamilies: [],
+  };
+  nextState.recentReplies = [
     ...state.recentReplies.filter((reply) => reply !== selected),
     selected,
   ].slice(-BANAT_CONTEXT_LIMIT);
-  state.updatedAt = Date.now();
-  banatContextState.set(key, state);
+  nextState.recentFamilies = [
+    ...(nextState.recentFamilies || []).filter((family) => family !== banatReplyFamily(selected)),
+    banatReplyFamily(selected),
+  ].slice(-6);
+  nextState.updatedAt = Date.now();
+  banatContextState.set(key, nextState);
 
   if (banatContextState.size > 1000) {
     const cutoff = Date.now() - 30 * 60 * 1000;
