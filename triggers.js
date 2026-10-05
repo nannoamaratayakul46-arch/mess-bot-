@@ -1607,6 +1607,13 @@ async function getBanatConversationReply(
     return null;
   }
 
+  // Hard safety boundary: protected users may receive a safe reaction,
+  // never an AI-generated roast. Do not let the conversation model bypass
+  // the primary/admin protection used by the pool selector.
+  if (isAdmin(senderId) || isPrimaryUser(senderId)) {
+    return fallback;
+  }
+
   let replyTargetName = null;
 
   try {
