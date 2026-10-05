@@ -152,11 +152,10 @@ function pickFromBag(scope, poolName, pool, options = {}) {
     }
   }
 
-  // If every remaining item is temporarily avoided, use the next bag item
-  // rather than stalling the response.
-  if (selectedIndex === -1 && state.remaining.length) {
-    selectedIndex = 0;
-  }
+  // Never bypass an eligibility filter. If the currently matching trigger
+  // variants are all temporarily avoided, return null so the caller can
+  // fall back to its normal conversational path instead of selecting an
+  // unrelated trigger.
 
   const selected =
     selectedIndex >= 0
