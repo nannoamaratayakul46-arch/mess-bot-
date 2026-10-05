@@ -265,6 +265,5 @@ module.exports = {
   pickFromBag,
   pickUnusedWeighted,
   pickTriggerVariant,
-  getBagState,
   clear,
 };
