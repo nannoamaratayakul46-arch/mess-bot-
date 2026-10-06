@@ -357,7 +357,7 @@ function changeGroupImageAsync(api, imageBuffer, threadID) {
 
 async function fetchImageBuffer(url) {
   const imageUrl = String(url || "").trim();
-  if (!/^https?:\\/\\//i.test(imageUrl)) {
+  if (!/^https?:\/\//i.test(imageUrl)) {
     return null;
   }
 
