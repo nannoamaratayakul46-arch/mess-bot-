@@ -8410,6 +8410,14 @@ const BANAT_STALE_JOB_MS = Math.max(
   Number(process.env.ECLIPSE_BANAT_STALE_JOB_MS || 30_000)
 );
 
+// Hard ceiling for one Banat turn. If the Messenger send/typing layer
+// ever fails to settle, the GC must not remain permanently locked in
+// state.running and stop accepting future messages.
+const BANAT_TURN_TIMEOUT_MS = Math.max(
+  15_000,
+  Number(process.env.ECLIPSE_BANAT_TURN_TIMEOUT_MS || 45_000)
+);
+
 
 const BANAT_DECISION_MIN_MS = Math.max(
   500,
@@ -8611,20 +8619,58 @@ async function runBanatBurstQueue(threadID) {
       return;
     }
 
-    const sent = await sendBanatReplyWithTyping(
-      job.api,
-      job.message,
-      key,
-      job.replyToMessageID,
-      job.attachMeme,
-      job.linkUrl,
-      0,
-      job.incomingText || ""
+    console.log(
+      "[BANAT] Turn started in " +
+        key +
+        " sender=" +
+        String(job.senderId || "unknown")
     );
+
+    let sent = false;
+
+    try {
+      sent = await Promise.race([
+        sendBanatReplyWithTyping(
+          job.api,
+          job.message,
+          key,
+          job.replyToMessageID,
+          job.attachMeme,
+          job.linkUrl,
+          0,
+          job.incomingText || ""
+        ),
+        new Promise((resolve) => {
+          setTimeout(() => {
+            console.error(
+              "[BANAT] Turn timed out after " +
+                BANAT_TURN_TIMEOUT_MS +
+                "ms in " +
+                key +
+                ". Releasing Banat state."
+            );
+            resolve(false);
+          }, BANAT_TURN_TIMEOUT_MS);
+        }),
+      ]);
+    } catch (error) {
+      console.error(
+        "[BANAT] Turn send failed in " + key + ":",
+        error
+      );
+      sent = false;
+    }
 
     if (sent) {
       state.lastSentAt = Date.now();
     }
+
+    console.log(
+      "[BANAT] Turn released in " +
+        key +
+        " sent=" +
+        Boolean(sent)
+    );
   } finally {
     const current = banatBurstState.get(key);
 
@@ -8717,15 +8763,15 @@ async function handleAutomaticBanatMessage({
     setBanatConversationMode(threadId, true);
   }
 
-  // The primary owner is protected from automatic Banat roasting.
-  // Banat is meant to target the other GC participants when /banat is ON.
-  // ECLIPSE's own self-listen events are also never eligible.
+  // ECLIPSE's own self-listen events are never eligible.
+  //
+  // The primary owner/admin is intentionally NOT blocked here. Their
+  // messages still trigger Banat so ECLIPSE can react to both sides of
+  // the conversation, but getRandomRoastReply() routes protected users
+  // through the admin-safe reaction pool instead of roast content.
   if (
-    isPrimaryUser(senderId) ||
-    (
-      eclipseUserID &&
-      String(senderId || "") === String(eclipseUserID)
-    )
+    eclipseUserID &&
+    String(senderId || "") === String(eclipseUserID)
   ) {
     return false;
   }
