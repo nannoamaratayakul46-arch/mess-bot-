@@ -8717,18 +8717,15 @@ async function handleAutomaticBanatMessage({
     setBanatConversationMode(threadId, true);
   }
 
-  // Banat is intentionally owner-only.
-  // ECLIPSE's normal reaction/AI pipeline can still react to other
-  // participants elsewhere in the router, but automatic Banat must
-  // never enter the queue for anyone except the configured primary user.
-  if (!isPrimaryUser(senderId)) {
-    return false;
-  }
-
-  // Never let ECLIPSE react to its own incoming self-listen event.
+  // The primary owner is protected from automatic Banat roasting.
+  // Banat is meant to target the other GC participants when /banat is ON.
+  // ECLIPSE's own self-listen events are also never eligible.
   if (
-    eclipseUserID &&
-    String(senderId || "") === String(eclipseUserID)
+    isPrimaryUser(senderId) ||
+    (
+      eclipseUserID &&
+      String(senderId || "") === String(eclipseUserID)
+    )
   ) {
     return false;
   }
