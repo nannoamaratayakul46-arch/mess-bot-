@@ -18,7 +18,9 @@ async function ensureNicknameGuardTable() {
         enabled BOOLEAN NOT NULL DEFAULT TRUE,
         updated_at BIGINT NOT NULL,
         protected_title TEXT,
-        title_guard_enabled BOOLEAN NOT NULL DEFAULT FALSE
+        title_guard_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        protected_image BYTEA,
+        image_guard_enabled BOOLEAN NOT NULL DEFAULT FALSE
       );
 
       ALTER TABLE eclipse_nickname_guards
@@ -26,6 +28,12 @@ async function ensureNicknameGuardTable() {
 
       ALTER TABLE eclipse_nickname_guards
         ADD COLUMN IF NOT EXISTS title_guard_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+      ALTER TABLE eclipse_nickname_guards
+        ADD COLUMN IF NOT EXISTS protected_image BYTEA;
+
+      ALTER TABLE eclipse_nickname_guards
+        ADD COLUMN IF NOT EXISTS image_guard_enabled BOOLEAN NOT NULL DEFAULT FALSE;
     `);
 
     tableReady = true;
@@ -220,6 +228,270 @@ async function rememberProtectedTitle(threadID, title) {
   return rows[0] || null;
 }
 
+async function rememberProtectedImage(threadID, imageBuffer) {
+  await ensureNicknameGuardTable();
+
+  const threadId = String(threadID || "").trim();
+
+  if (!threadId || !Buffer.isBuffer(imageBuffer) || !imageBuffer.length) {
+    return null;
+  }
+
+  const maxBytes = Math.max(
+    64 * 1024,
+    Number(process.env.ECLIPSE_MAX_GC_IMAGE_BYTES || 2 * 1024 * 1024)
+  );
+
+  if (imageBuffer.length > maxBytes) {
+    throw new Error(
+      "GC image exceeds the protected image size limit."
+    );
+  }
+
+  const { rows } = await db.query(
+    `
+      INSERT INTO eclipse_nickname_guards(
+        thread_id,
+        user_id,
+        enabled,
+        updated_at,
+        protected_image,
+        image_guard_enabled
+      )
+      VALUES($1, '', TRUE, $2, $3, TRUE)
+      ON CONFLICT(thread_id)
+      DO UPDATE SET
+        protected_image = EXCLUDED.protected_image,
+        image_guard_enabled = TRUE,
+        updated_at = EXCLUDED.updated_at
+      RETURNING thread_id, image_guard_enabled
+    `,
+    [threadId, Date.now(), imageBuffer]
+  );
+
+  return rows[0] || null;
+}
+
+async function getProtectedImage(threadID) {
+  await ensureNicknameGuardTable();
+
+  const threadId = String(threadID || "").trim();
+  if (!threadId) return null;
+
+  const { rows } = await db.query(
+    `
+      SELECT protected_image, image_guard_enabled
+      FROM eclipse_nickname_guards
+      WHERE thread_id = $1
+      LIMIT 1
+    `,
+    [threadId]
+  );
+
+  if (!rows[0] || rows[0].image_guard_enabled !== true) {
+    return null;
+  }
+
+  return rows[0].protected_image
+    ? Buffer.from(rows[0].protected_image)
+    : null;
+}
+
+async function clearProtectedImage(threadID) {
+  await ensureNicknameGuardTable();
+
+  const threadId = String(threadID || "").trim();
+  if (!threadId) return false;
+
+  const result = await db.query(
+    `
+      UPDATE eclipse_nickname_guards
+      SET
+        protected_image = NULL,
+        image_guard_enabled = FALSE,
+        updated_at = $2
+      WHERE thread_id = $1
+    `,
+    [threadId, Date.now()]
+  );
+
+  return result.rowCount > 0;
+}
+
+function changeGroupImageAsync(api, imageBuffer, threadID) {
+  return new Promise((resolve, reject) => {
+    if (!api || typeof api.changeGroupImage !== "function") {
+      reject(
+        new Error(
+          "This ws3-fca build does not expose api.changeGroupImage()."
+        )
+      );
+      return;
+    }
+
+    let settled = false;
+
+    const done = (error) => {
+      if (settled) return;
+      settled = true;
+
+      if (error) reject(error);
+      else resolve();
+    };
+
+    try {
+      const result = api.changeGroupImage(
+        require("stream").Readable.from(imageBuffer),
+        String(threadID),
+        done
+      );
+
+      if (result && typeof result.then === "function") {
+        result.then(() => done()).catch(done);
+      }
+    } catch (error) {
+      done(error);
+    }
+  });
+}
+
+async function fetchImageBuffer(url) {
+  const imageUrl = String(url || "").trim();
+  if (!/^https?:\\/\\//i.test(imageUrl)) {
+    return null;
+  }
+
+  const maxBytes = Math.max(
+    64 * 1024,
+    Number(process.env.ECLIPSE_MAX_GC_IMAGE_BYTES || 2 * 1024 * 1024)
+  );
+
+  const response = await fetch(imageUrl, {
+    signal: AbortSignal.timeout(
+      Math.max(
+        5_000,
+        Number(process.env.ECLIPSE_GC_IMAGE_FETCH_TIMEOUT_MS || 20_000)
+      )
+    )
+  });
+
+  if (!response.ok) {
+    throw new Error(
+      `GC image download failed with HTTP ${response.status}.`
+    );
+  }
+
+  const length = Number(response.headers.get("content-length") || 0);
+
+  if (length > maxBytes) {
+    throw new Error("GC image exceeds the protected image size limit.");
+  }
+
+  const arrayBuffer = await response.arrayBuffer();
+  const buffer = Buffer.from(arrayBuffer);
+
+  if (buffer.length > maxBytes) {
+    throw new Error("GC image exceeds the protected image size limit.");
+  }
+
+  return buffer;
+}
+
+async function handleImageGuardEvent(api, event) {
+  if (
+    !event ||
+    event.type !== "event" ||
+    String(event.logMessageType || "") !== "log:thread-image"
+  ) {
+    return false;
+  }
+
+  const threadID = String(event.threadID || "").trim();
+  const authorID = String(
+    event.author ||
+    event.authorID ||
+    event.senderID ||
+    ""
+  ).trim();
+
+  if (!threadID || !authorID) {
+    return false;
+  }
+
+  const botID = String(
+    typeof api?.getCurrentUserID === "function"
+      ? api.getCurrentUserID()
+      : ""
+  ).trim();
+
+  if (botID && authorID === botID) {
+    return true;
+  }
+
+  const imageData = event.logMessageData?.image || {};
+  const imageUrl = String(
+    imageData.src ||
+    imageData.url ||
+    imageData.image_url ||
+    event.logMessageData?.src ||
+    event.logMessageData?.url ||
+    ""
+  ).trim();
+
+  if (isAdmin(authorID)) {
+    if (!imageUrl) {
+      console.warn(
+        "[GC PIC GUARD] Admin changed the GC picture, but Messenger did not provide an image URL to persist."
+      );
+      return true;
+    }
+
+    try {
+      const imageBuffer = await fetchImageBuffer(imageUrl);
+      if (imageBuffer) {
+        await rememberProtectedImage(threadID, imageBuffer);
+        console.log(
+          `[GC PIC GUARD] Protected admin-set picture for ${threadID} (${imageBuffer.length} bytes).`
+        );
+      }
+    } catch (error) {
+      console.error(
+        "[GC PIC GUARD] Failed to persist administrator picture:",
+        error
+      );
+    }
+
+    return true;
+  }
+
+  try {
+    const protectedImage = await getProtectedImage(threadID);
+
+    if (!protectedImage) {
+      return false;
+    }
+
+    await changeGroupImageAsync(
+      api,
+      protectedImage,
+      threadID
+    );
+
+    console.log(
+      `[GC PIC GUARD] Reverted unauthorized picture change in ${threadID}.`
+    );
+
+    return true;
+  } catch (error) {
+    console.error(
+      `[GC PIC GUARD] Failed to restore protected picture in ${threadID}:`,
+      error
+    );
+
+    return false;
+  }
+}
+
 async function clearProtectedTitle(threadID) {
   await ensureNicknameGuardTable();
 
@@ -341,6 +613,12 @@ async function handleTitleGuardEvent(api, event) {
 
 async function handleNicknameGuardEvent(api, event) {
   if (
+    await handleImageGuardEvent(api, event)
+  ) {
+    return true;
+  }
+
+  if (
     await handleTitleGuardEvent(api, event)
   ) {
     return true;
@@ -427,5 +705,9 @@ module.exports = {
   rememberProtectedTitle,
   clearProtectedTitle,
   handleTitleGuardEvent,
+  handleImageGuardEvent,
+  rememberProtectedImage,
+  getProtectedImage,
+  clearProtectedImage,
   handleNicknameGuardEvent,
 };
