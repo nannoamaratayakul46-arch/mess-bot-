@@ -5115,7 +5115,9 @@ async function handleMessage(
 
     try {
       if (!requestedNickname || /^off$/i.test(requestedNickname)) {
-        const removed = await clearNicknameGuard(threadID);
+        // .setnn off only stops the mass-nickname job. It must NOT delete
+        // the independent .nn owner protection or its protected nickname map.
+        const removed = await clearMassNicknameRun(threadID);
 
         sendReplyWithTyping(
           api,
@@ -5290,7 +5292,12 @@ async function handleMessage(
       } else {
         targets = liveTargets;
         nextIndex = 0;
-        protectedNicknames = {};
+
+        // Never wipe an existing .nn/.setnn protected map when starting
+        // another mass run. The owner nickname and any already-protected
+        // members must survive a new .setnn command.
+        protectedNicknames =
+          await getProtectedNicknames(threadID);
 
         await setMassNicknameRun(
           threadID,
@@ -5311,6 +5318,7 @@ async function handleMessage(
       }
 
       let changed = 0;
+      let alreadyCorrect = 0;
       let failed = 0;
       let rateBlocked = false;
 
@@ -5323,6 +5331,48 @@ async function handleMessage(
           targets[i];
 
         try {
+          // Idempotency: do not spend a Messenger nickname write when the
+          // member already has the requested nickname.
+          const currentNickname = String(
+            threadInfo?.nicknames?.[participantID] || ""
+          ).trim();
+
+          if (
+            currentNickname &&
+            currentNickname === requestedNickname
+          ) {
+            protectedNicknames[
+              participantID
+            ] = requestedNickname;
+
+            alreadyCorrect++;
+
+            await setProtectedNicknames(
+              threadID,
+              senderId,
+              protectedNicknames
+            );
+
+            await setMassNicknameRun(
+              threadID,
+              senderId,
+              requestedNickname,
+              targets,
+              i + 1,
+              null
+            );
+
+            console.log(
+              "[NICK GUARD] Skipping nickname write for " +
+                participantID +
+                " because it is already " +
+                JSON.stringify(requestedNickname) +
+                "."
+            );
+
+            continue;
+          }
+
           await changeNicknameAsync(
             api,
             requestedNickname,
@@ -5500,6 +5550,8 @@ async function handleMessage(
           ? "🎀 setnn paused — Facebook temporarily blocked nickname changes. " +
             changed +
             " changed · " +
+            alreadyCorrect +
+            " already correct · " +
             failed +
             " failed · " +
             skipped +
@@ -5510,6 +5562,11 @@ async function handleMessage(
           : "🎀 setnn done — " +
             changed +
             " changed" +
+            (alreadyCorrect
+              ? " · " +
+                alreadyCorrect +
+                " already correct"
+              : "") +
             (failed
               ? " · " +
                 failed +
@@ -5528,6 +5585,8 @@ async function handleMessage(
           ) +
           " | changed=" +
           changed +
+          " alreadyCorrect=" +
+          alreadyCorrect +
           " failed=" +
           failed +
           " resumedFrom=" +
