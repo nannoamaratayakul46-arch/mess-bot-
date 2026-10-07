@@ -722,11 +722,7 @@ async function handleNicknameGuardEvent(api, event) {
     return false;
   }
 
-  if (
-    !guard ||
-    guard.enabled !== true ||
-    String(guard.user_id) !== participantID
-  ) {
+  if (!guard || guard.enabled !== true) {
     return false;
   }
 
