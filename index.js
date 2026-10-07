@@ -5809,34 +5809,22 @@ async function handleMessage(
   }
 
   // ==========================================================
-  // ECLIPSE SELF-MESSAGE GUARD
+  // BANAT — BOT / ECLIPSE ADMIN REACTION
   // ==========================================================
-  // ECLIPSE's own outgoing messages are ignored completely.
-  // Banat's laugh reaction belongs to the configured ECLIPSE
-  // admin/owner sending an incoming message, not to the bot
-  // reacting to its own outgoing replies.
-  // ==========================================================
-
-  if (
-    eclipseUserID &&
-    senderId === eclipseUserID
-  ) {
-    return;
-  }
-
-  // ==========================================================
-  // BANAT — ECLIPSE ADMIN LAUGH REACTION
-  // ==========================================================
-  // When Banat is ON in this thread, react directly to the
-  // configured ECLIPSE admin's own incoming message.
+  // Reaction eligibility is intentionally restricted to:
+  //   1) ECLIPSE itself, or
+  //   2) the configured ECLIPSE admin/owner.
   //
-  // This uses the actual Messenger message ID, so Facebook
-  // displays 😆 on the user's message itself. No text "😆"
-  // message is sent.
+  // Everyone else is ignored. The bot's own outgoing events are still
+  // stopped from entering the normal Banat response pipeline below.
   // ==========================================================
 
+  const reactionSenderAllowed =
+    senderId === eclipseUserID ||
+    isOwner(senderId);
+
   if (
-    isOwner(senderId) &&
+    reactionSenderAllowed &&
     event.messageID &&
     api &&
     (
@@ -5849,24 +5837,26 @@ async function handleMessage(
 
       if (roastEnabled) {
         const messageID = String(event.messageID);
+        const reactionLabel =
+          senderId === eclipseUserID ? "bot message" : "admin message";
 
         const reactionCallback = (reactionError) => {
           if (reactionError) {
             console.error(
-              "[BANAT] Admin laugh reaction failed:",
+              "[BANAT] Allowed-sender laugh reaction failed:",
               reactionError
             );
           } else {
             console.log(
-              "[BANAT] Reacted 😆 to admin message:",
+              "[BANAT] Reacted 😆 to " +
+                reactionLabel +
+                ":",
               messageID
             );
           }
         };
 
         if (typeof api.setMessageReaction === "function") {
-          // ws3-fca's compatible signature is:
-          // setMessageReaction(reaction, messageID, callback, forceCustomReaction)
           api.setMessageReaction(
             "😆",
             messageID,
@@ -5874,7 +5864,6 @@ async function handleMessage(
             true
           );
         } else if (typeof api.setMessageReactionMqtt === "function") {
-          // Legacy fallback for FCA builds that expose only the MQTT alias.
           api.setMessageReactionMqtt(
             "😆",
             messageID,
@@ -5884,10 +5873,20 @@ async function handleMessage(
       }
     } catch (reactionError) {
       console.error(
-        "[BANAT] Admin laugh reaction error:",
+        "[BANAT] Allowed-sender laugh reaction error:",
         reactionError
       );
     }
+  }
+
+  // ECLIPSE's own outgoing messages must never enter the normal Banat
+  // response pipeline. Its message may be reacted to above, but it must
+  // not cause another Banat reply.
+  if (
+    eclipseUserID &&
+    senderId === eclipseUserID
+  ) {
+    return;
   }
 
   // ==========================================================
