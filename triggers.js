@@ -223,6 +223,147 @@ const BANAT_CONTEXT_TTL_MS = Math.max(
   Number(process.env.ECLIPSE_BANAT_CONTEXT_TTL_MS || 20 * 60 * 1000)
 );
 
+// Structured context stays inside the existing Banat state. This avoids
+// creating a second memory module while giving the response engine speaker,
+// intent, entity, callback and confidence signals.
+const BANAT_CONTEXT_MAX_SPEAKERS = 12;
+const BANAT_CONTEXT_MAX_CALLBACKS = 8;
+
+function classifyBanatIntent(text) {
+  const value = String(text || "").trim().toLowerCase();
+  if (!value) return "unknown";
+  if (/^(?:hi|hey|hello|yo|sup|good morning|good night)\b/.test(value)) return "greeting";
+  if (/\\?$/.test(value) || /^(?:who|what|when|where|why|how|can|could|would|should|is|are|do|does|did|will|may)\b/.test(value)) return "question";
+  if (/\b(?:i will|i'll|im gonna|i'm gonna|gonna|later|tomorrow|next week|soon)\b/.test(value)) return "plan";
+  if (/\b(?:remember|earlier|before|yesterday|last time|again|na naman)\b/.test(value)) return "callback";
+  if (/\b(?:haha+|lmao|lmfao|lol|😭|💀|🤣|😂)\b/u.test(value)) return "reaction";
+  if (/\b(?:please|pls|help|can you|could you|send|give me|show me|tell me)\b/.test(value)) return "request";
+  if (/\b(?:no|nah|wrong|cap|false|not true|disagree)\b/.test(value)) return "disagreement";
+  if (/\b(?:yes|yeah|yep|true|real|valid|exactly|agree)\b/.test(value)) return "agreement";
+  if (/\b(?:stupid|idiot|gago|tanga|bobo|cooked|clown)\b/.test(value)) return "roast";
+  return "statement";
+}
+
+function extractBanatEntities(text, topics = []) {
+  const value = String(text || "");
+  const mentions = [...value.matchAll(/@([\p{L}\p{N}_.-]{2,32})/gu)]
+    .map((match) => match[1])
+    .slice(0, 4);
+
+  const quoted = [...value.matchAll(/[“"]([^“”"\n]{2,80})[”"]/gu)]
+    .map((match) => match[1].trim())
+    .slice(0, 3);
+
+  const entities = [];
+  for (const item of [...mentions, ...quoted, ...(topics || []).slice(-4)]) {
+    const normalized = String(item || "").trim();
+    if (normalized && !entities.some((x) => x.toLowerCase() === normalized.toLowerCase())) {
+      entities.push(normalized);
+    }
+  }
+
+  return entities.slice(0, 8);
+}
+
+function extractBanatCallback(text, topics = []) {
+  const value = String(text || "").trim();
+  if (!value) return null;
+
+  const planMatch = value.match(
+    /\b(?:i(?:'m| am)?\s+)?(?:gonna|going to|will|need to|have to|plan to)\s+(.{3,100})$/i
+  );
+
+  const futureMatch = value.match(
+    /\b(?:later|tomorrow|next week|soon)\b(?:.*)?/i
+  );
+
+  if (!planMatch && !futureMatch) return null;
+
+  return {
+    text: value.slice(0, 180),
+    topics: [...new Set((topics || []).slice(-5))],
+    at: Date.now(),
+    confidence: planMatch ? 0.78 : 0.55,
+  };
+}
+
+function updateBanatSpeakerProfile(state, senderId, text) {
+  const id = String(senderId || "").trim();
+  if (!id) return;
+
+  if (!state.speakerProfiles || typeof state.speakerProfiles !== "object") {
+    state.speakerProfiles = {};
+  }
+
+  const existing = state.speakerProfiles[id] || {
+    messages: 0,
+    totalChars: 0,
+    totalWords: 0,
+    emojiMessages: 0,
+    capsMessages: 0,
+    questionMessages: 0,
+    intentCounts: {},
+    topics: [],
+    lastAt: 0,
+  };
+
+  const value = String(text || "").trim();
+  const words = value ? value.split(/\s+/).filter(Boolean) : [];
+
+  existing.messages += 1;
+  existing.totalChars += value.length;
+  existing.totalWords += words.length;
+  if (/[\p{Extended_Pictographic}]/u.test(value)) existing.emojiMessages += 1;
+  if (value === value.toUpperCase() && /[A-Z]/.test(value)) existing.capsMessages += 1;
+  if (/\\?$/.test(value)) existing.questionMessages += 1;
+
+  const intent = classifyBanatIntent(value);
+  existing.intentCounts[intent] = (existing.intentCounts[intent] || 0) + 1;
+  existing.topics = [
+    ...(existing.topics || []),
+    ...extractBanatTopics(value),
+  ]
+    .filter((topic, index, list) => list.indexOf(topic) === index)
+    .slice(-8);
+
+  existing.lastAt = Date.now();
+  state.speakerProfiles[id] = existing;
+
+  const ids = Object.keys(state.speakerProfiles);
+  if (ids.length > BANAT_CONTEXT_MAX_SPEAKERS) {
+    ids
+      .sort((a, b) =>
+        Number(state.speakerProfiles[a]?.lastAt || 0) -
+        Number(state.speakerProfiles[b]?.lastAt || 0)
+      )
+      .slice(0, ids.length - BANAT_CONTEXT_MAX_SPEAKERS)
+      .forEach((oldId) => delete state.speakerProfiles[oldId]);
+  }
+}
+
+function calculateBanatContextConfidence(state, incomingText) {
+  if (!state) return 0;
+
+  const messages = Array.isArray(state.recentMessages) ? state.recentMessages : [];
+  const topics = Array.isArray(state.topics) ? state.topics : [];
+  const speakers = Array.isArray(state.speakers) ? state.speakers : [];
+  const incomingTopics = extractBanatTopics(incomingText);
+
+  const topicOverlap = incomingTopics.filter((topic) => topics.includes(topic)).length;
+  const recentAge = messages.length
+    ? Date.now() - Number(messages[messages.length - 1]?.at || Date.now())
+    : Infinity;
+
+  let score = 0.25;
+  score += Math.min(0.25, messages.length * 0.035);
+  score += Math.min(0.20, topicOverlap * 0.08);
+  score += Math.min(0.15, speakers.length * 0.025);
+  if (recentAge < 30_000) score += 0.15;
+  else if (recentAge < 120_000) score += 0.08;
+
+  return Math.max(0, Math.min(1, Number(score.toFixed(3))));
+}
+
 const BANAT_CONTEXT_STOPWORDS = new Set([
   "the","and","that","this","with","from","your","you","are","was","were",
   "have","has","had","for","but","not","just","what","when","where","who",
@@ -293,6 +434,11 @@ function rememberBanatIncoming(threadId, senderId, text, eventKey = "") {
     speakers: [],
     topics: [],
     emotion: "neutral",
+    intent: "unknown",
+    entities: [],
+    callbacks: [],
+    speakerProfiles: {},
+    contextConfidence: 0,
     updatedAt: now,
     recentEventKeys: [],
   };
@@ -336,6 +482,17 @@ function rememberBanatIncoming(threadId, senderId, text, eventKey = "") {
     .slice(-16);
 
   current.emotion = extractBanatEmotion(value);
+  current.intent = classifyBanatIntent(value);
+  current.entities = extractBanatEntities(value, current.topics);
+  const callback = extractBanatCallback(value, current.topics);
+  if (callback) {
+    current.callbacks = [
+      ...(current.callbacks || []),
+      callback,
+    ].slice(-BANAT_CONTEXT_MAX_CALLBACKS);
+  }
+  updateBanatSpeakerProfile(current, senderId, value);
+  current.contextConfidence = calculateBanatContextConfidence(current, value);
   current.updatedAt = now;
   banatContextState.set(key, current);
 }
@@ -381,7 +538,6 @@ function banatContextPrompt(threadId) {
   if (!state) return "";
 
   const lines = [];
-
   const recentMessages = Array.isArray(state.recentMessages)
     ? state.recentMessages.slice(-8)
     : [];
@@ -396,13 +552,46 @@ function banatContextPrompt(threadId) {
     }
   }
 
+  if (state.intent) lines.push("CURRENT MESSAGE INTENT: " + state.intent);
+  if (state.emotion && state.emotion !== "neutral") {
+    lines.push("CURRENT ENERGY: " + state.emotion);
+  }
+  if (Array.isArray(state.entities) && state.entities.length) {
+    lines.push("ACTIVE ENTITIES / REFERENCES: " + state.entities.join(", "));
+  }
   if (Array.isArray(state.topics) && state.topics.length) {
     lines.push("ACTIVE TOPICS: " + state.topics.slice(-10).join(", "));
   }
 
-  if (state.emotion && state.emotion !== "neutral") {
-    lines.push("CURRENT ENERGY: " + state.emotion);
+  if (Array.isArray(state.callbacks) && state.callbacks.length) {
+    const callbacks = state.callbacks.slice(-3);
+    lines.push(
+      "POSSIBLE CALLBACKS (only use if clearly relevant):",
+      ...callbacks.map((item) => `- ${String(item.text || "").slice(0, 180)}`)
+    );
   }
+
+  const profiles = state.speakerProfiles || {};
+  const profileLines = Object.entries(profiles)
+    .sort((a, b) => Number(b[1]?.lastAt || 0) - Number(a[1]?.lastAt || 0))
+    .slice(0, 4)
+    .map(([id, profile]) => {
+      const dominantIntent = Object.entries(profile.intentCounts || {})
+        .sort((a, b) => b[1] - a[1])[0]?.[0] || "unknown";
+      const avgWords = profile.messages
+        ? Math.round(profile.totalWords / profile.messages)
+        : 0;
+      return `- speaker:${id} | avgWords:${avgWords} | dominantIntent:${dominantIntent} | topics:${(profile.topics || []).slice(-4).join(", ")}`;
+    });
+
+  if (profileLines.length) {
+    lines.push("SPEAKER PROFILES:", ...profileLines);
+  }
+
+  lines.push(
+    "CONTEXT CONFIDENCE: " +
+      Number(state.contextConfidence || 0).toFixed(2)
+  );
 
   const threadRecent = state.recentReplies || [];
   const recentReplies = [...threadRecent, ...recentBanatReplies]
@@ -416,7 +605,7 @@ function banatContextPrompt(threadId) {
     );
   }
 
-  return lines.join("\n").slice(0, 4500);
+  return lines.join("\n").slice(0, 6500);
 }
 
 function banatContextualPick(replies, threadId, incomingText) {
