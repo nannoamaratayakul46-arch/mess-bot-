@@ -20,7 +20,8 @@ async function ensureNicknameGuardTable() {
         protected_title TEXT,
         title_guard_enabled BOOLEAN NOT NULL DEFAULT FALSE,
         protected_image BYTEA,
-        image_guard_enabled BOOLEAN NOT NULL DEFAULT FALSE
+        image_guard_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+        protected_nicknames JSONB NOT NULL DEFAULT '{}'::jsonb
       );
 
       ALTER TABLE eclipse_nickname_guards
@@ -34,6 +35,9 @@ async function ensureNicknameGuardTable() {
 
       ALTER TABLE eclipse_nickname_guards
         ADD COLUMN IF NOT EXISTS image_guard_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+      ALTER TABLE eclipse_nickname_guards
+        ADD COLUMN IF NOT EXISTS protected_nicknames JSONB NOT NULL DEFAULT '{}'::jsonb;
     `);
 
     tableReady = true;
@@ -102,6 +106,70 @@ async function getNicknameGuard(threadID) {
   );
 
   return rows[0] || null;
+}
+
+
+async function setProtectedNicknames(threadID, userID, nicknameMap) {
+  await ensureNicknameGuardTable();
+
+  const threadId = String(threadID || "").trim();
+  const adminId = String(userID || "").trim();
+
+  if (!threadId || !adminId || !nicknameMap || typeof nicknameMap !== "object") {
+    throw new Error("threadID, userID and nicknameMap are required.");
+  }
+
+  const normalized = {};
+  for (const [participantID, nickname] of Object.entries(nicknameMap)) {
+    const id = String(participantID || "").trim();
+    const value = String(nickname || "").trim();
+    if (id && value) {
+      normalized[id] = value;
+    }
+  }
+
+  const { rows } = await db.query(
+    `
+      INSERT INTO eclipse_nickname_guards(
+        thread_id,
+        user_id,
+        enabled,
+        updated_at,
+        protected_nicknames
+      )
+      VALUES($1, $2, TRUE, $3, $4::jsonb)
+      ON CONFLICT(thread_id)
+      DO UPDATE SET
+        user_id = EXCLUDED.user_id,
+        enabled = TRUE,
+        updated_at = EXCLUDED.updated_at,
+        protected_nicknames = EXCLUDED.protected_nicknames
+      RETURNING thread_id, user_id, enabled, updated_at, protected_nicknames
+    `,
+    [threadId, adminId, Date.now(), JSON.stringify(normalized)]
+  );
+
+  return rows[0] || null;
+}
+
+async function getProtectedNicknames(threadID) {
+  await ensureNicknameGuardTable();
+
+  const threadId = String(threadID || "").trim();
+  if (!threadId) return {};
+
+  const { rows } = await db.query(
+    `
+      SELECT protected_nicknames
+      FROM eclipse_nickname_guards
+      WHERE thread_id = $1
+      LIMIT 1
+    `,
+    [threadId]
+  );
+
+  const value = rows[0]?.protected_nicknames;
+  return value && typeof value === "object" ? value : {};
 }
 
 async function clearNicknameGuard(threadID) {
@@ -662,33 +730,55 @@ async function handleNicknameGuardEvent(api, event) {
     return false;
   }
 
+  let protectedNicknames = {};
+
+  try {
+    protectedNicknames = await getProtectedNicknames(threadID);
+  } catch (error) {
+    console.error("[NICK GUARD] Failed to read protected nicknames:", error);
+    return false;
+  }
+
+  const desiredNickname = String(
+    protectedNicknames?.[participantID] || ""
+  ).trim();
+
+  if (!desiredNickname) {
+    return false;
+  }
+
   const nickname = String(data.nickname || "").trim();
 
-  // Empty nickname means the nickname has already been cleared.
-  if (!nickname) {
-    return false;
+  // Messenger emits the event after the nickname changed. If it is already
+  // correct, do nothing. Otherwise immediately restore the protected value.
+  if (nickname === desiredNickname) {
+    return true;
   }
 
   try {
     await changeNicknameAsync(
       api,
-      "",
+      desiredNickname,
       threadID,
       participantID
     );
 
     console.log(
-      "[NICK GUARD] Cleared protected nickname in thread " +
+      "[NICK GUARD] Restored protected nickname in thread " +
         threadID +
         " for user " +
-        participantID
+        participantID +
+        " -> " +
+        JSON.stringify(desiredNickname)
     );
 
     return true;
   } catch (error) {
     console.error(
-      "[NICK GUARD] Failed to clear nickname in thread " +
+      "[NICK GUARD] Failed to restore nickname in thread " +
         threadID +
+        " for user " +
+        participantID +
         ":",
       error
     );
@@ -702,6 +792,8 @@ module.exports = {
   setNicknameGuard,
   getNicknameGuard,
   clearNicknameGuard,
+  setProtectedNicknames,
+  getProtectedNicknames,
   rememberProtectedTitle,
   clearProtectedTitle,
   handleTitleGuardEvent,
