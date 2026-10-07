@@ -202,6 +202,68 @@ const BANAT_CONTEXT_LIMIT = Math.max(6, Math.min(20, BANAT_RECENT_LIMIT));
 // Keep this bounded; the per-thread Map below remains the primary selector memory.
 const recentBanatReplies = [];
 
+// ============================================================
+// DIRECTED BANAT TARGET
+// ============================================================
+// A reply containing only "?" nominates the author of the replied-to
+// message as a temporary preferred roast target. It does not force a reply;
+// normal Banat context scoring still decides whether to speak.
+
+const BANAT_DIRECTED_TARGET_TTL_MS = Math.max(
+  60_000,
+  Number(process.env.ECLIPSE_BANAT_TARGET_TTL_MS || 10 * 60 * 1000)
+);
+
+function setBanatDirectedTarget(threadId, targetId, setterId) {
+  const key = String(threadId || "").trim();
+  const target = String(targetId || "").trim();
+  const setter = String(setterId || "").trim();
+
+  if (!key || !target) return false;
+
+  const state = banatContextState.get(key) || {
+    recentMessages: [],
+    recentReplies: [],
+    recentFamilies: [],
+    speakers: [],
+    topics: [],
+    at: Date.now(),
+  };
+
+  state.directedTarget = {
+    targetId: target,
+    setBy: setter,
+    at: Date.now(),
+    expiresAt: Date.now() + BANAT_DIRECTED_TARGET_TTL_MS,
+  };
+
+  state.at = Date.now();
+  banatContextState.set(key, state);
+  return true;
+}
+
+function getBanatDirectedTarget(threadId) {
+  const key = String(threadId || "").trim();
+  const state = banatContextState.get(key);
+
+  if (!state?.directedTarget) return null;
+
+  if (Date.now() >= Number(state.directedTarget.expiresAt || 0)) {
+    delete state.directedTarget;
+    state.at = Date.now();
+    banatContextState.set(key, state);
+    return null;
+  }
+
+  return {
+    ...state.directedTarget,
+    remainingMs: Math.max(
+      0,
+      Number(state.directedTarget.expiresAt || 0) - Date.now()
+    ),
+  };
+}
+
 // ------------------------------------------------------------
 // CONTEXT MEMORY
 // ------------------------------------------------------------
@@ -1957,6 +2019,17 @@ function scoreBanatAddressContext({
     if (reason === "ambient") reason = "conversation-active";
   }
 
+  const directedTarget = getBanatDirectedTarget(key);
+
+  if (
+    directedTarget &&
+    String(senderId || "").trim() ===
+      String(directedTarget.targetId || "").trim()
+  ) {
+    score += 0.48;
+    reason = "directed-target";
+  }
+
   const intent = classifyBanatIntent(text);
   const emotional = extractBanatEmotion(text);
 
@@ -2336,6 +2409,8 @@ module.exports = {
   getNextPublicReply,
   getBanatConversationReply,
   scoreBanatAddressContext,
+  setBanatDirectedTarget,
+  getBanatDirectedTarget,
 
   normalizeText,
   normalizeId,
