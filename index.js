@@ -157,6 +157,7 @@ const {
   getRandomRoastReply,
   getBanatConversationReply,
   scoreBanatAddressContext,
+  setBanatDirectedTarget,
 } = require("./triggers");
 
 // ============================================================
@@ -9474,6 +9475,45 @@ async function handleAutomaticBanatMessage({
   // "reply to every message". The existing context state decides whether
   // this turn is actually worth entering. A direct reply/mention is never
   // required for ordinary Banat.
+  // "?" is a directed-target control when used as a reply. It binds
+  // Banat to the author of the replied-to message for a short window.
+  // It is deliberately silent: the user asked for a target, not an extra
+  // bot message. The target still goes through the normal context scorer.
+  if (
+    String(body || "").trim() === "?" &&
+    event?.messageReply
+  ) {
+    const targetId = String(
+      event.messageReply.senderID ||
+        event.messageReply.senderId ||
+        event.messageReply.sender_id ||
+        ""
+    ).trim();
+
+    if (
+      targetId &&
+      targetId !== String(eclipseUserID || "").trim() &&
+      targetId !== String(senderId || "").trim()
+    ) {
+      setBanatDirectedTarget(
+        threadId,
+        targetId,
+        senderId
+      );
+
+      console.log(
+        "[BANAT] Directed roast target set: " +
+          targetId +
+          " in " +
+          threadId +
+          " by " +
+          senderId
+      );
+    }
+
+    return false;
+  }
+
   const target = scoreBanatAddressContext({
     rawText: body,
     senderId,
