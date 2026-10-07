@@ -5628,7 +5628,86 @@ async function handleMessage(
         return;
       }
 
-      await setNicknameGuard(threadID, senderId, true);
+      // .nn protects the owner's CURRENT nickname. Enabling the guard
+      // without snapshotting this value leaves protected_nicknames empty,
+      // so log:user-nickname events have nothing to restore.
+      if (typeof api.getThreadInfo !== "function") {
+        throw new Error(
+          "This ws3-fca build does not expose api.getThreadInfo()."
+        );
+      }
+
+      const threadInfo = await new Promise((resolve, reject) => {
+        let settled = false;
+
+        const done = (error, info) => {
+          if (settled) return;
+          settled = true;
+
+          if (error) reject(error);
+          else resolve(info || {});
+        };
+
+        try {
+          const result = api.getThreadInfo(
+            String(threadID),
+            done
+          );
+
+          if (result && typeof result.then === "function") {
+            result
+              .then((info) => done(null, info))
+              .catch(done);
+          }
+        } catch (error) {
+          done(error);
+        }
+      });
+
+      const ownerID = String(senderId || "").trim();
+
+      const currentNickname = String(
+        threadInfo?.nicknames?.[ownerID] ||
+        threadInfo?.nicknames?.[String(ownerID)] ||
+        ""
+      ).trim();
+
+      if (!currentNickname) {
+        throw new Error(
+          "Messenger did not return the owner's current nickname."
+        );
+      }
+
+      // Merge instead of replacing the map. This keeps .setnn / other
+      // protected nicknames intact when .nn is enabled or re-enabled.
+      const existingProtectedNicknames =
+        await getProtectedNicknames(threadID);
+
+      const protectedNicknames = {
+        ...(existingProtectedNicknames || {}),
+        [ownerID]: currentNickname,
+      };
+
+      await setNicknameGuard(
+        threadID,
+        senderId,
+        true
+      );
+
+      await setProtectedNicknames(
+        threadID,
+        senderId,
+        protectedNicknames
+      );
+
+      console.log(
+        "[NICK GUARD] Protected owner nickname in " +
+          threadID +
+          " for " +
+          ownerID +
+          " -> " +
+          JSON.stringify(currentNickname)
+      );
 
       sendReplyWithTyping(
         api,
