@@ -5175,16 +5175,25 @@ async function handleMessage(
         return;
       }
 
-      // Keep the first implementation intentionally simple:
-      // sequential nickname changes with a small human-paced pause.
-      const HUMAN_NICKNAME_DELAY_MS = Math.max(
-        250,
-        Number(process.env.ECLIPSE_SETNN_DELAY_MS || 250)
+      // Facebook rate-limits repeated nickname mutations. Keep this deliberately
+      // slow and randomized rather than sending a fixed burst pattern.
+      const HUMAN_NICKNAME_MIN_DELAY_MS = Math.max(
+        3000,
+        Number(process.env.ECLIPSE_SETNN_MIN_DELAY_MS || 8000)
+      );
+
+      const HUMAN_NICKNAME_MAX_DELAY_MS = Math.max(
+        HUMAN_NICKNAME_MIN_DELAY_MS,
+        Number(
+          process.env.ECLIPSE_SETNN_MAX_DELAY_MS ||
+            15000
+        )
       );
 
       const protectedNicknames = {};
       let changed = 0;
       let failed = 0;
+      let rateBlocked = false;
 
       for (let i = 0; i < targets.length; i++) {
         const participantID = targets[i];
@@ -5223,16 +5232,64 @@ async function handleMessage(
           changed++;
         } catch (error) {
           failed++;
+
+          const errorCode = Number(
+            error?.error ??
+            error?.code ??
+            error?.errorCode ??
+            error?.response?.error ??
+            0
+          );
+
+          const errorText = [
+            error?.errorSummary,
+            error?.errorDescription?.__html,
+            error?.message,
+          ]
+            .filter(Boolean)
+            .join(" ");
+
+          const temporarilyBlocked =
+            errorCode === 3252001 ||
+            /temporarily blocked|going too fast/i.test(errorText);
+
           console.error(
             "[NICK GUARD] Failed to set nickname for " +
               participantID + ":",
             error
           );
+
+          if (temporarilyBlocked) {
+            rateBlocked = true;
+
+            console.error(
+              "[NICK GUARD] Facebook temporarily blocked nickname changes. " +
+                "Stopping the remaining mass nickname mutations."
+            );
+
+            break;
+          }
         }
 
-        if (i < targets.length - 1) {
+        if (!rateBlocked && i < targets.length - 1) {
+          const delayRange =
+            HUMAN_NICKNAME_MAX_DELAY_MS -
+            HUMAN_NICKNAME_MIN_DELAY_MS;
+
+          const delay =
+            HUMAN_NICKNAME_MIN_DELAY_MS +
+            (delayRange > 0
+              ? Math.floor(Math.random() * (delayRange + 1))
+              : 0);
+
+          console.log(
+            "[NICK GUARD] Waiting " +
+              delay +
+              "ms before the next nickname mutation."
+          );
+
           await new Promise((resolve) =>
-            setTimeout(resolve, HUMAN_NICKNAME_DELAY_MS)
+            setTimeout(resolve, delay)
           );
         }
       }
@@ -5243,13 +5300,26 @@ async function handleMessage(
         protectedNicknames
       );
 
+      const skipped =
+        targets.length -
+        changed -
+        failed;
+
       sendReplyWithTyping(
         api,
-        "🎀 setnn done — " +
-          changed +
-          " changed" +
-          (failed ? " · " + failed + " failed" : "") +
-          ".",
+        rateBlocked
+          ? "🎀 setnn stopped — Facebook temporarily blocked nickname changes. " +
+            changed +
+            " changed · " +
+            failed +
+            " failed · " +
+            skipped +
+            " skipped. Try again later."
+          : "🎀 setnn done — " +
+            changed +
+            " changed" +
+            (failed ? " · " + failed + " failed" : "") +
+            ".",
         threadID
       );
 
