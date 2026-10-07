@@ -1985,13 +1985,12 @@ function scoreBanatAddressContext({
     if (reason === "ambient") reason = "speaker-continuation";
   }
 
-  // If two other people are clearly carrying a back-and-forth and nobody
-  // addressed ECLIPSE, step back. This is the important "don't jump in"
-  // behavior that automatic Banat previously lacked.
+  // Active multi-person conversations should not block ECLIPSE.
+  // Only apply a very small momentum penalty when several members are
+  // rapidly exchanging messages and nobody addressed ECLIPSE directly.
+  // This keeps ECLIPSE able to naturally jump in when the content is relevant.
   if (
     speakers.length >= 2 &&
-    lastSpeaker &&
-    lastSpeaker !== String(senderId || "").trim() &&
     !replySenderId &&
     !(botIdentity && mentionIds.includes(botIdentity))
   ) {
@@ -2003,8 +2002,8 @@ function scoreBanatAddressContext({
     )];
 
     if (pairIds.length >= 2) {
-      score -= 0.28;
-      reason = "two-person-exchange";
+      score -= 0.06;
+      if (reason === "ambient") reason = "active-group-chat";
     }
   }
 
