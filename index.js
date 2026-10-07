@@ -9430,6 +9430,7 @@ async function handleAutomaticBanatMessage({
     senderId,
     threadId,
     event,
+    botId: eclipseUserID,
   });
 
   console.log(
