@@ -300,19 +300,54 @@ function sendBanatReplyWithTyping(
                 : messageInfo?.messageID || messageInfo?.messageId || messageInfo?.id || null;
 
               if (sentMessageID) {
-                try {
-                  const reactionCallback = (reactionError) => {
-                    if (reactionError) console.error("[BANAT] Self-reaction failed:", reactionError);
-                  };
+                // A human does not normally react to their own freshly sent
+                // message in the same millisecond. Keep the reaction outside
+                // the message send path, but give it a small context-sensitive
+                // delay so it cannot make the reply look mechanically chained.
+                const reactionDelayMs = Math.max(
+                  350,
+                  Math.min(
+                    1600,
+                    Math.round(
+                      450 +
+                        Math.random() * 550 +
+                        Math.min(450, prepared.typingMs * 0.08)
+                    )
+                  )
+                );
 
-                  if (typeof api?.setMessageReaction === "function") {
-                    api.setMessageReaction("😆", String(sentMessageID), reactionCallback, true);
-                  } else if (typeof api?.setMessageReactionMqtt === "function") {
-                    api.setMessageReactionMqtt("😆", String(sentMessageID), reactionCallback);
+                setTimeout(() => {
+                  try {
+                    const reactionCallback = (reactionError) => {
+                      if (reactionError) {
+                        console.error(
+                          "[BANAT] Self-reaction failed:",
+                          reactionError
+                        );
+                      }
+                    };
+
+                    if (typeof api?.setMessageReaction === "function") {
+                      api.setMessageReaction(
+                        "😆",
+                        String(sentMessageID),
+                        reactionCallback,
+                        true
+                      );
+                    } else if (typeof api?.setMessageReactionMqtt === "function") {
+                      api.setMessageReactionMqtt(
+                        "😆",
+                        String(sentMessageID),
+                        reactionCallback
+                      );
+                    }
+                  } catch (reactionError) {
+                    console.error(
+                      "[BANAT] Self-reaction error:",
+                      reactionError
+                    );
                   }
-                } catch (reactionError) {
-                  console.error("[BANAT] Self-reaction error:", reactionError);
-                }
+                }, reactionDelayMs);
               }
 
               // No follow-up meme send: the current turn already carries the meme/link.
