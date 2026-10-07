@@ -9079,7 +9079,20 @@ function acceptBanatBurstMessage(threadID, job) {
    */
   const now = Date.now();
 
-  if (state.running || state.decisionTimer) {
+  // While the decision window is open, collect a short message burst.
+  // This lets A: "bro" / A: "wait" / A: "look at this" become one turn.
+  if (state.decisionTimer && !state.running) {
+    if (state.queue.length < 6) {
+      state.queue.push({
+        ...job,
+        senderId: String(job.senderId || "").trim(),
+        queuedAt: now,
+      });
+    }
+    return true;
+  }
+
+  if (state.running) {
     return true;
   }
 
@@ -9090,7 +9103,6 @@ function acceptBanatBurstMessage(threadID, job) {
     return true;
   }
 
-  // The current turn must contain exactly one job.
   state.queue.length = 0;
   state.queue.push({
     ...job,
