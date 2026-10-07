@@ -236,16 +236,16 @@ const BANAT_CONTEXT_STOPWORDS = new Set([
 function extractBanatTopics(text) {
   const raw = String(text || "")
     .normalize("NFKC")
-    .replace(/https?:\\/\\/\\S+/g, " ");
+    .replace(/https?:\/\/\S+/g, " ");
 
   const tokens = raw
-    .split(/[^\\p{L}\\p{N}'-]+/u)
+    .split(/[^\p{L}\p{N}'-]+/u)
     .map((token) => token.replace(/^['-]+|['-]+$/g, "").toLowerCase())
     .filter((token) =>
       token.length >= 4 &&
       token.length <= 32 &&
       !BANAT_CONTEXT_STOPWORDS.has(token) &&
-      !/^\\d+$/.test(token)
+      !/^\d+$/.test(token)
     );
 
   const counts = new Map();
@@ -262,19 +262,19 @@ function extractBanatTopics(text) {
 
 function extractBanatEmotion(text) {
   const value = String(text || "").toLowerCase();
-  if (/[😭😔😩]/u.test(value) || /\\b(?:sad|tired|failed|fail|stress|stressed|pain|hurt|awful)\\b/i.test(value)) {
+  if (/[😭😔😩]/u.test(value) || /\b(?:sad|tired|failed|fail|stress|stressed|pain|hurt|awful)\b/i.test(value)) {
     return "down";
   }
-  if (/[😂🤣💀]/u.test(value) || /\\b(?:haha+|lmao|funny|dead)\\b/i.test(value)) {
+  if (/[😂🤣💀]/u.test(value) || /\b(?:haha+|lmao|funny|dead)\b/i.test(value)) {
     return "laughing";
   }
-  if (/[😡🤬]/u.test(value) || /\\b(?:angry|pissed|mad|fuck this|wtf)\\b/i.test(value)) {
+  if (/[😡🤬]/u.test(value) || /\b(?:angry|pissed|mad|fuck this|wtf)\b/i.test(value)) {
     return "heated";
   }
-  if (/[😍🥹❤️❤]/u.test(value) || /\\b(?:love|cute|miss|pretty|handsome)\\b/i.test(value)) {
+  if (/[😍🥹❤️❤]/u.test(value) || /\b(?:love|cute|miss|pretty|handsome)\b/i.test(value)) {
     return "warm";
   }
-  if (/[!?]{2,}/.test(value) || /\\b(?:what|why|how|wait|huh)\\b/i.test(value)) {
+  if (/[!?]{2,}/.test(value) || /\b(?:what|why|how|wait|huh)\b/i.test(value)) {
     return "surprised";
   }
   return "neutral";
