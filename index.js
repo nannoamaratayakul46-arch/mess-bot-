@@ -5089,7 +5089,7 @@ async function handleMessage(
   // ==========================================================
 
   const setNicknameMatch =
-    originalText.match(/^\\.setnn(?:\\s+(.+))?$/i);
+    originalText.match(/^\.setnn(?:\s+(.+))?$/i);
 
   if (setNicknameMatch) {
     if (!isOwner(senderId)) {
