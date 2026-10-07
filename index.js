@@ -6098,6 +6098,13 @@ async function handleMessage(
     return;
   }
 
+  // Unauthorized / spam protection for the "/" Banat toggle.
+  // Non-admins never get to toggle Banat; repeated attempts are rate-limited
+  // so they cannot make ECLIPSE generate a reply on every slash.
+  const unauthorizedSlashAttempts = new Map();
+  const UNAUTHORIZED_SLASH_WINDOW_MS = 60_000;
+  const UNAUTHORIZED_SLASH_MAX_REPLIES = 1;
+
   // ==========================================================
   // BANAT CONTROL
   // ==========================================================
@@ -6114,16 +6121,55 @@ async function handleMessage(
 
   if (banatControlMatch) {
     if (!isAdmin(senderId)) {
-      sendBanatReplyWithTyping(
-        api,
-        require("./slash-banats").pickUnauthorizedSlashBanat(),
-        threadID,
-        event.messageID,
-        false,
-        null,
-        0,
-        originalText
-      );
+      const now = Date.now();
+      const key = String(threadID) + ":" + String(senderId);
+      const previous = unauthorizedSlashAttempts.get(key);
+
+      if (
+        !previous ||
+        now - previous.windowStartedAt >=
+          UNAUTHORIZED_SLASH_WINDOW_MS
+      ) {
+        unauthorizedSlashAttempts.set(key, {
+          windowStartedAt: now,
+          replies: 1,
+        });
+
+        sendBanatReplyWithTyping(
+          api,
+          require("./slash-banats").pickUnauthorizedSlashBanat(),
+          threadID,
+          event.messageID,
+          false,
+          null,
+          0,
+          originalText
+        );
+      } else if (
+        previous.replies <
+        UNAUTHORIZED_SLASH_MAX_REPLIES
+      ) {
+        previous.replies++;
+        sendBanatReplyWithTyping(
+          api,
+          require("./slash-banats").pickUnauthorizedSlashBanat(),
+          threadID,
+          event.messageID,
+          false,
+          null,
+          0,
+          originalText
+        );
+      } else {
+        // Silent after the first unauthorized attempt in the window.
+        // Do not feed this into Banat, the humanizer, or the send queue.
+        console.log(
+          "[BANAT] Suppressed unauthorized / from " +
+            senderId +
+            " in " +
+            threadID
+        );
+      }
 
       return;
     }
