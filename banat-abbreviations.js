@@ -304,6 +304,68 @@ const BANAT_SHORTHANDS = Object.freeze({
   "love you": ["ly"],
   "miss you": ["miss u"],
 
+  // ----------------------------------------------------------
+  // CONTEXTUAL / CURRENT CHAT PHRASES
+  //
+  // These are selected by the existing humanizer at low probability.
+  // They expand expressive range without forcing slang into every reply.
+  // ----------------------------------------------------------
+
+  "no because": ["no bc"],
+  "wait a minute": ["wait a sec", "wait"],
+  "hold on": ["hol up", "wait"],
+  "be serious": ["be so fr", "b fr"],
+  "are you serious": ["u srs", "fr?"],
+  "that makes sense": ["that makes sense", "makes sense"],
+  "that does not make sense": ["that makes no sense"],
+  "i understand": ["i get it", "i get u"],
+  "i understand you": ["i get u"],
+  "i see what you mean": ["i see what u mean"],
+  "i agree": ["fr", "i agree"],
+  "i disagree": ["nah", "idk abt that"],
+  "you are right": ["ur right", "u right"],
+  "you are wrong": ["ur wrong", "u wrong"],
+  "that is crazy": ["thats crazy", "nah thats crazy"],
+  "that is wild": ["thats wild", "wild"],
+  "that is insane": ["thats insane", "insane"],
+  "no way": ["no way", "ain't no way"],
+  "there is no way": ["ain't no way"],
+  "i am weak": ["im weak 😭", "im crying 😭"],
+  "i am crying": ["im crying 😭"],
+  "you are cooked": ["ur cooked", "u cooked"],
+  "we are cooked": ["we're cooked", "we cooked"],
+  "it is over": ["its over", "we're cooked"],
+  "here we go again": ["here we go again 😭", "not again"],
+  "again": ["again 😭", "na naman"],
+  "right about that": ["real for that", "fr on that"],
+  "that was funny": ["that was funny ngl", "okay that got me"],
+  "you got me": ["u got me", "okay u got me"],
+  "i cannot even": ["i cant even", "i can't 😭"],
+  "i do not know": ["idk"],
+  "i do not care": ["idc"],
+  "not gonna lie": ["ngl"],
+  "to be honest": ["tbh"],
+  "for real for real": ["frfr"],
+  "at this point": ["atp"],
+  "in this economy": ["in this economy 😭"],
+  "my brother": ["bro", "my guy"],
+  "my guy": ["bro", "my guy"],
+  "good point": ["fair point", "valid"],
+  "fair enough": ["fair", "valid"],
+  "that is valid": ["thats valid", "valid"],
+  "what happened": ["what happened", "what happened 😭"],
+  "what happened here": ["what happened here 😭", "bro what happened"],
+  "why would you do that": ["why would u do that 😭"],
+  "what are you on": ["what are u on", "bro what are u on"],
+  "what is going on": ["whats going on", "what is happening"],
+  "i am listening": ["im listening"],
+  "go on": ["go on", "continue"],
+  "tell me more": ["tell me more", "go on"],
+  "leave me alone": ["leave me be", "pls 😭"],
+  "i am done": ["im done 😭", "im done"],
+  "we are done": ["we're done 😭", "its over"],
+  "that is enough": ["aight thats enough", "okay enough"],
+
 });
 
 module.exports = {
