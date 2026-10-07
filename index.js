@@ -143,6 +143,7 @@ const {
   getNextPublicReply,
   getRandomRoastReply,
   getBanatConversationReply,
+  scoreBanatAddressContext,
 } = require("./triggers");
 
 // ============================================================
@@ -9420,13 +9421,24 @@ async function handleAutomaticBanatMessage({
   // caused Banat to be ON in Neon while messages were still treated as
   // "undirected" after restarts or state desyncs.
   // ECLIPSE's own self-listen messages are already blocked above.
-  const target = {
-    shouldRespond: true,
-    reason: "banat-enabled",
-    directed: true,
-    via: "enabled",
-    conversationActive: true,
-  };
+  // "/" enables Banat for the thread, but activation does not mean
+  // "reply to every message". The existing context state decides whether
+  // this turn is actually worth entering. A direct reply/mention is never
+  // required for ordinary Banat.
+  const target = scoreBanatAddressContext({
+    rawText: body,
+    senderId,
+    threadId,
+    event,
+  });
+
+  console.log(
+    "[BANAT] Response decision " +
+      "thread=" + threadID +
+      " score=" + Number(target.score || 0).toFixed(3) +
+      " reason=" + String(target.reason || "unknown") +
+      " direct=" + Boolean(target.direct)
+  );
 
   try {
     // The owner is protected from roast/trigger generation. The existing
