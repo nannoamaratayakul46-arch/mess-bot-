@@ -367,40 +367,173 @@ async function clearNicknameGuard(threadID) {
   return result.rowCount > 0;
 }
 
-function changeNicknameAsync(api, nickname, threadID, participantID) {
-  return new Promise((resolve, reject) => {
-    if (!api || typeof api.changeNickname !== "function") {
-      reject(new Error("This ws3-fca build does not expose api.changeNickname()."));
-      return;
-    }
+const nicknameWriteStateByThread = new Map();
 
-    let settled = false;
+function getNicknameWriteState(threadID) {
+  const key = String(threadID || "").trim();
+  if (!key) {
+    throw new Error("threadID is required.");
+  }
 
-    const done = (error) => {
-      if (settled) return;
-      settled = true;
+  let state = nicknameWriteStateByThread.get(key);
 
-      if (error) {
-        reject(error);
-      } else {
-        resolve();
-      }
+  if (!state) {
+    state = {
+      tail: Promise.resolve(),
+      blockedUntil: 0,
     };
+    nicknameWriteStateByThread.set(key, state);
+  }
 
-    try {
-      const result = api.changeNickname(
-        nickname,
-        String(threadID),
-        String(participantID),
-        done
+  return state;
+}
+
+function isNicknameMutationBlock(error) {
+  const errorCode = Number(
+    error?.error ??
+      error?.code ??
+      error?.errorCode ??
+      error?.response?.error ??
+      0
+  );
+
+  const errorText = [
+    error?.errorSummary,
+    error?.errorDescription?.__html,
+    error?.errorDescription,
+    error?.message,
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  return (
+    errorCode === 3252001 ||
+    /temporarily blocked|going too fast|rate.?limit/i.test(errorText)
+  );
+}
+
+function createNicknameMutationBlockedError(threadID, blockedUntil) {
+  const error = new Error(
+    "Nickname mutations are temporarily blocked for this thread."
+  );
+
+  error.nicknameMutationBlocked = true;
+  error.threadID = String(threadID);
+  error.blockedUntil = Number(blockedUntil || 0);
+  error.errorCode = 3252001;
+
+  return error;
+}
+
+function getNicknameMutationBlockedUntil(threadID) {
+  const state = getNicknameWriteState(threadID);
+  return Number(state.blockedUntil || 0);
+}
+
+function markNicknameMutationBlocked(threadID) {
+  const state = getNicknameWriteState(threadID);
+  const cooldownMs = Math.max(
+    60_000,
+    Number(
+      process.env.ECLIPSE_NICKNAME_WRITE_COOLDOWN_MS ||
+        15 * 60 * 1000
+    )
+  );
+
+  state.blockedUntil = Math.max(
+    Number(state.blockedUntil || 0),
+    Date.now() + cooldownMs
+  );
+
+  return state.blockedUntil;
+}
+
+async function withNicknameWriteLock(threadID, operation) {
+  const state = getNicknameWriteState(threadID);
+  const previous = state.tail.catch(() => {});
+
+  let release;
+  const current = new Promise((resolve) => {
+    release = resolve;
+  });
+
+  state.tail = previous.then(() => current);
+
+  await previous;
+
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
+
+function changeNicknameAsync(api, nickname, threadID, participantID) {
+  const threadId = String(threadID || "").trim();
+  const participantId = String(participantID || "").trim();
+
+  return withNicknameWriteLock(threadId, async () => {
+    const blockedUntil = getNicknameMutationBlockedUntil(threadId);
+
+    if (blockedUntil > Date.now()) {
+      throw createNicknameMutationBlockedError(
+        threadId,
+        blockedUntil
       );
-
-      if (result && typeof result.then === "function") {
-        result.then(() => done()).catch(done);
-      }
-    } catch (error) {
-      done(error);
     }
+
+    return new Promise((resolve, reject) => {
+      if (!api || typeof api.changeNickname !== "function") {
+        reject(
+          new Error(
+            "This ws3-fca build does not expose api.changeNickname()."
+          )
+        );
+        return;
+      }
+
+      let settled = false;
+
+      const done = (error) => {
+        if (settled) return;
+        settled = true;
+
+        if (error) {
+          if (isNicknameMutationBlock(error)) {
+            const nextBlockedUntil =
+              markNicknameMutationBlocked(threadId);
+
+            const wrapped = createNicknameMutationBlockedError(
+              threadId,
+              nextBlockedUntil
+            );
+
+            wrapped.cause = error;
+            reject(wrapped);
+            return;
+          }
+
+          reject(error);
+        } else {
+          resolve();
+        }
+      };
+
+      try {
+        const result = api.changeNickname(
+          nickname,
+          threadId,
+          participantId,
+          done
+        );
+
+        if (result && typeof result.then === "function") {
+          result.then(() => done()).catch(done);
+        }
+      } catch (error) {
+        done(error);
+      }
+    });
   });
 }
 
