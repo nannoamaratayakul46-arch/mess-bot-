@@ -1883,6 +1883,153 @@ function enforceBanatAddressStyle(reply, senderId) {
 
 
 // ============================================================
+// CONTEXT-AWARE BANAT SPEAK / SILENCE
+// ============================================================
+//
+// Automatic Banat is intentionally not mention-gated. "/" enables the
+// conversation mode; this scorer decides whether the current turn is worth
+// entering. Direct replies/mentions are strongest, but natural group
+// momentum can also make ECLIPSE speak without being named.
+
+function scoreBanatAddressContext({
+  rawText = "",
+  senderId = "",
+  threadId = "",
+  event = null,
+} = {}) {
+  const text = String(rawText || "").trim();
+  const key = String(threadId || "unknown");
+  const state = banatContextState.get(key);
+  const replySenderId = String(
+    event?.messageReply?.senderID ||
+      event?.messageReply?.senderId ||
+      event?.replyToMessageIDSenderID ||
+      ""
+  ).trim();
+
+  const botId = String(global?.eclipseUserID || "").trim();
+  let score = 0.18;
+  let reason = "ambient";
+
+  if (!text) {
+    return {
+      shouldRespond: false,
+      score: 0,
+      reason: "empty",
+      direct: false,
+    };
+  }
+
+  // Protected users are still allowed to receive the admin-safe response.
+  // This is a response-selection decision, not a roast-safety decision.
+  const protectedSender =
+    isAdmin(senderId) || isPrimaryUser(senderId);
+
+  // A reply to ECLIPSE is the clearest conversational invitation.
+  if (botId && replySenderId === botId) {
+    score += 0.62;
+    reason = "reply-to-bot";
+  }
+
+  // Explicit mentions remain optional. We don't require them for ordinary
+  // Banat, but if the event exposes the bot in its mentions, raise priority.
+  const mentionIds = event?.mentions && typeof event.mentions === "object"
+    ? Object.keys(event.mentions).map(String)
+    : [];
+
+  if (botId && mentionIds.includes(botId)) {
+    score += 0.58;
+    reason = "mentioned";
+  }
+
+  const messages = Array.isArray(state?.recentMessages)
+    ? state.recentMessages.slice(-8)
+    : [];
+
+  const now = Date.now();
+  const recentBotReply = Array.isArray(state?.recentReplies)
+    ? state.recentReplies.length > 0
+    : false;
+
+  if (recentBotReply && Number(state?.updatedAt || 0) > now - 90_000) {
+    score += 0.20;
+    if (reason === "ambient") reason = "conversation-active";
+  }
+
+  const intent = classifyBanatIntent(text);
+  const emotional = extractBanatEmotion(text);
+
+  // These are conversational opportunities, not requirements.
+  if (["reaction", "agreement", "disagreement", "roast", "request"].includes(intent)) {
+    score += 0.12;
+  }
+
+  if (["laughing", "heated", "surprised"].includes(emotional)) {
+    score += 0.08;
+  }
+
+  const speakers = [...new Set(
+    messages
+      .map((item) => String(item?.senderId || "").trim())
+      .filter(Boolean)
+  )];
+
+  const last = messages[messages.length - 1];
+  const lastSpeaker = String(last?.senderId || "").trim();
+
+  // A continuing exchange gets a small boost, especially when the current
+  // speaker is the same person who just continued the thought.
+  if (lastSpeaker && lastSpeaker === String(senderId || "").trim()) {
+    score += 0.14;
+    if (reason === "ambient") reason = "speaker-continuation";
+  }
+
+  // If two other people are clearly carrying a back-and-forth and nobody
+  // addressed ECLIPSE, step back. This is the important "don't jump in"
+  // behavior that automatic Banat previously lacked.
+  if (
+    speakers.length >= 2 &&
+    lastSpeaker &&
+    lastSpeaker !== String(senderId || "").trim() &&
+    !replySenderId &&
+    !(botId && mentionIds.includes(botId))
+  ) {
+    const recentPair = messages.slice(-4);
+    const pairIds = [...new Set(
+      recentPair
+        .map((item) => String(item?.senderId || "").trim())
+        .filter(Boolean)
+    )];
+
+    if (pairIds.length >= 2) {
+      score -= 0.28;
+      reason = "two-person-exchange";
+    }
+  }
+
+  // Keep admin/primary-user conversation participation responsive, but their
+  // content is still routed through the safe reply pool in getRandomRoastReply.
+  if (protectedSender) {
+    score += 0.16;
+    if (reason === "ambient") reason = "admin-conversation";
+  }
+
+  score = Math.max(0, Math.min(1, Number(score.toFixed(3))));
+
+  return {
+    shouldRespond:
+      score >= 0.38 ||
+      reason === "reply-to-bot" ||
+      reason === "mentioned",
+    score,
+    reason,
+    direct:
+      reason === "reply-to-bot" ||
+      reason === "mentioned",
+  };
+}
+
+// ============================================================
 // RANDOM GENERIC ROAST
 // ============================================================
 
@@ -2188,6 +2335,7 @@ module.exports = {
   getRandomRoastReply,
   getNextPublicReply,
   getBanatConversationReply,
+  scoreBanatAddressContext,
 
   normalizeText,
   normalizeId,
