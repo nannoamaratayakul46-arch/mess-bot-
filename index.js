@@ -15,6 +15,7 @@ const {
   setNicknameGuard,
   getNicknameGuard,
   clearNicknameGuard,
+  setProtectedNicknames,
   handleNicknameGuardEvent,
 } = require("./nickname-guard");
 
@@ -5080,6 +5081,199 @@ async function handleMessage(
 
   const senderIsAdmin =
     isAdmin(senderId);
+
+  // ==========================================================
+  // MASS NICKNAME GUARD — OWNER ONLY
+  // .setnn <nickname> -> set the same nickname for every member
+  // .setnn off       -> remove all protected mass nicknames
+  // ==========================================================
+
+  const setNicknameMatch =
+    originalText.match(/^\\.setnn(?:\\s+(.+))?$/i);
+
+  if (setNicknameMatch) {
+    if (!isOwner(senderId)) {
+      sendReplyWithTyping(
+        api,
+        "🔒 .setnn is owner-only.",
+        threadID
+      );
+      return;
+    }
+
+    const requestedNickname = String(
+      setNicknameMatch[1] || ""
+    ).trim();
+
+    try {
+      if (!requestedNickname || /^off$/i.test(requestedNickname)) {
+        const removed = await clearNicknameGuard(threadID);
+
+        sendReplyWithTyping(
+          api,
+          removed
+            ? "🎀 mass nickname guard off."
+            : "🎀 mass nickname guard is already off.",
+          threadID
+        );
+
+        console.log(
+          "[NICK GUARD] " +
+            (removed ? "Disabled" : "Already disabled") +
+            " mass nickname guard in " +
+            threadID
+        );
+
+        return;
+      }
+
+      if (typeof api.getThreadInfo !== "function") {
+        throw new Error("This ws3-fca build does not expose api.getThreadInfo().");
+      }
+
+      const threadInfo = await new Promise((resolve, reject) => {
+        let settled = false;
+        const done = (error, info) => {
+          if (settled) return;
+          settled = true;
+          if (error) reject(error);
+          else resolve(info || {});
+        };
+
+        try {
+          const result = api.getThreadInfo(String(threadID), done);
+          if (result && typeof result.then === "function") {
+            result.then((info) => done(null, info)).catch(done);
+          }
+        } catch (error) {
+          done(error);
+        }
+      });
+
+      const botID = String(
+        typeof api.getCurrentUserID === "function"
+          ? api.getCurrentUserID()
+          : eclipseUserID || ""
+      ).trim();
+
+      const participantIDs = Array.isArray(threadInfo.participantIDs)
+        ? threadInfo.participantIDs
+            .map((id) => String(id || "").trim())
+            .filter(Boolean)
+        : [];
+
+      const targets = participantIDs.filter(
+        (participantID) => participantID !== botID
+      );
+
+      if (!targets.length) {
+        sendReplyWithTyping(
+          api,
+          "🎀 walang target members sa GC.",
+          threadID
+        );
+        return;
+      }
+
+      // Keep the first implementation intentionally simple:
+      // sequential nickname changes with a small human-paced pause.
+      const HUMAN_NICKNAME_DELAY_MS = Math.max(
+        250,
+        Number(process.env.ECLIPSE_SETNN_DELAY_MS || 250)
+      );
+
+      const protectedNicknames = {};
+      let changed = 0;
+      let failed = 0;
+
+      for (let i = 0; i < targets.length; i++) {
+        const participantID = targets[i];
+
+        try {
+          if (typeof api.changeNickname !== "function") {
+            throw new Error("This ws3-fca build does not expose api.changeNickname().");
+          }
+
+          await new Promise((resolve, reject) => {
+            let settled = false;
+            const done = (error) => {
+              if (settled) return;
+              settled = true;
+              if (error) reject(error);
+              else resolve();
+            };
+
+            try {
+              const result = api.changeNickname(
+                requestedNickname,
+                String(threadID),
+                String(participantID),
+                done
+              );
+
+              if (result && typeof result.then === "function") {
+                result.then(() => done()).catch(done);
+              }
+            } catch (error) {
+              done(error);
+            }
+          });
+
+          protectedNicknames[participantID] = requestedNickname;
+          changed++;
+        } catch (error) {
+          failed++;
+          console.error(
+            "[NICK GUARD] Failed to set nickname for " +
+              participantID + ":",
+            error
+          );
+        }
+
+        if (i < targets.length - 1) {
+          await new Promise((resolve) =>
+            setTimeout(resolve, HUMAN_NICKNAME_DELAY_MS)
+          );
+        }
+      }
+
+      await setProtectedNicknames(
+        threadID,
+        senderId,
+        protectedNicknames
+      );
+
+      sendReplyWithTyping(
+        api,
+        "🎀 setnn done — " +
+          changed +
+          " changed" +
+          (failed ? " · " + failed + " failed" : "") +
+          ".",
+        threadID
+      );
+
+      console.log(
+        "[NICK GUARD] Mass nickname protection set in " +
+          threadID +
+          " -> " +
+          JSON.stringify(requestedNickname) +
+          " | changed=" +
+          changed +
+          " failed=" +
+          failed
+      );
+    } catch (error) {
+      console.error("[NICK GUARD] .setnn command failed:", error);
+      sendReplyWithTyping(
+        api,
+        "🔴 .setnn could not update the GC nicknames.",
+        threadID
+      );
+    }
+
+    return;
+  }
 
   // ==========================================================
   // NICKNAME GUARD — OWNER ONLY
