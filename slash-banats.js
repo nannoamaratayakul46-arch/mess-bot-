@@ -1,27 +1,49 @@
 "use strict";
 
 const ON_REPLIES = Object.freeze([
-  "andito na boss mo tanga, supaen mo ttko",
-  "e kung suntukin ko ulo niyo?",
-  "hev owns you mga garapata",
-  "sabi ko wag ka tanga",
+  "hev abi owns you mga garapata",
+  "andito na boss mo, behave kayo mga garapata",
+  "sige, bukas na banat, sino unang tatamaan?",
+  "ayan na, buhay na naman yung gulo",
+  "on na, tigil muna kayo sa pagiging tanga",
+  "nandito na ako, wag niyo kong subukan",
+  "sige, magsipag-ingay pa kayo para may mapansin ako",
+  "ayos, naka-on na, wag kayong iiyak pag napansin ko kayo",
+  "andito na yung bangungot niyo, behave",
+  "banat is on, balik na kayo sa kalokohan niyo",
+  "ayan, gising na. sino may gustong mapansin?",
+  "on na mga hayop, wag sabay-sabay",
 ]);
 
 const OFF_REPLIES = Object.freeze([
   "bounce na ako, di kaya kakunatan ko",
   "yoko na, baduy na",
-  "pass na, bumaho na kasi andito na ea ni tanga",
+  "pass na, bumaho na kasi andito na eh, ni tanga",
   "ano ba yan, tukmol squad yan?",
+  "patay na banat, balik kayo sa tahimik niyong buhay",
+  "off muna, pahinga kayo sa kakulitan",
+  "sige, tahimik muna ako. wag kayong masanay",
+  "banat off, tigil muna ang kalat",
+  "ayan, pinatay niyo na naman yung saya",
+  "bounce muna ako, bahala kayo sa buhay niyo",
+  "off na. pagbalik ko wag kayong iyakin",
 ]);
 
 const UNAUTHORIZED_REPLIES = Object.freeze([
   "bawal bobo",
   "tuwad ka muna",
-  "bilang ka mga sampo, tangina mong banlag ka",
-  "gamit pa slash, walang bot dito gago",
+  "wag mong gamitin yang slash na parang iyo yan",
+  "slash ka nang slash, kala mo ikaw may-ari",
+  "gamit pa slash, walang bot dito para sayo",
   "kunware may bot sa acc ko na to",
-  "slash mo pa mukha mo",
-  "hev abi owns you, wag mo na off, nakakaturn off naman pagmumukha mo kaya ako na mag bbounce",
+  "slash mo pa mukha mo, hindi yan toggle para sayo",
+  "hindi ikaw ang may susi dito, garapata",
+  "wag kang makialam sa switch, manood ka muna",
+  "akala mo admin ka? cute",
+  "isang slash lang sapat na, wag kang makulit",
+  "hindi porke gumagana yung slash, pwede mo nang paulit-ulit gamitin",
+  "hev abi owns you, wag mo na patayin o buhayin, hindi ikaw ang may hawak",
+  "tigil slash, wala kang permiso dito",
 ]);
 
 function pick(list) {
