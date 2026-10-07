@@ -9228,10 +9228,30 @@ async function runBanatBurstQueue(threadID) {
     const selectedIndex =
       state.queue.indexOf(selected);
 
-    const job =
+    // A decision window represents one conversational turn. Consume the
+    // whole burst now instead of replying once per queued message.
+    const burst =
       selectedIndex >= 0
-        ? state.queue.splice(selectedIndex, 1)[0]
-        : null;
+        ? state.queue.splice(0, state.queue.length)
+        : [];
+
+    const job = burst.length
+      ? {
+          ...burst[0],
+          incomingText: burst
+            .map((item) => {
+              const speaker = String(item.senderId || "unknown");
+              const text = String(item.incomingText || "").trim();
+
+              return text
+                ? "[" + speaker + "] " + text
+                : "";
+            })
+            .filter(Boolean)
+            .join("\n")
+            .slice(0, 2200),
+        }
+      : null;
 
     if (!job) {
       return;
@@ -9299,6 +9319,8 @@ async function runBanatBurstQueue(threadID) {
     state.running = false;
 
     if (state.queue.length) {
+      // Normally empty after burst coalescing. Keep this fallback for any
+      // message that arrives after the decision window closes.
       const sinceLast = Date.now() - state.lastSentAt;
       const cooldownMs = state.lastSentAt
         ? Math.max(0, BANAT_MIN_INTER_REPLY_GAP_MS - sinceLast)
