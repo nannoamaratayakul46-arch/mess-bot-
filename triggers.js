@@ -1896,6 +1896,7 @@ function scoreBanatAddressContext({
   senderId = "",
   threadId = "",
   event = null,
+  botId = "",
 } = {}) {
   const text = String(rawText || "").trim();
   const key = String(threadId || "unknown");
@@ -1907,7 +1908,7 @@ function scoreBanatAddressContext({
       ""
   ).trim();
 
-  const botId = String(global?.eclipseUserID || "").trim();
+  const botIdentity = String(botId || "").trim();
   let score = 0.18;
   let reason = "ambient";
 
@@ -1926,7 +1927,7 @@ function scoreBanatAddressContext({
     isAdmin(senderId) || isPrimaryUser(senderId);
 
   // A reply to ECLIPSE is the clearest conversational invitation.
-  if (botId && replySenderId === botId) {
+  if (botIdentity && replySenderId === botIdentity) {
     score += 0.62;
     reason = "reply-to-bot";
   }
@@ -1937,7 +1938,7 @@ function scoreBanatAddressContext({
     ? Object.keys(event.mentions).map(String)
     : [];
 
-  if (botId && mentionIds.includes(botId)) {
+  if (botIdentity && mentionIds.includes(botIdentity)) {
     score += 0.58;
     reason = "mentioned";
   }
@@ -1992,7 +1993,7 @@ function scoreBanatAddressContext({
     lastSpeaker &&
     lastSpeaker !== String(senderId || "").trim() &&
     !replySenderId &&
-    !(botId && mentionIds.includes(botId))
+    !(botIdentity && mentionIds.includes(botIdentity))
   ) {
     const recentPair = messages.slice(-4);
     const pairIds = [...new Set(
