@@ -202,6 +202,158 @@ const BANAT_CONTEXT_LIMIT = Math.max(6, Math.min(20, BANAT_RECENT_LIMIT));
 // Keep this bounded; the per-thread Map below remains the primary selector memory.
 const recentBanatReplies = [];
 
+// ------------------------------------------------------------
+// CONTEXT MEMORY
+// ------------------------------------------------------------
+// Keep the existing Banat selection state as the single in-memory context
+// store. Do not create a second conversation-memory module.
+//
+// recentMessages = verbatim short-term turns
+// speakers       = who has been participating
+// topics         = repeated meaningful terms from the current burst
+// This is deliberately bounded and expires with the existing thread state.
+
+const BANAT_INCOMING_CONTEXT_LIMIT = Math.max(
+  8,
+  Math.min(24, Number(process.env.ECLIPSE_BANAT_INCOMING_CONTEXT_LIMIT || 14))
+);
+
+const BANAT_CONTEXT_TTL_MS = Math.max(
+  60_000,
+  Number(process.env.ECLIPSE_BANAT_CONTEXT_TTL_MS || 20 * 60 * 1000)
+);
+
+const BANAT_CONTEXT_STOPWORDS = new Set([
+  "the","and","that","this","with","from","your","you","are","was","were",
+  "have","has","had","for","but","not","just","what","when","where","who",
+  "why","how","can","could","would","should","about","then","than","they",
+  "them","their","there","here","into","like","really","very","yeah","yes",
+  "no","bro","pre","tol","naman","kasi","lang","yung","ng","na","pa","ako",
+  "ikaw","mo","ko","si","sa","ang","at","of","to","in","on","is","it","im",
+  "i","a","an","we","our","us","me","my"
+]);
+
+function extractBanatTopics(text) {
+  const raw = String(text || "")
+    .normalize("NFKC")
+    .replace(/https?:\\/\\/\\S+/g, " ");
+
+  const tokens = raw
+    .split(/[^\\p{L}\\p{N}'-]+/u)
+    .map((token) => token.replace(/^['-]+|['-]+$/g, "").toLowerCase())
+    .filter((token) =>
+      token.length >= 4 &&
+      token.length <= 32 &&
+      !BANAT_CONTEXT_STOPWORDS.has(token) &&
+      !/^\\d+$/.test(token)
+    );
+
+  const counts = new Map();
+
+  for (const token of tokens) {
+    counts.set(token, (counts.get(token) || 0) + 1);
+  }
+
+  return [...counts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([token]) => token);
+}
+
+function extractBanatEmotion(text) {
+  const value = String(text || "").toLowerCase();
+  if (/[😭😔😩]/u.test(value) || /\\b(?:sad|tired|failed|fail|stress|stressed|pain|hurt|awful)\\b/i.test(value)) {
+    return "down";
+  }
+  if (/[😂🤣💀]/u.test(value) || /\\b(?:haha+|lmao|funny|dead)\\b/i.test(value)) {
+    return "laughing";
+  }
+  if (/[😡🤬]/u.test(value) || /\\b(?:angry|pissed|mad|fuck this|wtf)\\b/i.test(value)) {
+    return "heated";
+  }
+  if (/[😍🥹❤️❤]/u.test(value) || /\\b(?:love|cute|miss|pretty|handsome)\\b/i.test(value)) {
+    return "warm";
+  }
+  if (/[!?]{2,}/.test(value) || /\\b(?:what|why|how|wait|huh)\\b/i.test(value)) {
+    return "surprised";
+  }
+  return "neutral";
+}
+
+function rememberBanatIncoming(threadId, senderId, text, eventKey = "") {
+  const key = String(threadId || "unknown");
+  const value = String(text || "").trim();
+  if (!value) return;
+
+  const now = Date.now();
+  const current = banatContextState.get(key) || {
+    recentReplies: [],
+    recentFamilies: [],
+    recentMessages: [],
+    speakers: [],
+    topics: [],
+    emotion: "neutral",
+    updatedAt: now,
+    recentEventKeys: [],
+  };
+
+  if (
+    eventKey &&
+    current.recentEventKeys?.includes(String(eventKey))
+  ) {
+    return;
+  }
+
+  if (!Array.isArray(current.recentEventKeys)) current.recentEventKeys = [];
+  if (eventKey) {
+    current.recentEventKeys.push(String(eventKey));
+    current.recentEventKeys = current.recentEventKeys.slice(-32);
+  }
+
+  current.recentMessages = [
+    ...(current.recentMessages || []),
+    {
+      senderId: String(senderId || "").trim(),
+      text: value.slice(0, 500),
+      at: now,
+    },
+  ].slice(-BANAT_INCOMING_CONTEXT_LIMIT);
+
+  const speaker = String(senderId || "").trim();
+  if (speaker) {
+    current.speakers = [
+      ...(current.speakers || []).filter((id) => id !== speaker),
+      speaker,
+    ].slice(-8);
+  }
+
+  const incomingTopics = extractBanatTopics(value);
+  current.topics = [
+    ...(current.topics || []),
+    ...incomingTopics,
+  ]
+    .filter((topic, index, list) => list.indexOf(topic) === index)
+    .slice(-16);
+
+  current.emotion = extractBanatEmotion(value);
+  current.updatedAt = now;
+  banatContextState.set(key, current);
+}
+
+function getBanatConversationContext(threadId) {
+  const key = String(threadId || "unknown");
+  const state = banatContextState.get(key);
+
+  if (!state) return null;
+
+  if (Date.now() - Number(state.updatedAt || 0) > BANAT_CONTEXT_TTL_MS) {
+    banatContextState.delete(key);
+    return null;
+  }
+
+  return state;
+}
+
 function rememberRecent(list, value, limit = BANAT_RECENT_LIMIT) {
   if (!Array.isArray(list)) return;
   const text = String(value || "").trim();
@@ -225,15 +377,46 @@ function banatReplyFamily(reply) {
 }
 
 function banatContextPrompt(threadId) {
-  const key = String(threadId || "unknown");
-  const state = banatContextState.get(key);
-  const threadRecent = state?.recentReplies || [];
-  const recent = [...threadRecent, ...recentBanatReplies]
+  const state = getBanatConversationContext(threadId);
+  if (!state) return "";
+
+  const lines = [];
+
+  const recentMessages = Array.isArray(state.recentMessages)
+    ? state.recentMessages.slice(-8)
+    : [];
+
+  if (recentMessages.length) {
+    lines.push("RECENT GROUP CONVERSATION:");
+    for (const item of recentMessages) {
+      const speaker = item.senderId
+        ? `speaker:${item.senderId}`
+        : "speaker:unknown";
+      lines.push(`- ${speaker}: ${String(item.text || "").slice(0, 300)}`);
+    }
+  }
+
+  if (Array.isArray(state.topics) && state.topics.length) {
+    lines.push("ACTIVE TOPICS: " + state.topics.slice(-10).join(", "));
+  }
+
+  if (state.emotion && state.emotion !== "neutral") {
+    lines.push("CURRENT ENERGY: " + state.emotion);
+  }
+
+  const threadRecent = state.recentReplies || [];
+  const recentReplies = [...threadRecent, ...recentBanatReplies]
     .filter(Boolean)
-    .slice(-10);
-  return recent.length
-    ? recent.map((reply, index) => `${index + 1}. ${reply}`).join("\n")
-    : "";
+    .slice(-6);
+
+  if (recentReplies.length) {
+    lines.push(
+      "RECENT BOT REPLIES (avoid copying their wording):",
+      ...recentReplies.map((reply, index) => `- ${index + 1}. ${reply}`)
+    );
+  }
+
+  return lines.join("\n").slice(0, 4500);
 }
 
 function banatContextualPick(replies, threadId, incomingText) {
@@ -1187,6 +1370,13 @@ async function getTriggerReply(
 
   const normalizedSenderId =
     normalizeId(senderId);
+
+  rememberBanatIncoming(
+    threadId,
+    normalizedSenderId,
+    rawText,
+    event?.messageID || event?.messageId || ""
+  );
 
 
   // ----------------------------------------------------------
