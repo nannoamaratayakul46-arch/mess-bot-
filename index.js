@@ -16,6 +16,11 @@ const {
   getNicknameGuard,
   clearNicknameGuard,
   setProtectedNicknames,
+  getProtectedNicknames,
+  getMassNicknameRun,
+  setMassNicknameRun,
+  clearMassNicknameRun,
+  changeNicknameAsync,
   handleNicknameGuardEvent,
 } = require("./nickname-guard");
 
@@ -5086,6 +5091,9 @@ async function handleMessage(
   // MASS NICKNAME GUARD — OWNER ONLY
   // .setnn <nickname> -> set the same nickname for every member
   // .setnn off       -> remove all protected mass nicknames
+  //
+  // The run is checkpointed in Neon so a Facebook nickname mutation
+  // block does not make the next .setnn restart from member #1.
   // ==========================================================
 
   const setNicknameMatch =
@@ -5117,33 +5125,60 @@ async function handleMessage(
           threadID
         );
 
-        console.log(
-          "[NICK GUARD] " +
-            (removed ? "Disabled" : "Already disabled") +
-            " mass nickname guard in " +
-            threadID
-        );
-
         return;
       }
 
       if (typeof api.getThreadInfo !== "function") {
-        throw new Error("This ws3-fca build does not expose api.getThreadInfo().");
+        throw new Error(
+          "This ws3-fca build does not expose api.getThreadInfo()."
+        );
       }
+
+      const HUMAN_NICKNAME_MIN_DELAY_MS = Math.max(
+        3000,
+        Number(process.env.ECLIPSE_SETNN_MIN_DELAY_MS || 8000)
+      );
+
+      const HUMAN_NICKNAME_MAX_DELAY_MS = Math.max(
+        HUMAN_NICKNAME_MIN_DELAY_MS,
+        Number(
+          process.env.ECLIPSE_SETNN_MAX_DELAY_MS || 15000
+        )
+      );
+
+      const SETNN_BLOCK_COOLDOWN_MS = Math.max(
+        60_000,
+        Number(
+          process.env.ECLIPSE_SETNN_BLOCK_COOLDOWN_MS ||
+            15 * 60 * 1000
+        )
+      );
 
       const threadInfo = await new Promise((resolve, reject) => {
         let settled = false;
+
         const done = (error, info) => {
           if (settled) return;
           settled = true;
+
           if (error) reject(error);
           else resolve(info || {});
         };
 
         try {
-          const result = api.getThreadInfo(String(threadID), done);
-          if (result && typeof result.then === "function") {
-            result.then((info) => done(null, info)).catch(done);
+          const result =
+            api.getThreadInfo(
+              String(threadID),
+              done
+            );
+
+          if (
+            result &&
+            typeof result.then === "function"
+          ) {
+            result
+              .then((info) => done(null, info))
+              .catch(done);
           }
         } catch (error) {
           done(error);
@@ -5156,17 +5191,22 @@ async function handleMessage(
           : eclipseUserID || ""
       ).trim();
 
-      const participantIDs = Array.isArray(threadInfo.participantIDs)
-        ? threadInfo.participantIDs
-            .map((id) => String(id || "").trim())
-            .filter(Boolean)
-        : [];
+      const liveParticipantIDs =
+        Array.isArray(threadInfo.participantIDs)
+          ? threadInfo.participantIDs
+              .map((id) =>
+                String(id || "").trim()
+              )
+              .filter(Boolean)
+          : [];
 
-      const targets = participantIDs.filter(
-        (participantID) => participantID !== botID
-      );
+      const liveTargets =
+        liveParticipantIDs.filter(
+          (participantID) =>
+            participantID !== botID
+        );
 
-      if (!targets.length) {
+      if (!liveTargets.length) {
         sendReplyWithTyping(
           api,
           "🎀 walang target members sa GC.",
@@ -5175,75 +5215,158 @@ async function handleMessage(
         return;
       }
 
-      // Facebook rate-limits repeated nickname mutations. Keep this deliberately
-      // slow and randomized rather than sending a fixed burst pattern.
-      const HUMAN_NICKNAME_MIN_DELAY_MS = Math.max(
-        3000,
-        Number(process.env.ECLIPSE_SETNN_MIN_DELAY_MS || 8000)
-      );
+      const savedRun =
+        await getMassNicknameRun(threadID);
 
-      const HUMAN_NICKNAME_MAX_DELAY_MS = Math.max(
-        HUMAN_NICKNAME_MIN_DELAY_MS,
-        Number(
-          process.env.ECLIPSE_SETNN_MAX_DELAY_MS ||
-            15000
-        )
-      );
+      const sameSavedRun =
+        savedRun &&
+        String(savedRun.nickname || "").trim() ===
+          requestedNickname &&
+        Array.isArray(savedRun.targets) &&
+        savedRun.targets.length > 0;
 
-      const protectedNicknames = {};
+      if (
+        sameSavedRun &&
+        Number(savedRun.blocked_until || 0) >
+          Date.now()
+      ) {
+        const remainingMs =
+          Number(savedRun.blocked_until) -
+          Date.now();
+
+        const remainingMinutes =
+          Math.max(
+            1,
+            Math.ceil(
+              remainingMs / 60_000
+            )
+          );
+
+        sendReplyWithTyping(
+          api,
+          "🎀 setnn is cooling down after Facebook blocked nickname changes. " +
+            "Try again in about " +
+            remainingMinutes +
+            " min.",
+          threadID
+        );
+
+        return;
+      }
+
+      let targets;
+      let nextIndex;
+      let protectedNicknames;
+
+      if (sameSavedRun) {
+        targets = savedRun.targets
+          .map((id) =>
+            String(id || "").trim()
+          )
+          .filter(Boolean);
+
+        nextIndex = Math.max(
+          0,
+          Math.min(
+            Number(savedRun.next_index || 0),
+            targets.length
+          )
+        );
+
+        protectedNicknames =
+          await getProtectedNicknames(
+            threadID
+          );
+
+        console.log(
+          "[NICK GUARD] Resuming .setnn in " +
+            threadID +
+            " at target " +
+            (nextIndex + 1) +
+            "/" +
+            targets.length +
+            "."
+        );
+      } else {
+        targets = liveTargets;
+        nextIndex = 0;
+        protectedNicknames = {};
+
+        await setMassNicknameRun(
+          threadID,
+          senderId,
+          requestedNickname,
+          targets,
+          nextIndex,
+          null
+        );
+
+        console.log(
+          "[NICK GUARD] Starting new .setnn run in " +
+            threadID +
+            " for " +
+            targets.length +
+            " targets."
+        );
+      }
+
       let changed = 0;
       let failed = 0;
       let rateBlocked = false;
 
-      for (let i = 0; i < targets.length; i++) {
-        const participantID = targets[i];
+      for (
+        let i = nextIndex;
+        i < targets.length;
+        i++
+      ) {
+        const participantID =
+          targets[i];
 
         try {
-          if (typeof api.changeNickname !== "function") {
-            throw new Error("This ws3-fca build does not expose api.changeNickname().");
-          }
+          await changeNicknameAsync(
+            api,
+            requestedNickname,
+            threadID,
+            participantID
+          );
 
-          await new Promise((resolve, reject) => {
-            let settled = false;
-            const done = (error) => {
-              if (settled) return;
-              settled = true;
-              if (error) reject(error);
-              else resolve();
-            };
+          protectedNicknames[
+            participantID
+          ] = requestedNickname;
 
-            try {
-              const result = api.changeNickname(
-                requestedNickname,
-                String(threadID),
-                String(participantID),
-                done
-              );
-
-              if (result && typeof result.then === "function") {
-                result.then(() => done()).catch(done);
-              }
-            } catch (error) {
-              done(error);
-            }
-          });
-
-          protectedNicknames[participantID] = requestedNickname;
           changed++;
+
+          // Checkpoint immediately after every successful mutation.
+          // If Render restarts, already-completed members are not retried.
+          await setProtectedNicknames(
+            threadID,
+            senderId,
+            protectedNicknames
+          );
+
+          await setMassNicknameRun(
+            threadID,
+            senderId,
+            requestedNickname,
+            targets,
+            i + 1,
+            null
+          );
         } catch (error) {
           failed++;
 
           const errorCode = Number(
             error?.error ??
-            error?.code ??
-            error?.errorCode ??
-            error?.response?.error ??
-            0
+              error?.code ??
+              error?.errorCode ??
+              error?.response?.error ??
+              0
           );
 
           const errorText = [
             error?.errorSummary,
             error?.errorDescription?.__html,
+            error?.errorDescription,
             error?.message,
           ]
             .filter(Boolean)
@@ -5251,36 +5374,75 @@ async function handleMessage(
 
           const temporarilyBlocked =
             errorCode === 3252001 ||
-            /temporarily blocked|going too fast/i.test(errorText);
+            /temporarily blocked|going too fast|rate.?limit/i.test(
+              errorText
+            );
 
           console.error(
             "[NICK GUARD] Failed to set nickname for " +
-              participantID + ":",
+              participantID +
+              ":",
             error
           );
 
           if (temporarilyBlocked) {
             rateBlocked = true;
 
+            const blockedUntil =
+              Date.now() +
+              SETNN_BLOCK_COOLDOWN_MS;
+
+            await setMassNicknameRun(
+              threadID,
+              senderId,
+              requestedNickname,
+              targets,
+              i,
+              blockedUntil
+            );
+
             console.error(
-              "[NICK GUARD] Facebook temporarily blocked nickname changes. " +
-                "Stopping the remaining mass nickname mutations."
+              "[NICK GUARD] Nickname mutation block detected. " +
+                "Checkpointed at target " +
+                (i + 1) +
+                "/" +
+                targets.length +
+                " and cooling down."
             );
 
             break;
           }
+
+          // A non-rate-limit failure is isolated to this member.
+          // Save the failed position as skipped and continue slowly.
+          await setMassNicknameRun(
+            threadID,
+            senderId,
+            requestedNickname,
+            targets,
+            i + 1,
+            null
+          );
         }
 
-        if (!rateBlocked && i < targets.length - 1) {
+        if (
+          !rateBlocked &&
+          i < targets.length - 1
+        ) {
           const delayRange =
             HUMAN_NICKNAME_MAX_DELAY_MS -
             HUMAN_NICKNAME_MIN_DELAY_MS;
 
           const delay =
             HUMAN_NICKNAME_MIN_DELAY_MS +
-            (delayRange > 0
-              ? Math.floor(Math.random() * (delayRange + 1))
-              : 0);
+            (
+              delayRange > 0
+                ? Math.floor(
+                    Math.random() *
+                      (delayRange + 1)
+                  )
+                : 0
+            );
 
           console.log(
             "[NICK GUARD] Waiting " +
@@ -5289,36 +5451,70 @@ async function handleMessage(
           );
 
           await new Promise((resolve) =>
-            setTimeout(resolve, delay)
+            setTimeout(
+              resolve,
+              delay
+            )
           );
         }
       }
 
-      await setProtectedNicknames(
-        threadID,
-        senderId,
-        protectedNicknames
-      );
+      const finalIndex =
+        await getMassNicknameRun(threadID);
+
+      const next =
+        Number(
+          finalIndex?.next_index || 0
+        );
+
+      if (
+        !rateBlocked &&
+        next >= targets.length
+      ) {
+        await setMassNicknameRun(
+          threadID,
+          senderId,
+          requestedNickname,
+          targets,
+          targets.length,
+          null
+        );
+
+        await clearMassNicknameRun(
+          threadID
+        );
+      }
 
       const skipped =
-        targets.length -
-        changed -
-        failed;
+        Math.max(
+          0,
+          targets.length -
+            (rateBlocked
+              ? next
+              : targets.length)
+        );
 
       sendReplyWithTyping(
         api,
         rateBlocked
-          ? "🎀 setnn stopped — Facebook temporarily blocked nickname changes. " +
+          ? "🎀 setnn paused — Facebook temporarily blocked nickname changes. " +
             changed +
             " changed · " +
             failed +
             " failed · " +
             skipped +
-            " skipped. Try again later."
+            " remaining. " +
+            "Wait for the cooldown, then run .setnn " +
+            requestedNickname +
+            " again to resume."
           : "🎀 setnn done — " +
             changed +
             " changed" +
-            (failed ? " · " + failed + " failed" : "") +
+            (failed
+              ? " · " +
+                failed +
+                " failed"
+              : "") +
             ".",
         threadID
       );
@@ -5327,14 +5523,22 @@ async function handleMessage(
         "[NICK GUARD] Mass nickname protection set in " +
           threadID +
           " -> " +
-          JSON.stringify(requestedNickname) +
+          JSON.stringify(
+            requestedNickname
+          ) +
           " | changed=" +
           changed +
           " failed=" +
-          failed
+          failed +
+          " resumedFrom=" +
+          nextIndex
       );
     } catch (error) {
-      console.error("[NICK GUARD] .setnn command failed:", error);
+      console.error(
+        "[NICK GUARD] .setnn command failed:",
+        error
+      );
+
       sendReplyWithTyping(
         api,
         "🔴 .setnn could not update the GC nicknames.",
