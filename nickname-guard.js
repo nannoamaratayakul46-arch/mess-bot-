@@ -38,6 +38,17 @@ async function ensureNicknameGuardTable() {
 
       ALTER TABLE eclipse_nickname_guards
         ADD COLUMN IF NOT EXISTS protected_nicknames JSONB NOT NULL DEFAULT '{}'::jsonb;
+      ALTER TABLE eclipse_nickname_guards
+        ADD COLUMN IF NOT EXISTS setnn_nickname TEXT;
+
+      ALTER TABLE eclipse_nickname_guards
+        ADD COLUMN IF NOT EXISTS setnn_targets JSONB NOT NULL DEFAULT '[]'::jsonb;
+
+      ALTER TABLE eclipse_nickname_guards
+        ADD COLUMN IF NOT EXISTS setnn_next_index INTEGER NOT NULL DEFAULT 0;
+
+      ALTER TABLE eclipse_nickname_guards
+        ADD COLUMN IF NOT EXISTS setnn_blocked_until BIGINT;
     `);
 
     tableReady = true;
@@ -170,6 +181,173 @@ async function getProtectedNicknames(threadID) {
 
   const value = rows[0]?.protected_nicknames;
   return value && typeof value === "object" ? value : {};
+}
+
+async function getMassNicknameRun(threadID) {
+  await ensureNicknameGuardTable();
+
+  const threadId = String(threadID || "").trim();
+  if (!threadId) return null;
+
+  const { rows } = await db.query(
+    `
+      SELECT
+        thread_id,
+        user_id,
+        setnn_nickname,
+        setnn_targets,
+        setnn_next_index,
+        setnn_blocked_until
+      FROM eclipse_nickname_guards
+      WHERE thread_id = $1
+      LIMIT 1
+    `,
+    [threadId]
+  );
+
+  const row = rows[0];
+  if (!row || !row.setnn_nickname) return null;
+
+  let targets = [];
+  try {
+    targets = Array.isArray(row.setnn_targets)
+      ? row.setnn_targets
+      : [];
+  } catch (_) {
+    targets = [];
+  }
+
+  return {
+    thread_id: row.thread_id,
+    user_id: row.user_id,
+    nickname: String(row.setnn_nickname || "").trim(),
+    targets: targets
+      .map((id) => String(id || "").trim())
+      .filter(Boolean),
+    next_index: Math.max(
+      0,
+      Number(row.setnn_next_index || 0)
+    ),
+    blocked_until:
+      Number(row.setnn_blocked_until || 0)
+  };
+}
+
+async function setMassNicknameRun(
+  threadID,
+  userID,
+  nickname,
+  targets,
+  nextIndex,
+  blockedUntil = null
+) {
+  await ensureNicknameGuardTable();
+
+  const threadId = String(threadID || "").trim();
+  const adminId = String(userID || "").trim();
+  const value = String(nickname || "").trim();
+
+  if (!threadId || !adminId || !value) {
+    throw new Error(
+      "threadID, userID and nickname are required."
+    );
+  }
+
+  const normalizedTargets = Array.isArray(targets)
+    ? targets
+        .map((id) => String(id || "").trim())
+        .filter(Boolean)
+    : [];
+
+  const safeNextIndex = Math.max(
+    0,
+    Math.min(
+      Number(nextIndex || 0),
+      normalizedTargets.length
+    )
+  );
+
+  const safeBlockedUntil =
+    blockedUntil == null
+      ? null
+      : Math.max(
+          0,
+          Number(blockedUntil)
+        );
+
+  const { rows } = await db.query(
+    `
+      INSERT INTO eclipse_nickname_guards(
+        thread_id,
+        user_id,
+        enabled,
+        updated_at,
+        setnn_nickname,
+        setnn_targets,
+        setnn_next_index,
+        setnn_blocked_until
+      )
+      VALUES(
+        $1,
+        $2,
+        TRUE,
+        $3,
+        $4,
+        $5::jsonb,
+        $6,
+        $7
+      )
+      ON CONFLICT(thread_id)
+      DO UPDATE SET
+        user_id = EXCLUDED.user_id,
+        enabled = TRUE,
+        updated_at = EXCLUDED.updated_at,
+        setnn_nickname = EXCLUDED.setnn_nickname,
+        setnn_targets = EXCLUDED.setnn_targets,
+        setnn_next_index = EXCLUDED.setnn_next_index,
+        setnn_blocked_until = EXCLUDED.setnn_blocked_until
+      RETURNING
+        thread_id,
+        setnn_nickname,
+        setnn_targets,
+        setnn_next_index,
+        setnn_blocked_until
+    `,
+    [
+      threadId,
+      adminId,
+      Date.now(),
+      value,
+      JSON.stringify(normalizedTargets),
+      safeNextIndex,
+      safeBlockedUntil
+    ]
+  );
+
+  return rows[0] || null;
+}
+
+async function clearMassNicknameRun(threadID) {
+  await ensureNicknameGuardTable();
+
+  const threadId = String(threadID || "").trim();
+  if (!threadId) return false;
+
+  const result = await db.query(
+    `
+      UPDATE eclipse_nickname_guards
+      SET
+        setnn_nickname = NULL,
+        setnn_targets = '[]'::jsonb,
+        setnn_next_index = 0,
+        setnn_blocked_until = NULL,
+        updated_at = $2
+      WHERE thread_id = $1
+    `,
+    [threadId, Date.now()]
+  );
+
+  return result.rowCount > 0;
 }
 
 async function clearNicknameGuard(threadID) {
@@ -790,6 +968,10 @@ module.exports = {
   clearNicknameGuard,
   setProtectedNicknames,
   getProtectedNicknames,
+  getMassNicknameRun,
+  setMassNicknameRun,
+  clearMassNicknameRun,
+  changeNicknameAsync,
   rememberProtectedTitle,
   clearProtectedTitle,
   handleTitleGuardEvent,
