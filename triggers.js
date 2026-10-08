@@ -372,6 +372,74 @@ const BANAT_CONTEXT_TTL_MS = Math.max(
 const BANAT_CONTEXT_MAX_SPEAKERS = 12;
 const BANAT_CONTEXT_MAX_CALLBACKS = 8;
 
+const JAMMY_ATTACK_PATTERNS = Object.freeze([
+  /\b(?:stupid|idiot|dumb|moron|loser|ugly|useless|trash|clown|pathetic|annoying|bobo|tanga|gago|gaga|tarantado|ulol|siraulo|engot|inutil|bwisit|leche|putangina|pakyu|fuck you|shut up|suck|hate you)\b/i,
+  /\b(?:pangit|walang kwenta|walang silbi|mukhang|amoy|mamatay|kill yourself|kys)\b/i,
+  /\b(?:ka|mo|iyo|sayo|you|ur|your)\b.{0,36}\b(?:tanga|bobo|gago|idiot|stupid|ugly|loser|trash|useless|pangit)\b/i,
+]);
+
+function classifyJammyAttack({
+  text,
+  senderId,
+  replySenderId,
+  jammyId,
+  recentMessages = [],
+}) {
+  const value = String(text || "").trim();
+  const sender = String(senderId || "").trim();
+  const jammy = String(jammyId || "").trim();
+
+  if (!value || !jammy || !sender || sender === jammy) {
+    return {
+      targeted: false,
+      confidence: 0,
+      reason: "not-applicable",
+    };
+  }
+
+  const repliedToJammy =
+    String(replySenderId || "").trim() === jammy;
+
+  const namedJammy = /\bjammy\b/i.test(value);
+  const lexicalAttack = JAMMY_ATTACK_PATTERNS.some((pattern) =>
+    pattern.test(value)
+  );
+
+  const lastSpeakerWasJammy =
+    Array.isArray(recentMessages) &&
+    recentMessages.length > 0 &&
+    String(
+      recentMessages[recentMessages.length - 1]?.senderId || ""
+    ).trim() === jammy;
+
+  let confidence = 0;
+
+  if (repliedToJammy) confidence += 0.48;
+  if (namedJammy) confidence += 0.30;
+  if (lexicalAttack) confidence += 0.28;
+  if (lastSpeakerWasJammy) confidence += 0.16;
+
+  // An attack without a clear Jammy addressee is deliberately kept below
+  // the defense threshold unless reply context or the name makes the target
+  // explicit. This avoids treating every generic insult in the GC as an
+  // attack on Jammy.
+  const targeted =
+    confidence >= 0.50 &&
+    (repliedToJammy || namedJammy || lastSpeakerWasJammy);
+
+  return {
+    targeted,
+    confidence: Math.min(1, Number(confidence.toFixed(3))),
+    reason: targeted
+      ? repliedToJammy
+        ? "reply-to-jammy"
+        : namedJammy
+          ? "named-jammy"
+          : "jammy-recent-turn"
+      : "ambiguous",
+  };
+}
+
 function classifyBanatIntent(text) {
   const value = String(text || "").trim().toLowerCase();
   if (!value) return "unknown";
@@ -2134,8 +2202,17 @@ function scoreBanatAddressContext({
     messages.length > 0 &&
     String(messages[messages.length - 1]?.senderId || "").trim() === jammyId;
 
-  if (jammyMentioned || replyToJammy || jammyReference) {
-    score += 0.42;
+  const jammyAttack = classifyJammyAttack({
+    text,
+    senderId,
+    replySenderId,
+    jammyId,
+    recentMessages: messages,
+  });
+
+  if (jammyAttack.targeted) {
+    // Clear target evidence gets a stronger boost than a generic mention.
+    score += 0.52 + jammyAttack.confidence * 0.18;
     reason = "jammy-defense";
 
     if (senderId && senderId !== jammyId) {
@@ -2145,6 +2222,11 @@ function scoreBanatAddressContext({
         "jammy-targeted"
       );
     }
+  } else if (jammyMentioned || replyToJammy || jammyReference) {
+    // A normal reply to Jammy is still relevant, but does not automatically
+    // enter defense mode unless the text also looks like an attack.
+    score += 0.18;
+    if (reason === "ambient") reason = "jammy-conversation";
   }
 
   const defenseEngagement = getJammyDefenseEngagement(key);
@@ -2154,16 +2236,24 @@ function scoreBanatAddressContext({
     String(senderId || "").trim() ===
       String(defenseEngagement.attackerId || "").trim()
   ) {
-    score += 0.34;
-    reason = "active-jammy-defense";
+    const continuation =
+      jammyAttack.targeted ||
+      replyToJammy ||
+      replySenderId === botIdentity ||
+      classifyBanatIntent(text) === "roast";
 
-    // A continuing attack refreshes the short idle TTL, capped by the
-    // maximum engagement duration so the state cannot live forever.
-    updateJammyDefenseEngagement(
-      key,
-      senderId,
-      "attacker-continuing"
-    );
+    if (continuation) {
+      score += 0.34;
+      reason = "active-jammy-defense";
+
+      // A continuing attack refreshes the short idle TTL, capped by the
+      // maximum engagement duration so the state cannot live forever.
+      updateJammyDefenseEngagement(
+        key,
+        senderId,
+        "attacker-continuing"
+      );
+    }
   }
 
   const intent = classifyBanatIntent(text);
@@ -2635,6 +2725,7 @@ module.exports = {
   getBanatDirectedTarget,
   updateJammyDefenseEngagement,
   getJammyDefenseEngagement,
+  classifyJammyAttack,
 
   normalizeText,
   normalizeId,
