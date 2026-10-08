@@ -2789,7 +2789,11 @@ function scoreBanatAddressContext({
     // unrelated speakers must wait. A strong contextual signal can transfer
     // ownership to the new speaker.
     shouldRespond:
-      score >= (isOtherSpeaker ? 0.52 : 0.30) ||
+      // The current conversation owner should not be filtered by the
+      // address/relevance score. If they send one message or several,
+      // Banat is allowed to engage. The queue handles batching/rate limits.
+      (!isOtherSpeaker) ||
+      score >= 0.52 ||
       reason === "reply-to-bot" ||
       reason === "mentioned",
     score,
