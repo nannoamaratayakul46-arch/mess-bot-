@@ -9159,11 +9159,15 @@ function acceptBanatBurstMessage(threadID, job) {
       });
     }
 
-    return true;
+    return false;
   }
 
+  // A running turn is already owned by the current sender. Do not let a
+  // later message from another person silently steal the persistent target.
+  // The active sender's additional messages will be picked up on the next
+  // decision window.
   if (state.running) {
-    return true;
+    return false;
   }
 
   if (
