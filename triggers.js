@@ -838,7 +838,7 @@ function rememberBanatIncoming(
   senderId,
   text,
   eventKey = "",
-  replyTargetId = ""
+  replyTargetIdInput = ""
 ) {
   const key = String(threadId || "unknown");
   const value = String(text || "").trim();
@@ -874,7 +874,7 @@ function rememberBanatIncoming(
     current.recentEventKeys = current.recentEventKeys.slice(-32);
   }
 
-  const resolvedReplyTargetId = String(replyTargetId || "").trim();
+  const resolvedReplyTargetId = String(replyTargetIdInput || "").trim();
   current.lastReplyTargetId = resolvedReplyTargetId;
 
   current.recentMessages = [
