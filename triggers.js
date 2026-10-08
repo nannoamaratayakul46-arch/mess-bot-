@@ -2556,9 +2556,12 @@ function scoreBanatAddressContext({
       ["reaction", "agreement", "disagreement", "roast", "request"].includes(intent),
   });
 
-  if (!turnPolicy.allow && !protectedSender) {
-    score -= 0.18;
-    if (reason === "ambient") reason = "turn-wait";
+  // Turn policy is advisory only. It must never become a hard gate:
+  // Banat is allowed to proactively enter a relevant conversation even when
+  // nobody directly addressed ECLIPSE. The actual one-person-at-a-time
+  // restriction is enforced by the burst queue in index.js.
+  if (!turnPolicy.allow && reason === "ambient") {
+    reason = "proactive-conversation";
   }
 
   // Momentum makes an established exchange increasingly coherent without
@@ -2607,23 +2610,9 @@ function scoreBanatAddressContext({
   // Only apply a very small momentum penalty when several members are
   // rapidly exchanging messages and nobody addressed ECLIPSE directly.
   // This keeps ECLIPSE able to naturally jump in when the content is relevant.
-  if (
-    speakers.length >= 2 &&
-    !replySenderId &&
-    !(botIdentity && mentionIds.includes(botIdentity))
-  ) {
-    const recentPair = messages.slice(-4);
-    const pairIds = [...new Set(
-      recentPair
-        .map((item) => String(item?.senderId || "").trim())
-        .filter(Boolean)
-    )];
-
-    if (pairIds.length >= 2) {
-      score -= 0.06;
-      if (reason === "ambient") reason = "active-group-chat";
-    }
-  }
+  // Multiple people talking is not a Banat blocker. Do not penalize
+  // group-chat momentum here; the send queue separately guarantees that
+  // only one person's turn can be answered at a time.
 
   // Keep admin/primary-user conversation participation responsive, but their
   // content is still routed through the safe reply pool in getRandomRoastReply.
@@ -2635,8 +2624,11 @@ function scoreBanatAddressContext({
   score = Math.max(0, Math.min(1, Number(score.toFixed(3))));
 
   return {
+    // Lower the ambient threshold so relevant/reactive messages can
+    // naturally pull Banat into the conversation without requiring a
+    // mention, reply, or explicit attack.
     shouldRespond:
-      score >= 0.38 ||
+      score >= 0.30 ||
       reason === "reply-to-bot" ||
       reason === "mentioned",
     score,
