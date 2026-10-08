@@ -2986,14 +2986,14 @@ async function getBanatConversationReply(
 
   rememberBanatReply(String(threadId || "unknown"), reply, senderId);
 
-  const state = banatContextState.get(String(threadId || "unknown"));
-  if (state) {
-    state.recentReplies.push(reply);
-    state.recentReplies = state.recentReplies.slice(-6);
-    state.recentFamilies.push(banatReplyFamily(reply));
-    state.recentFamilies = state.recentFamilies.slice(-4);
-    state.at = Date.now();
-    banatContextState.set(String(threadId || "unknown"), state);
+  const replyState = banatContextState.get(String(threadId || "unknown"));
+  if (replyState) {
+    replyState.recentReplies.push(reply);
+    replyState.recentReplies = replyState.recentReplies.slice(-6);
+    replyState.recentFamilies.push(banatReplyFamily(reply));
+    replyState.recentFamilies = replyState.recentFamilies.slice(-4);
+    replyState.at = Date.now();
+    banatContextState.set(String(threadId || "unknown"), replyState);
   }
 
   return reply;
