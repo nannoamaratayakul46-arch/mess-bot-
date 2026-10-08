@@ -9607,14 +9607,49 @@ async function handleAutomaticBanatMessage({
     return false;
   }
 
-  const randomRoastReply = getRandomRoastReply(threadID, body, senderId);
+  let banatReply = null;
 
-  if (randomRoastReply) {
+  // The context-aware conversation generator is now actually wired into
+  // the automatic pipeline for established Jammy defense exchanges.
+  // Ordinary Banat keeps using the existing natural reply pool so the
+  // AI path does not become a mandatory dependency for every message.
+  const useConversationReply =
+    target.reason === "jammy-defense" ||
+    target.reason === "jammy-interaction-history" ||
+    target.reason === "active-jammy-defense" ||
+    target.reason === "defense-momentum";
+
+  if (useConversationReply) {
+    try {
+      banatReply = await getBanatConversationReply(
+        body,
+        senderId,
+        threadID,
+        api,
+        event
+      );
+    } catch (error) {
+      console.warn(
+        "[BANAT] Context reply generator failed; using natural pool:",
+        error?.status || error?.message || error
+      );
+    }
+  }
+
+  if (!banatReply) {
+    banatReply = getRandomRoastReply(
+      threadID,
+      body,
+      senderId
+    );
+  }
+
+  if (banatReply) {
     const accepted = acceptBanatBurstMessage(
       threadID,
       {
         api,
-        message: randomRoastReply,
+        message: banatReply,
         replyToMessageID: event.messageID,
         attachMeme: false,
         linkUrl: null,
