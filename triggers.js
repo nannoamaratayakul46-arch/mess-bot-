@@ -2030,6 +2030,34 @@ function scoreBanatAddressContext({
     reason = "directed-target";
   }
 
+  // Jammy is the protected primary user while Banat is active. A message
+  // aimed at Jammy gets a strong conversational boost so Hev Abi can defend
+  // or join the exchange without requiring a mention of the bot.
+  const jammyId = String(
+    process.env.ECLIPSE_PRIMARY_USER_ID ||
+      process.env.ECLIPSE_ADMIN_ID ||
+      ""
+  ).trim();
+
+  const jammyMentioned =
+    /jammy/i.test(text) ||
+    (jammyId && mentionIds.includes(jammyId));
+
+  const replyToJammy =
+    jammyId &&
+    replySenderId === jammyId;
+
+  const jammyReference =
+    /\b(you|u|ur|your|mo|ka|iyo|sayo)\b/i.test(text) &&
+    Array.isArray(messages) &&
+    messages.length > 0 &&
+    String(messages[messages.length - 1]?.senderId || "").trim() === jammyId;
+
+  if (jammyMentioned || replyToJammy || jammyReference) {
+    score += 0.42;
+    reason = "jammy-defense";
+  }
+
   const intent = classifyBanatIntent(text);
   const emotional = extractBanatEmotion(text);
 
@@ -2277,6 +2305,92 @@ async function getBanatConversationReply(
   // the primary/admin protection used by the pool selector.
   if (isAdmin(senderId) || isPrimaryUser(senderId)) {
     return fallback;
+  }
+
+  // When Banat is active, protect Jammy when the conversation is clearly
+  // directed at him. Keep this inside the existing conversation generator
+  // instead of creating a second response pipeline.
+  const state = banatContextState.get(String(threadId || "unknown"));
+  const recentMessages = Array.isArray(state?.recentMessages)
+    ? state.recentMessages.slice(-8)
+    : [];
+  const jammyId = String(
+    process.env.ECLIPSE_PRIMARY_USER_ID ||
+      process.env.ECLIPSE_ADMIN_ID ||
+      ""
+  ).trim();
+  const replySenderId = String(
+    event?.messageReply?.senderID ||
+      event?.messageReply?.senderId ||
+      event?.replyToMessageIDSenderID ||
+      ""
+  ).trim();
+
+  const mentionsJammy =
+    /\bjammy\b/i.test(String(rawText || "")) ||
+    (jammyId &&
+      event?.mentions &&
+      typeof event.mentions === "object" &&
+      Object.keys(event.mentions).map(String).includes(jammyId));
+
+  const repliedToJammy =
+    jammyId && replySenderId === jammyId;
+
+  const lastWasJammy =
+    jammyId &&
+    recentMessages.length > 0 &&
+    String(
+      recentMessages[recentMessages.length - 1]?.senderId || ""
+    ).trim() === jammyId;
+
+  const jammyDefenseContext =
+    mentionsJammy ||
+    repliedToJammy ||
+    (lastWasJammy &&
+      /\b(you|u|ur|your|mo|ka|iyo|sayo)\b/i.test(
+        String(rawText || "")
+      ));
+
+  if (jammyDefenseContext) {
+    const defenseFallbacks = [
+      "wag mo idamay si Jammy, ikaw nga yung mukhang problema dito 😭",
+      "kay Jammy ka talaga naghanap ng away? ang tapang mo naman",
+      "leave Jammy alone, ikaw muna mag explain bakit ganyan ka",
+      "si Jammy na naman? ikaw muna ayusin mo sarili mo bago ka mag roast",
+      "easy ka lang kay Jammy, hindi mo yan kaya sa banatan",
+      "wag kang masyadong confident, Jammy is just letting you talk 😭",
+      "you really picked Jammy to roast? brave choice",
+      "si Jammy target mo? sige, ako muna kausap mo",
+      "hindi kita pinagbawalan mag roast, pero wag mo si Jammy idamay",
+      "bro really woke up and chose Jammy 😭",
+    ];
+
+    const defenseFallback =
+      defenseFallbacks[
+        Math.floor(Math.random() * defenseFallbacks.length)
+      ];
+
+    try {
+      const aiDefense = await generateTriggerReply({
+        trigger: "defend Jammy",
+        groupName: "banat-defense",
+        incomingText: rawText,
+        fallback: defenseFallback,
+        replyTargetName: "Jammy",
+        conversationContext: banatContextPrompt(threadId),
+      });
+
+      if (typeof aiDefense === "string" && aiDefense.trim()) {
+        return aiDefense.trim().slice(0, 1200);
+      }
+    } catch (error) {
+      console.warn(
+        "[TRIGGERS] Jammy defense AI unavailable; using fallback:",
+        error?.status || error?.message || error
+      );
+    }
+
+    return defenseFallback;
   }
 
   let replyTargetName = null;
