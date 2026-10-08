@@ -158,6 +158,7 @@ const {
   getBanatConversationReply,
   scoreBanatAddressContext,
   setBanatDirectedTarget,
+  setBanatConversationTarget,
 } = require("./triggers");
 
 // ============================================================
@@ -9664,6 +9665,15 @@ async function handleAutomaticBanatMessage({
           " in " +
           threadID
       );
+    } else {
+      // The scorer has decided this person owns the current conversation.
+      // Persist that ownership in the existing Banat context so unrelated
+      // speakers are ignored until the topic legitimately transfers.
+      setBanatConversationTarget(threadID, senderId, {
+        reason: target.reason,
+        confidence: Number(target.score || 0),
+        text: body,
+      });
     }
 
     return true;
