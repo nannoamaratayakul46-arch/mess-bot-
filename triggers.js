@@ -365,6 +365,118 @@ function getBanatTurnPolicy(threadId, {
   };
 }
 
+const BANAT_CONVERSATION_TARGET_TTL_MS = Math.max(
+  60_000,
+  Number(process.env.ECLIPSE_BANAT_CONVERSATION_TARGET_TTL_MS || 2 * 60 * 1000)
+);
+
+function getBanatConversationTarget(threadId) {
+  const key = String(threadId || "").trim();
+  const state = banatContextState.get(key);
+  const target = state?.conversationTarget;
+
+  if (!target) return null;
+
+  const now = Date.now();
+  if (now >= Number(target.expiresAt || 0)) {
+    delete state.conversationTarget;
+    state.at = now;
+    banatContextState.set(key, state);
+    return null;
+  }
+
+  return {
+    ...target,
+    remainingMs: Math.max(0, Number(target.expiresAt || 0) - now),
+  };
+}
+
+function setBanatConversationTarget(threadId, senderId, {
+  reason = "conversation",
+  confidence = 0,
+  text = "",
+} = {}) {
+  const key = String(threadId || "").trim();
+  const sender = String(senderId || "").trim();
+  if (!key || !sender) return null;
+
+  const state = banatContextState.get(key) || {};
+  const now = Date.now();
+  const current = state.conversationTarget;
+
+  const history = current && current.senderId === sender
+    ? [...(current.texts || []), String(text || "").trim()].filter(Boolean).slice(-6)
+    : [String(text || "").trim()].filter(Boolean);
+
+  state.conversationTarget = {
+    senderId: sender,
+    reason,
+    confidence: Math.max(0, Math.min(1, Number(confidence) || 0)),
+    texts: history,
+    startedAt:
+      current && current.senderId === sender
+        ? Number(current.startedAt || now)
+        : now,
+    lastActiveAt: now,
+    expiresAt: now + BANAT_CONVERSATION_TARGET_TTL_MS,
+  };
+
+  state.at = now;
+  banatContextState.set(key, state);
+  return state.conversationTarget;
+}
+
+function clearBanatConversationTarget(threadId, senderId = "") {
+  const key = String(threadId || "").trim();
+  const state = banatContextState.get(key);
+  if (!state?.conversationTarget) return false;
+
+  if (
+    senderId &&
+    String(state.conversationTarget.senderId || "").trim() !==
+      String(senderId || "").trim()
+  ) {
+    return false;
+  }
+
+  delete state.conversationTarget;
+  state.at = Date.now();
+  banatContextState.set(key, state);
+  return true;
+}
+
+function getBanatTopicOverlap(threadId, text) {
+  const target = getBanatConversationTarget(threadId);
+  if (!target) return 0;
+
+  const tokenize = (value) =>
+    new Set(
+      String(value || "")
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(/\s+/)
+        .filter((word) => word.length >= 4)
+    );
+
+  const incoming = tokenize(text);
+  if (!incoming.size) return 0;
+
+  const targetText = [
+    ...(target.texts || []),
+    ...((banatContextState.get(String(threadId || "").trim())?.topics || []).slice(-8)),
+  ].join(" ");
+
+  const targetWords = tokenize(targetText);
+  if (!targetWords.size) return 0;
+
+  let overlap = 0;
+  for (const word of incoming) {
+    if (targetWords.has(word)) overlap += 1;
+  }
+
+  return Math.min(1, overlap / Math.max(3, Math.min(8, incoming.size)));
+}
+
 const BANAT_INTERACTION_TTL_MS = Math.max(
   60_000,
   Number(process.env.ECLIPSE_BANAT_INTERACTION_TTL_MS || 12 * 60 * 1000)
@@ -2420,6 +2532,39 @@ function scoreBanatAddressContext({
     reason = "directed-target";
   }
 
+  const conversationTarget = getBanatConversationTarget(key);
+  const sameConversationTarget =
+    conversationTarget &&
+    String(senderId || "").trim() ===
+      String(conversationTarget.senderId || "").trim();
+
+  const topicOverlap = getBanatTopicOverlap(key, text);
+  const explicitSwitchSignal =
+    (botIdentity && replySenderId === botIdentity) ||
+    (botIdentity && mentionIds.includes(botIdentity));
+
+  // Once Banat chooses a person, other speakers are not allowed to steal
+  // the turn merely by talking. They can take ownership only when they
+  // clearly continue the same topic, explicitly address ECLIPSE, or provide
+  // a strong contextual signal such as a Jammy defense exchange.
+  if (conversationTarget && !sameConversationTarget) {
+    if (explicitSwitchSignal) {
+      score += 0.30;
+      reason = "target-switch";
+    } else if (topicOverlap >= 0.34) {
+      score += 0.10;
+      reason = "target-topic-switch";
+    } else {
+      score -= 0.34;
+      if (reason === "ambient" || reason === "conversation-active") {
+        reason = "other-speaker-wait";
+      }
+    }
+  } else if (sameConversationTarget) {
+    score += 0.20;
+    if (reason === "ambient") reason = "target-continuation";
+  }
+
   // Jammy is the protected primary user while Banat is active. A message
   // aimed at Jammy gets a strong conversational boost so Hev Abi can defend
   // or join the exchange without requiring a mention of the bot.
@@ -2623,12 +2768,28 @@ function scoreBanatAddressContext({
 
   score = Math.max(0, Math.min(1, Number(score.toFixed(3))));
 
+  const activeTarget = getBanatConversationTarget(key);
+  const isOtherSpeaker =
+    Boolean(activeTarget) &&
+    String(senderId || "").trim() !==
+      String(activeTarget.senderId || "").trim();
+
+  const canSwitchTarget =
+    isOtherSpeaker &&
+    (
+      reason === "target-switch" ||
+      reason === "target-topic-switch" ||
+      reason === "jammy-defense" ||
+      reason === "active-jammy-defense" ||
+      reason === "jammy-interaction-history"
+    );
+
   return {
-    // Lower the ambient threshold so relevant/reactive messages can
-    // naturally pull Banat into the conversation without requiring a
-    // mention, reply, or explicit attack.
+    // Banat stays proactive, but once a person owns the conversation,
+    // unrelated speakers must wait. A strong contextual signal can transfer
+    // ownership to the new speaker.
     shouldRespond:
-      score >= 0.30 ||
+      score >= (isOtherSpeaker ? 0.52 : 0.30) ||
       reason === "reply-to-bot" ||
       reason === "mentioned",
     score,
@@ -2636,6 +2797,9 @@ function scoreBanatAddressContext({
     direct:
       reason === "reply-to-bot" ||
       reason === "mentioned",
+    conversationTargetId: activeTarget?.senderId || null,
+    canSwitchTarget,
+    topicOverlap,
   };
 }
 
@@ -3080,6 +3244,9 @@ module.exports = {
   updateBanatExchangeState,
   getBanatExchangeState,
   getBanatTurnPolicy,
+  getBanatConversationTarget,
+  setBanatConversationTarget,
+  clearBanatConversationTarget,
 
   normalizeText,
   normalizeId,
