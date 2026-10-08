@@ -242,6 +242,129 @@ function setBanatDirectedTarget(threadId, targetId, setterId) {
   return true;
 }
 
+const BANAT_EXCHANGE_TTL_MS = Math.max(
+  60_000,
+  Number(process.env.ECLIPSE_BANAT_EXCHANGE_TTL_MS || 6 * 60 * 1000)
+);
+
+const BANAT_EXCHANGE_MAX_MS = Math.max(
+  BANAT_EXCHANGE_TTL_MS,
+  Number(process.env.ECLIPSE_BANAT_EXCHANGE_MAX_MS || 12 * 60 * 1000)
+);
+
+function updateBanatExchangeState(threadId, {
+  attackerId = "",
+  targetId = "",
+  kind = "conversation",
+  confidence = 0,
+} = {}) {
+  const key = String(threadId || "").trim();
+  const attacker = String(attackerId || "").trim();
+  const target = String(targetId || "").trim();
+  if (!key || !attacker) return null;
+
+  const state = banatContextState.get(key) || {};
+  const now = Date.now();
+  const current = state.exchange;
+
+  if (
+    current &&
+    current.attackerId === attacker &&
+    current.targetId === target &&
+    now < Number(current.maxExpiresAt || 0)
+  ) {
+    current.turns = Math.min(24, Number(current.turns || 0) + 1);
+    current.lastActiveAt = now;
+    current.expiresAt = now + BANAT_EXCHANGE_TTL_MS;
+    current.confidence = Math.min(
+      1,
+      Math.max(Number(current.confidence || 0), Number(confidence) || 0)
+    );
+    current.kind = kind;
+  } else {
+    state.exchange = {
+      attackerId: attacker,
+      targetId: target || null,
+      kind,
+      turns: 1,
+      confidence: Math.max(0, Math.min(1, Number(confidence) || 0)),
+      startedAt: now,
+      lastActiveAt: now,
+      expiresAt: now + BANAT_EXCHANGE_TTL_MS,
+      maxExpiresAt: now + BANAT_EXCHANGE_MAX_MS,
+    };
+  }
+
+  state.at = now;
+  banatContextState.set(key, state);
+  return state.exchange;
+}
+
+function getBanatExchangeState(threadId) {
+  const key = String(threadId || "").trim();
+  const state = banatContextState.get(key);
+  const exchange = state?.exchange;
+  if (!exchange) return null;
+
+  const now = Date.now();
+  const expiresAt = Math.min(
+    Number(exchange.expiresAt || 0),
+    Number(exchange.maxExpiresAt || 0)
+  );
+
+  if (now >= expiresAt) {
+    delete state.exchange;
+    state.at = now;
+    banatContextState.set(key, state);
+    return null;
+  }
+
+  return {
+    ...exchange,
+    remainingMs: Math.max(0, expiresAt - now),
+  };
+}
+
+function getBanatTurnPolicy(threadId, {
+  senderId = "",
+  botId = "",
+  replySenderId = "",
+  addressed = false,
+  relevant = false,
+} = {}) {
+  const exchange = getBanatExchangeState(threadId);
+  const sender = String(senderId || "").trim();
+  const bot = String(botId || "").trim();
+  const replyTo = String(replySenderId || "").trim();
+
+  if (bot && replyTo === bot) {
+    return { allow: true, reason: "reply-to-bot", exchange };
+  }
+
+  if (addressed) {
+    return { allow: true, reason: "explicitly-addressed", exchange };
+  }
+
+  if (
+    exchange &&
+    sender === String(exchange.attackerId || "").trim() &&
+    relevant
+  ) {
+    return { allow: true, reason: "active-exchange-turn", exchange };
+  }
+
+  // Avoid repeatedly inserting ECLIPSE into an unrelated multi-person burst.
+  if (!relevant && !exchange) {
+    return { allow: false, reason: "no-opening", exchange: null };
+  }
+
+  return {
+    allow: Boolean(relevant),
+    reason: relevant ? "context-opening" : "wait",
+    exchange,
+  };
+}
+
 const BANAT_INTERACTION_TTL_MS = Math.max(
   60_000,
   Number(process.env.ECLIPSE_BANAT_INTERACTION_TTL_MS || 12 * 60 * 1000)
@@ -710,7 +833,13 @@ function extractBanatEmotion(text) {
   return "neutral";
 }
 
-function rememberBanatIncoming(threadId, senderId, text, eventKey = "") {
+function rememberBanatIncoming(
+  threadId,
+  senderId,
+  text,
+  eventKey = "",
+  replyTargetId = ""
+) {
   const key = String(threadId || "unknown");
   const value = String(text || "").trim();
   if (!value) return;
@@ -745,6 +874,8 @@ function rememberBanatIncoming(threadId, senderId, text, eventKey = "") {
     current.recentEventKeys = current.recentEventKeys.slice(-32);
   }
 
+  current.lastReplyTargetId = String(replyTargetId || "").trim();
+
   current.recentMessages = [
     ...(current.recentMessages || []),
     {
@@ -773,6 +904,22 @@ function rememberBanatIncoming(threadId, senderId, text, eventKey = "") {
   current.emotion = extractBanatEmotion(value);
   current.intent = classifyBanatIntent(value);
   current.entities = extractBanatEntities(value, current.topics);
+
+  // Keep an exchange state in the same context store. Reply metadata is the
+  // strongest signal; explicit Jammy targeting is handled by the defense layer.
+  const replyTargetId = String(
+    current.lastReplyTargetId ||
+      ""
+  ).trim();
+
+  if (replyTargetId && speaker && replyTargetId !== speaker) {
+    updateBanatExchangeState(key, {
+      attackerId: speaker,
+      targetId: replyTargetId,
+      kind: current.intent,
+      confidence: 0.78,
+    });
+  }
   const callback = extractBanatCallback(value, current.topics);
   if (callback) {
     current.callbacks = [
@@ -850,6 +997,18 @@ function banatContextPrompt(threadId) {
   }
   if (Array.isArray(state.topics) && state.topics.length) {
     lines.push("ACTIVE TOPICS: " + state.topics.slice(-10).join(", "));
+  }
+
+  const exchange = getBanatExchangeState(threadId);
+  if (exchange) {
+    lines.push(
+      "ACTIVE EXCHANGE:",
+      `- attacker: ${exchange.attackerId || "unknown"}`,
+      `- target: ${exchange.targetId || "group"}`,
+      `- phase: ${exchange.turns >= 5 ? "heated" : exchange.turns >= 2 ? "active" : "starting"}`,
+      `- turns: ${exchange.turns}`,
+      "Treat this as one continuing exchange when relevant; do not restart the conversation from zero."
+    );
   }
 
   if (Array.isArray(state.callbacks) && state.callbacks.length) {
@@ -2380,6 +2539,24 @@ function scoreBanatAddressContext({
   const intent = classifyBanatIntent(text);
   const emotional = extractBanatEmotion(text);
 
+  const turnPolicy = getBanatTurnPolicy(key, {
+    senderId,
+    botId: botIdentity,
+    replySenderId,
+    addressed:
+      (botIdentity && replySenderId === botIdentity) ||
+      (botIdentity && mentionIds.includes(botIdentity)),
+    relevant:
+      jammyAttack.targeted ||
+      Boolean(defenseEngagement && String(senderId || "").trim() === String(defenseEngagement.attackerId || "").trim()) ||
+      ["reaction", "agreement", "disagreement", "roast", "request"].includes(intent),
+  });
+
+  if (!turnPolicy.allow && !protectedSender) {
+    score -= 0.18;
+    if (reason === "ambient") reason = "turn-wait";
+  }
+
   // Momentum makes an established exchange increasingly coherent without
   // making it permanent. The boost is capped so Banat cannot become trapped
   // in one argument.
@@ -2904,6 +3081,9 @@ module.exports = {
   classifyJammyAttack,
   recordBanatInteraction,
   getRecentBanatInteraction,
+  updateBanatExchangeState,
+  getBanatExchangeState,
+  getBanatTurnPolicy,
 
   normalizeText,
   normalizeId,
