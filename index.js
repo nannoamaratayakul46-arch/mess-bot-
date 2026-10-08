@@ -9102,6 +9102,7 @@ function acceptBanatBurstMessage(threadID, job) {
       decisionTimer: null,
       cleanupTimer: null,
       activeSenderId: null,
+      activeTargetId: null,
     };
 
     banatBurstState.set(key, state);
@@ -9137,6 +9138,24 @@ function acceptBanatBurstMessage(threadID, job) {
         senderId: incomingSenderId,
         queuedAt: now,
       });
+      return true;
+    }
+
+    // A different person may replace the current target only when the
+    // context scorer explicitly says the conversation has moved to them.
+    if (
+      incomingSenderId &&
+      incomingSenderId !== state.activeSenderId &&
+      job.canSwitchTarget
+    ) {
+      state.queue.length = 0;
+      state.activeSenderId = incomingSenderId;
+      state.activeTargetId = incomingSenderId;
+      state.queue.push({
+        ...job,
+        senderId: incomingSenderId,
+        queuedAt: now,
+      });
     }
 
     return true;
@@ -9155,6 +9174,7 @@ function acceptBanatBurstMessage(threadID, job) {
 
   state.queue.length = 0;
   state.activeSenderId = incomingSenderId || null;
+  state.activeTargetId = incomingSenderId || null;
   state.queue.push({
     ...job,
     senderId: incomingSenderId,
@@ -9631,6 +9651,9 @@ async function handleAutomaticBanatMessage({
         linkUrl: null,
         incomingText: body,
         senderId,
+        canSwitchTarget: Boolean(target.canSwitchTarget),
+        targetReason: target.reason,
+        topicOverlap: Number(target.topicOverlap || 0),
       }
     );
 
