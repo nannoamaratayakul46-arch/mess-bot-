@@ -242,6 +242,74 @@ function setBanatDirectedTarget(threadId, targetId, setterId) {
   return true;
 }
 
+const BANAT_INTERACTION_TTL_MS = Math.max(
+  60_000,
+  Number(process.env.ECLIPSE_BANAT_INTERACTION_TTL_MS || 12 * 60 * 1000)
+);
+
+function recordBanatInteraction(threadId, {
+  senderId,
+  addresseeId = null,
+  relation = "conversation",
+  confidence = 0,
+} = {}) {
+  const key = String(threadId || "").trim();
+  const sender = String(senderId || "").trim();
+  const addressee = String(addresseeId || "").trim();
+  if (!key || !sender) return null;
+
+  const state = banatContextState.get(key) || {
+    recentMessages: [],
+    recentReplies: [],
+    recentFamilies: [],
+    speakers: [],
+    topics: [],
+    at: Date.now(),
+  };
+
+  const now = Date.now();
+  const graph = Array.isArray(state.interactions)
+    ? state.interactions
+    : [];
+
+  graph.push({
+    senderId: sender,
+    addresseeId: addressee || null,
+    relation,
+    confidence: Math.max(0, Math.min(1, Number(confidence) || 0)),
+    at: now,
+  });
+
+  state.interactions = graph
+    .filter((edge) => now - Number(edge.at || 0) < BANAT_INTERACTION_TTL_MS)
+    .slice(-40);
+
+  state.at = now;
+  banatContextState.set(key, state);
+
+  return state.interactions[state.interactions.length - 1];
+}
+
+function getRecentBanatInteraction(threadId, senderId, addresseeId = null) {
+  const key = String(threadId || "").trim();
+  const sender = String(senderId || "").trim();
+  const addressee = String(addresseeId || "").trim();
+  const state = banatContextState.get(key);
+  if (!state || !Array.isArray(state.interactions)) return null;
+
+  const now = Date.now();
+  return (
+    state.interactions
+      .filter((edge) =>
+        now - Number(edge.at || 0) < BANAT_INTERACTION_TTL_MS &&
+        String(edge.senderId || "") === sender &&
+        (!addressee || String(edge.addresseeId || "") === addressee)
+      )
+      .sort((a, b) => Number(b.at || 0) - Number(a.at || 0))[0] ||
+    null
+  );
+}
+
 const BANAT_DEFENSE_TTL_MS = Math.max(
   60_000,
   Number(process.env.ECLIPSE_BANAT_DEFENSE_TTL_MS || 8 * 60 * 1000)
@@ -2202,6 +2270,25 @@ function scoreBanatAddressContext({
     messages.length > 0 &&
     String(messages[messages.length - 1]?.senderId || "").trim() === jammyId;
 
+  // Build a short-lived who-to-whom graph from explicit reply metadata.
+  // This survives unrelated intervening messages better than last-speaker-only logic.
+  if (senderId && (replySenderId || jammyMentioned)) {
+    recordBanatInteraction(key, {
+      senderId,
+      addresseeId: replySenderId || (jammyMentioned ? jammyId : null),
+      relation: replySenderId === jammyId
+        ? "reply-to-jammy"
+        : jammyMentioned
+          ? "named-jammy"
+          : "conversation",
+      confidence: replySenderId === jammyId
+        ? 0.98
+        : jammyMentioned
+          ? 0.86
+          : 0.55,
+    });
+  }
+
   const jammyAttack = classifyJammyAttack({
     text,
     senderId,
@@ -2230,6 +2317,20 @@ function scoreBanatAddressContext({
   }
 
   const defenseEngagement = getJammyDefenseEngagement(key);
+
+  const priorJammyInteraction = getRecentBanatInteraction(
+    key,
+    senderId,
+    jammyId
+  );
+
+  if (
+    priorJammyInteraction &&
+    jammyAttack.targeted
+  ) {
+    score += 0.16;
+    reason = "jammy-interaction-history";
+  }
 
   if (
     defenseEngagement &&
@@ -2726,6 +2827,8 @@ module.exports = {
   updateJammyDefenseEngagement,
   getJammyDefenseEngagement,
   classifyJammyAttack,
+  recordBanatInteraction,
+  getRecentBanatInteraction,
 
   normalizeText,
   normalizeId,
