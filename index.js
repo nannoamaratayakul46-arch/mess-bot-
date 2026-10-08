@@ -158,6 +158,7 @@ const {
   getBanatConversationReply,
   scoreBanatAddressContext,
   setBanatDirectedTarget,
+  getBanatConversationTarget,
   setBanatConversationTarget,
 } = require("./triggers");
 
@@ -9174,6 +9175,22 @@ function acceptBanatBurstMessage(threadID, job) {
     state.lastSentAt &&
     now - state.lastSentAt < BANAT_MIN_INTER_REPLY_GAP_MS
   ) {
+    // The inter-reply gap is a send limiter, not a target switch.
+    // Keep the persistent conversation owner eligible during the gap,
+    // but never let an unrelated speaker steal ownership merely because
+    // the queue is cooling down.
+    const activeTarget = getBanatConversationTarget(key);
+    const sameTarget =
+      activeTarget &&
+      incomingSenderId &&
+      String(activeTarget.senderId || "").trim() === incomingSenderId;
+
+    if (!sameTarget) {
+      return false;
+    }
+
+    state.activeSenderId = incomingSenderId;
+    state.activeTargetId = incomingSenderId;
     return true;
   }
 
