@@ -345,6 +345,14 @@ function updateJammyDefenseEngagement(threadId, attackerId, mode = "active") {
     current.lastActiveAt = now;
     current.expiresAt = now + BANAT_DEFENSE_TTL_MS;
     current.mode = mode;
+    current.turns = Math.min(
+      20,
+      Number(current.turns || 0) + 1
+    );
+    current.intensity = Math.min(
+      1,
+      Number(current.intensity || 0) + 0.08
+    );
   } else {
     state.jammyDefense = {
       targetId: String(
@@ -358,6 +366,8 @@ function updateJammyDefenseEngagement(threadId, attackerId, mode = "active") {
       expiresAt: now + BANAT_DEFENSE_TTL_MS,
       maxExpiresAt: now + BANAT_DEFENSE_MAX_ENGAGEMENT_MS,
       mode,
+      turns: 1,
+      intensity: 0.35,
     };
   }
 
@@ -2354,11 +2364,38 @@ function scoreBanatAddressContext({
         senderId,
         "attacker-continuing"
       );
+
+      // Once an exchange is established, preserve the inferred
+      // attacker -> Jammy edge even when the latest message is not a
+      // direct reply and Jammy is no longer named.
+      recordBanatInteraction(key, {
+        senderId,
+        addresseeId: jammyId,
+        relation: "defense-continuation",
+        confidence: jammyAttack.targeted ? 0.92 : 0.72,
+      });
     }
   }
 
   const intent = classifyBanatIntent(text);
   const emotional = extractBanatEmotion(text);
+
+  // Momentum makes an established exchange increasingly coherent without
+  // making it permanent. The boost is capped so Banat cannot become trapped
+  // in one argument.
+  if (
+    defenseEngagement &&
+    String(senderId || "").trim() ===
+      String(defenseEngagement.attackerId || "").trim()
+  ) {
+    const turns = Math.min(20, Number(defenseEngagement.turns || 1));
+    const momentumBoost = Math.min(
+      0.22,
+      0.06 + turns * 0.008
+    );
+    score += momentumBoost;
+    if (reason === "ambient") reason = "defense-momentum";
+  }
 
   // These are conversational opportunities, not requirements.
   if (["reaction", "agreement", "disagreement", "roast", "request"].includes(intent)) {
@@ -2642,13 +2679,23 @@ async function getBanatConversationReply(
       recentMessages[recentMessages.length - 1]?.senderId || ""
     ).trim() === jammyId;
 
+  const activeDefense = getJammyDefenseEngagement(
+    String(threadId || "unknown")
+  );
+
+  const isActiveAttacker =
+    activeDefense &&
+    String(senderId || "").trim() ===
+      String(activeDefense.attackerId || "").trim();
+
   const jammyDefenseContext =
     mentionsJammy ||
     repliedToJammy ||
     (lastWasJammy &&
       /\b(you|u|ur|your|mo|ka|iyo|sayo)\b/i.test(
         String(rawText || "")
-      ));
+      )) ||
+    isActiveAttacker;
 
   if (jammyDefenseContext) {
     const defenseFallbacks = [
@@ -2664,9 +2711,26 @@ async function getBanatConversationReply(
       "bro really woke up and chose Jammy 😭",
     ];
 
+    const momentumFallbacks =
+      activeDefense && Number(activeDefense.turns || 0) >= 3
+        ? [
+            "bro you're still on this? 😭",
+            "you've been fighting Jammy for this long and still haven't landed one",
+            "damn, this is becoming a full-time job for you",
+            "you really kept this argument alive just to say that",
+            "same argument, new sentence 😭",
+            "you had all that time and THAT was your next line?",
+          ]
+        : [];
+
+    const fallbackPool = [
+      ...defenseFallbacks,
+      ...momentumFallbacks,
+    ];
+
     const defenseFallback =
-      defenseFallbacks[
-        Math.floor(Math.random() * defenseFallbacks.length)
+      fallbackPool[
+        Math.floor(Math.random() * fallbackPool.length)
       ];
 
     try {
@@ -2676,7 +2740,18 @@ async function getBanatConversationReply(
         incomingText: rawText,
         fallback: defenseFallback,
         replyTargetName: "Jammy",
-        conversationContext: banatContextPrompt(threadId),
+        conversationContext:
+          banatContextPrompt(threadId) +
+          (activeDefense
+            ? "\n\nACTIVE JAMMY DEFENSE EXCHANGE:" +
+              "\nAttacker: " +
+              String(activeDefense.attackerId || "unknown") +
+              "\nTurns: " +
+              String(activeDefense.turns || 1) +
+              "\nIntensity: " +
+              String(Number(activeDefense.intensity || 0).toFixed(2)) +
+              "\nContinue the current exchange naturally. Respond to the attacker's latest point; do not repeat a generic 'leave Jammy alone' line unless it actually fits." 
+            : ""),
       });
 
       if (typeof aiDefense === "string" && aiDefense.trim()) {
