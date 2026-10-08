@@ -2257,7 +2257,7 @@ function scoreBanatAddressContext({
   ).trim();
 
   const jammyMentioned =
-    /jammy/i.test(text) ||
+    /\bjammy\b/i.test(text) ||
     (jammyId && mentionIds.includes(jammyId));
 
   const replyToJammy =
