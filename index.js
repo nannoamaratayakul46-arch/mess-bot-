@@ -9101,6 +9101,7 @@ function acceptBanatBurstMessage(threadID, job) {
       lastSentAt: 0,
       decisionTimer: null,
       cleanupTimer: null,
+      activeSenderId: null,
     };
 
     banatBurstState.set(key, state);
@@ -9112,33 +9113,32 @@ function acceptBanatBurstMessage(threadID, job) {
   }
 
   /*
-   * Banat uses a strict one-message-per-turn window.
+   * Banat has one active conversational person per turn.
    *
-   * The first incoming message owns the current turn.
-   * Every other message received while that turn is waiting, being
-   * answered, or inside the 5s reply gap is intentionally discarded.
+   * The first eligible sender claims the turn. Follow-up messages from
+   * that same sender may join the short decision window; messages from
+   * other people do not. This keeps Banat proactive without making one
+   * reply address a whole GC at once.
    *
-   * Example:
-   *   A1 -> accepted
-   *   A2 -> discarded
-   *   A3 -> discarded
-   *   B1 -> discarded
-   *
-   * After the 5s gap expires, the next NEW message starts the next turn.
-   * This prevents old messages from piling up and being answered later.
+   * Once the turn is running, everyone waits for the next turn.
    */
   const now = Date.now();
+  const incomingSenderId = String(job.senderId || "").trim();
 
-  // While the decision window is open, collect a short message burst.
-  // This lets A: "bro" / A: "wait" / A: "look at this" become one turn.
   if (state.decisionTimer && !state.running) {
-    if (state.queue.length < 6) {
+    if (
+      incomingSenderId &&
+      state.activeSenderId &&
+      incomingSenderId === state.activeSenderId &&
+      state.queue.length < 6
+    ) {
       state.queue.push({
         ...job,
-        senderId: String(job.senderId || "").trim(),
+        senderId: incomingSenderId,
         queuedAt: now,
       });
     }
+
     return true;
   }
 
@@ -9154,9 +9154,10 @@ function acceptBanatBurstMessage(threadID, job) {
   }
 
   state.queue.length = 0;
+  state.activeSenderId = incomingSenderId || null;
   state.queue.push({
     ...job,
-    senderId: String(job.senderId || "").trim(),
+    senderId: incomingSenderId,
     queuedAt: now,
   });
 
@@ -9259,51 +9260,25 @@ async function runBanatBurstQueue(threadID) {
       return;
     }
 
-    // Prefer jobs with a sender ID. The fallback keeps malformed legacy
-    // events from blocking the queue forever.
-    const eligible = state.queue.filter(
-      (candidate) =>
-        String(candidate.senderId || "").trim()
-    );
+    // The queue is already locked to one sender. Keep the turn FIFO
+    // and preserve that person's short burst as the conversational context.
+    const selected = state.queue[0];
 
-    const pool = eligible.length
-      ? eligible
-      : state.queue;
-
-    // FIFO: if A, B, C speak during the same burst, answer A -> B -> C.
-    // Do not randomly jump between senders; that makes Banat feel unnatural
-    // and can make a later message get answered before an earlier one.
-    const selected = pool[0];
-
-    const selectedIndex =
-      state.queue.indexOf(selected);
-
-    // A decision window represents one conversational turn. Consume the
-    // whole burst now instead of replying once per queued message.
-    const burst =
-      selectedIndex >= 0
-        ? state.queue.splice(0, state.queue.length)
-        : [];
-
-    const job = burst.length
+    const job = selected
       ? {
-          ...burst[0],
-          incomingText: burst
-            .map((item) => {
-              const speaker = String(item.senderId || "unknown");
-              const text = String(item.incomingText || "").trim();
-
-              return text
-                ? "[" + speaker + "] " + text
-                : "";
-            })
+          ...selected,
+          incomingText: state.queue
+            .map((item) => String(item.incomingText || "").trim())
             .filter(Boolean)
             .join("\n")
             .slice(0, 2200),
         }
       : null;
 
+    state.queue.length = 0;
+
     if (!job) {
+      state.activeSenderId = null;
       return;
     }
 
@@ -9367,6 +9342,7 @@ async function runBanatBurstQueue(threadID) {
     }
 
     state.running = false;
+    state.activeSenderId = null;
 
     if (state.queue.length) {
       // Normally empty after burst coalescing. Keep this fallback for any
