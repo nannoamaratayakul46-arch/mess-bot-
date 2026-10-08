@@ -2012,7 +2012,11 @@ async function getTriggerReply(
     threadId,
     normalizedSenderId,
     rawText,
-    event?.messageID || event?.messageId || ""
+    event?.messageID || event?.messageId || "",
+    event?.messageReply?.senderID ||
+      event?.messageReply?.senderId ||
+      event?.replyToMessageIDSenderID ||
+      ""
   );
 
 
