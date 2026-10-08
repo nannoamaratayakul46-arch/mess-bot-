@@ -874,7 +874,8 @@ function rememberBanatIncoming(
     current.recentEventKeys = current.recentEventKeys.slice(-32);
   }
 
-  current.lastReplyTargetId = String(replyTargetId || "").trim();
+  const resolvedReplyTargetId = String(replyTargetId || "").trim();
+  current.lastReplyTargetId = resolvedReplyTargetId;
 
   current.recentMessages = [
     ...(current.recentMessages || []),
@@ -907,15 +908,14 @@ function rememberBanatIncoming(
 
   // Keep an exchange state in the same context store. Reply metadata is the
   // strongest signal; explicit Jammy targeting is handled by the defense layer.
-  const replyTargetId = String(
-    current.lastReplyTargetId ||
-      ""
-  ).trim();
-
-  if (replyTargetId && speaker && replyTargetId !== speaker) {
+  if (
+    resolvedReplyTargetId &&
+    speaker &&
+    resolvedReplyTargetId !== speaker
+  ) {
     updateBanatExchangeState(key, {
       attackerId: speaker,
-      targetId: replyTargetId,
+      targetId: resolvedReplyTargetId,
       kind: current.intent,
       confidence: 0.78,
     });
