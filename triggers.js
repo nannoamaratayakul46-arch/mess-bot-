@@ -242,6 +242,87 @@ function setBanatDirectedTarget(threadId, targetId, setterId) {
   return true;
 }
 
+const BANAT_DEFENSE_TTL_MS = Math.max(
+  60_000,
+  Number(process.env.ECLIPSE_BANAT_DEFENSE_TTL_MS || 8 * 60 * 1000)
+);
+
+const BANAT_DEFENSE_MAX_ENGAGEMENT_MS = Math.max(
+  BANAT_DEFENSE_TTL_MS,
+  Number(process.env.ECLIPSE_BANAT_DEFENSE_MAX_ENGAGEMENT_MS || 12 * 60 * 1000)
+);
+
+function updateJammyDefenseEngagement(threadId, attackerId, mode = "active") {
+  const key = String(threadId || "").trim();
+  const attacker = String(attackerId || "").trim();
+  if (!key || !attacker) return false;
+
+  const state = banatContextState.get(key) || {
+    recentMessages: [],
+    recentReplies: [],
+    recentFamilies: [],
+    speakers: [],
+    topics: [],
+    at: Date.now(),
+  };
+
+  const now = Date.now();
+  const current = state.jammyDefense;
+
+  if (
+    current &&
+    current.attackerId === attacker &&
+    now < Number(current.maxExpiresAt || 0)
+  ) {
+    current.lastActiveAt = now;
+    current.expiresAt = now + BANAT_DEFENSE_TTL_MS;
+    current.mode = mode;
+  } else {
+    state.jammyDefense = {
+      targetId: String(
+        process.env.ECLIPSE_PRIMARY_USER_ID ||
+          process.env.ECLIPSE_ADMIN_ID ||
+          ""
+      ).trim(),
+      attackerId: attacker,
+      startedAt: now,
+      lastActiveAt: now,
+      expiresAt: now + BANAT_DEFENSE_TTL_MS,
+      maxExpiresAt: now + BANAT_DEFENSE_MAX_ENGAGEMENT_MS,
+      mode,
+    };
+  }
+
+  state.at = now;
+  banatContextState.set(key, state);
+  return true;
+}
+
+function getJammyDefenseEngagement(threadId) {
+  const key = String(threadId || "").trim();
+  const state = banatContextState.get(key);
+  const engagement = state?.jammyDefense;
+  if (!engagement) return null;
+
+  const now = Date.now();
+  const expiresAt = Math.min(
+    Number(engagement.expiresAt || 0),
+    Number(engagement.maxExpiresAt || 0)
+  );
+
+  if (now >= expiresAt) {
+    delete state.jammyDefense;
+    state.at = now;
+    banatContextState.set(key, state);
+    return null;
+  }
+
+  return {
+    ...engagement,
+    remainingMs: Math.max(0, expiresAt - now),
+  };
+}
+
 function getBanatDirectedTarget(threadId) {
   const key = String(threadId || "").trim();
   const state = banatContextState.get(key);
@@ -2056,6 +2137,33 @@ function scoreBanatAddressContext({
   if (jammyMentioned || replyToJammy || jammyReference) {
     score += 0.42;
     reason = "jammy-defense";
+
+    if (senderId && senderId !== jammyId) {
+      updateJammyDefenseEngagement(
+        key,
+        senderId,
+        "jammy-targeted"
+      );
+    }
+  }
+
+  const defenseEngagement = getJammyDefenseEngagement(key);
+
+  if (
+    defenseEngagement &&
+    String(senderId || "").trim() ===
+      String(defenseEngagement.attackerId || "").trim()
+  ) {
+    score += 0.34;
+    reason = "active-jammy-defense";
+
+    // A continuing attack refreshes the short idle TTL, capped by the
+    // maximum engagement duration so the state cannot live forever.
+    updateJammyDefenseEngagement(
+      key,
+      senderId,
+      "attacker-continuing"
+    );
   }
 
   const intent = classifyBanatIntent(text);
@@ -2525,6 +2633,8 @@ module.exports = {
   scoreBanatAddressContext,
   setBanatDirectedTarget,
   getBanatDirectedTarget,
+  updateJammyDefenseEngagement,
+  getJammyDefenseEngagement,
 
   normalizeText,
   normalizeId,
