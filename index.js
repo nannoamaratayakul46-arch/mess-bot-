@@ -6148,7 +6148,7 @@ async function handleMessage(
 
       const state = unauthorizedSlashAttempts.get(key);
 
-      if (state.replies < 1) { // hard cap: at most one unauthorized \ reply per thread/user per 60s window
+      if (state.replies < UNAUTHORIZED_SLASH_MAX_REPLIES) {
         state.replies++;
 
         sendBanatReplyWithTyping(
