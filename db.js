@@ -155,7 +155,8 @@ async function connect() {
       roast_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       fun_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       banat_link_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE
+      banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      slash_pool_enabled BOOLEAN NOT NULL DEFAULT FALSE
     );
   `);
 
@@ -163,7 +164,8 @@ async function connect() {
     ALTER TABLE thread_settings
       ADD COLUMN IF NOT EXISTS fun_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       ADD COLUMN IF NOT EXISTS banat_link_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      ADD COLUMN IF NOT EXISTS banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+      ADD COLUMN IF NOT EXISTS banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS slash_pool_enabled BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 
   // ═════════════════════════════════════════════════════════
@@ -3365,9 +3367,10 @@ async function getThreadSettings(threadId) {
         roast_enabled,
         fun_enabled,
         banat_link_enabled,
-        banat_meme_enabled
+        banat_meme_enabled,
+        slash_pool_enabled
       )
-      VALUES($1, TRUE, TRUE, TRUE, FALSE)
+      VALUES($1, TRUE, TRUE, TRUE, FALSE, FALSE)
       ON CONFLICT(thread_id) DO NOTHING
       `,
       [id]
@@ -3397,6 +3400,7 @@ async function setThreadSettings(threadId, fields) {
     "fun_enabled",
     "banat_link_enabled",
     "banat_meme_enabled",
+    "slash_pool_enabled",
   ];
 
   const safeFields = Object.keys(fields || {}).filter((key) =>
