@@ -335,7 +335,7 @@ function sendBanatReplyWithTyping(
                         );
                       } else {
                         console.log(
-                          "[BANAT] Self-laughed 😆 at own message:",
+                          "[BANAT] Self-reaction API callback completed without error for message:",
                           String(sentMessageID)
                         );
                       }
@@ -345,8 +345,7 @@ function sendBanatReplyWithTyping(
                       api.setMessageReaction(
                         "😆",
                         String(sentMessageID),
-                        reactionCallback,
-                        true
+                        reactionCallback
                       );
                     } else if (typeof api?.setMessageReactionMqtt === "function") {
                       api.setMessageReactionMqtt(
