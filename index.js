@@ -5114,7 +5114,7 @@ async function handleMessage(
   // ==========================================================
 
   const setNicknameMatch =
-    originalText.match(/^\.setnn(?:\s+(.+))?$/i);
+    originalText.match(/^\.setnn(?:\s+(?:(\d+)\s+)?(.+))?$/i);
 
   if (setNicknameMatch) {
     if (!isOwner(senderId)) {
@@ -5126,9 +5126,30 @@ async function handleMessage(
       return;
     }
 
+    const requestedIntervalSeconds =
+      setNicknameMatch[1]
+        ? Number(setNicknameMatch[1])
+        : null;
+
     const requestedNickname = String(
-      setNicknameMatch[1] || ""
+      setNicknameMatch[2] || ""
     ).trim();
+
+    if (
+      requestedIntervalSeconds !== null &&
+      (
+        !Number.isInteger(requestedIntervalSeconds) ||
+        requestedIntervalSeconds < 2 ||
+        requestedIntervalSeconds > 60
+      )
+    ) {
+      sendReplyWithTyping(
+        api,
+        "⏱️ .setnn interval must be between 2 and 60 seconds. Example: .setnn 10 akobudoy",
+        threadID
+      );
+      return;
+    }
 
     try {
       if (!requestedNickname || /^off$/i.test(requestedNickname)) {
@@ -5153,17 +5174,27 @@ async function handleMessage(
         );
       }
 
-      const HUMAN_NICKNAME_MIN_DELAY_MS = Math.max(
-        4000,
+      const configuredMinDelayMs = Math.max(
+        2000,
         Number(process.env.ECLIPSE_SETNN_MIN_DELAY_MS || 4000)
       );
 
-      const HUMAN_NICKNAME_MAX_DELAY_MS = Math.max(
-        HUMAN_NICKNAME_MIN_DELAY_MS,
-        Number(
-          process.env.ECLIPSE_SETNN_MAX_DELAY_MS || 4000
-        )
+      const configuredMaxDelayMs = Math.max(
+        configuredMinDelayMs,
+        Number(process.env.ECLIPSE_SETNN_MAX_DELAY_MS || 4000)
       );
+
+      // Optional command syntax: .setnn <seconds> <nickname>
+      // When supplied, use that exact interval between member changes.
+      const HUMAN_NICKNAME_MIN_DELAY_MS =
+        requestedIntervalSeconds !== null
+          ? requestedIntervalSeconds * 1000
+          : configuredMinDelayMs;
+
+      const HUMAN_NICKNAME_MAX_DELAY_MS =
+        requestedIntervalSeconds !== null
+          ? requestedIntervalSeconds * 1000
+          : configuredMaxDelayMs;
 
       const SETNN_BLOCK_COOLDOWN_MS = Math.max(
         60_000,
