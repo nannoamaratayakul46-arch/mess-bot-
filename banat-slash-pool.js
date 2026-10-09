@@ -278,9 +278,23 @@ function pickSlashPoolInsult(threadId, senderId) {
 }
 
 function getSlashPoolToggleReply(enabled) {
-  return enabled
-    ? "╭──── 🎀 BACKSLASH BANAT 🎀 ────╮\\n\\n  ON · " + INSULTS.length + " lines loaded\\n  sariling pool, sariling randomizer\\n\\n╰──────────── ୨୧ ────────────╯"
-    : "╭──── 🎀 BACKSLASH BANAT 🎀 ────╮\\n\\n  OFF · balik sa normal pool kung / ay on\\n\\n╰──────────── ୨୧ ────────────╯";
+  const lines = enabled
+    ? [
+        "╭──── 🎀 BACKSLASH BANAT 🎀 ────╮",
+        "",
+        "  ON · " + INSULTS.length + " lines loaded",
+        "  sariling pool, sariling randomizer",
+        "",
+        "╰──────────── ୨୧ ────────────╯",
+      ]
+    : [
+        "╭──── 🎀 BACKSLASH BANAT 🎀 ────╮",
+        "",
+        "  OFF · balik sa normal pool kung / ay on",
+        "",
+        "╰──────────── ୨୧ ────────────╯",
+      ];
+  return lines.join("\n");
 }
 
 module.exports = { INSULTS, pickSlashPoolInsult, getSlashPoolToggleReply };
