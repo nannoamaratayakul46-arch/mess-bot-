@@ -6153,7 +6153,7 @@ async function handleMessage(
 
         sendBanatReplyWithTyping(
           api,
-          require("./slash-banats").pickUnauthorizedSlashBanat(threadID, senderId),
+          require("./slash-banats").pickUnauthorizedSlashBanat(),
           threadID,
           event.messageID,
           false,
@@ -6250,11 +6250,11 @@ async function handleMessage(
       }
 
       const state = unauthorizedSlashAttempts.get(key);
-      if (state.replies < UNAUTHORIZED_SLASH_MAX_REPLIES) {
+      if (state.replies < 1) { // hard cap: one reply per thread/user per 60s window
         state.replies++;
         sendBanatReplyWithTyping(
           api,
-          require("./slash-banats").pickUnauthorizedSlashBanat(),
+          require("./slash-banats").pickUnauthorizedSlashBanat(threadID, senderId),
           threadID,
           event.messageID,
           false,
