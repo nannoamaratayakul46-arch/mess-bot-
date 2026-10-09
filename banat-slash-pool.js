@@ -243,7 +243,17 @@ const INSULTS = Object.freeze([
   "thumbs mo pagod na",
   "keyboard mo naaawa na",
   "phone mo pagod na sa'yo",
-  "pahinga muna ang keypad"
+  "pahinga muna ang keypad",
+  "kanino ka nagmamagaling, wala ka namang alam",
+  "bano ka na nga, proud ka pa",
+  "puro ka satsat, walang substance",
+  "sige lang, ilabas mo na lahat ng kabobohan mo",
+  "may sense ka rin ba minsan?",
+  "nag-type ka para sabihin ang wala?",
+  "pahinga ka muna sa pagiging sabaw",
+  "ang tapang mo, pang-comment section lang",
+  "bukas mo na lang ituloy, baka may point ka na",
+  "salamat sa opinion na walang humingi"
 ]);
 const usedBySender = new Map();
 const lastByThread = new Map();
@@ -283,6 +293,8 @@ function getSlashPoolToggleReply(enabled) {
         "╭──── 🎀 BACKSLASH BANAT 🎀 ────╮",
         "",
         "  ON · " + INSULTS.length + " lines loaded",
+        "  kaninong ate titirahin ko?",
+        "  puta, mga bano ulit",
         "  sariling pool, sariling randomizer",
         "",
         "╰──────────── ୨୧ ────────────╯",
