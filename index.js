@@ -6227,6 +6227,95 @@ async function handleMessage(
 
 
   // ==========================================================
+  // BACKSLASH BANAT POOL CONTROL
+  // Independent from the existing / toggle and admin-only.
+  // ==========================================================
+
+  const backslashBanatMatch = originalText.match(/^\\$/);
+
+  if (backslashBanatMatch) {
+    if (!isAdmin(senderId)) {
+      const now = Date.now();
+      const key = "backslash:" + String(threadID) + ":" + String(senderId);
+      const previous = unauthorizedSlashAttempts.get(key);
+      const windowExpired =
+        !previous ||
+        now - previous.windowStartedAt >= UNAUTHORIZED_SLASH_WINDOW_MS;
+
+      if (windowExpired) {
+        unauthorizedSlashAttempts.set(key, {
+          windowStartedAt: now,
+          replies: 0,
+        });
+      }
+
+      const state = unauthorizedSlashAttempts.get(key);
+      if (state.replies < UNAUTHORIZED_SLASH_MAX_REPLIES) {
+        state.replies++;
+        sendBanatReplyWithTyping(
+          api,
+          require("./slash-banats").pickUnauthorizedSlashBanat(),
+          threadID,
+          event.messageID,
+          false,
+          null,
+          0,
+          originalText
+        );
+      }
+      return;
+    }
+
+    try {
+      const settings = await db.getThreadSettings(threadId);
+      const enabled = settings.slash_pool_enabled !== true;
+      await db.setThreadSettings(threadId, {
+        slash_pool_enabled: enabled,
+      });
+
+      if (
+        !enabled &&
+        settings.roast_enabled !== true &&
+        typeof clearBanatBurstState === "function"
+      ) {
+        clearBanatBurstState(threadId);
+      }
+
+      setBanatConversationMode(
+        threadId,
+        enabled || settings.roast_enabled === true,
+        senderId
+      );
+
+      sendBanatReplyWithTyping(
+        api,
+        require("./banat-slash-pool").getSlashPoolToggleReply(enabled),
+        threadID,
+        event.messageID,
+        false,
+        null,
+        0,
+        originalText
+      );
+
+      console.log(
+        "[BANAT] Backslash pool " +
+          (enabled ? "ENABLED" : "DISABLED") +
+          " in " + threadId + " by " + senderId
+      );
+    } catch (error) {
+      console.error("[BANAT] Backslash pool toggle failed:", error);
+      sendReplyWithTyping(
+        api,
+        "🔴 Failed to update backslash Banat settings.",
+        threadID
+      );
+    }
+
+    return;
+  }
+
+  // ==========================================================
   // PAUSE / RESUME / BOT CONTROL
   // These MUST be checked before normal AI/training so that
   // pause actually pauses normal message processing.
@@ -9448,25 +9537,27 @@ async function handleAutomaticBanatMessage({
   const threadID = threadId;
 
   let roastEnabled = false;
+  let slashPoolEnabled = false;
 
   try {
-    roastEnabled = await db.isRoastEnabled(threadId);
+    const settings = await db.getThreadSettings(threadId);
+    roastEnabled = settings.roast_enabled === true;
+    slashPoolEnabled = settings.slash_pool_enabled === true;
   } catch (error) {
     console.error(
-      "[BANAT] Failed to check roast status:",
+      "[BANAT] Failed to check Banat pool settings:",
       error
     );
 
     return false;
   }
 
-  if (!roastEnabled) {
+  if (!roastEnabled && !slashPoolEnabled) {
     setBanatConversationMode(threadId, false);
     return false;
   }
 
-  // Keep the in-memory conversation mode synchronized with the persistent
-  // per-thread Banat setting. This also restores active mode after restart.
+  // Either independent pool can activate the existing Banat runtime.
   if (!isBanatConversationModeActive(threadId)) {
     setBanatConversationMode(threadId, true);
   }
@@ -9655,11 +9746,23 @@ async function handleAutomaticBanatMessage({
   }
 
   if (!banatReply) {
-    banatReply = getRandomRoastReply(
-      threadID,
-      body,
-      senderId
-    );
+    if (
+      slashPoolEnabled &&
+      !isAdmin(senderId) &&
+      !isPrimaryUser(senderId)
+    ) {
+      banatReply = require("./banat-slash-pool").pickSlashPoolInsult(
+        threadID,
+        senderId
+      );
+    } else {
+      // Protected users still receive safe reactions, never insults.
+      banatReply = getRandomRoastReply(
+        threadID,
+        body,
+        senderId
+      );
+    }
   }
 
   if (banatReply) {
