@@ -5865,7 +5865,7 @@ async function handleMessage(
             );
           } else {
             console.log(
-              "[BANAT] Reacted 😆 to " +
+              "[BANAT] Reaction API callback completed without error for " +
                 reactionLabel +
                 ":",
               messageID
@@ -5877,8 +5877,7 @@ async function handleMessage(
           api.setMessageReaction(
             "😆",
             messageID,
-            reactionCallback,
-            true
+            reactionCallback
           );
         } else if (typeof api.setMessageReactionMqtt === "function") {
           api.setMessageReactionMqtt(
