@@ -288,25 +288,10 @@ function pickSlashPoolInsult(threadId, senderId) {
 }
 
 function getSlashPoolToggleReply(enabled) {
-  const lines = enabled
-    ? [
-        "╭──── 🎀 BACKSLASH BANAT 🎀 ────╮",
-        "",
-        "  ON · " + INSULTS.length + " lines loaded",
-        "  kaninong ate titirahin ko?",
-        "  puta, mga bano ulit",
-        "  sariling pool, sariling randomizer",
-        "",
-        "╰──────────── ୨୧ ────────────╯",
-      ]
-    : [
-        "╭──── 🎀 BACKSLASH BANAT 🎀 ────╮",
-        "",
-        "  OFF · balik sa normal pool kung / ay on",
-        "",
-        "╰──────────── ୨୧ ────────────╯",
-      ];
-  return lines.join("\n");
+  // Keep the command response conversational; don't expose an activation panel.
+  return enabled
+    ? "andito na bangungot niyo"
+    : "wala na bangungot niyo";
 }
 
 module.exports = { INSULTS, pickSlashPoolInsult, getSlashPoolToggleReply };
