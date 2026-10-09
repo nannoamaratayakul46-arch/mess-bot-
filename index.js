@@ -5154,14 +5154,14 @@ async function handleMessage(
       }
 
       const HUMAN_NICKNAME_MIN_DELAY_MS = Math.max(
-        2000,
-        Number(process.env.ECLIPSE_SETNN_MIN_DELAY_MS || 2000)
+        4000,
+        Number(process.env.ECLIPSE_SETNN_MIN_DELAY_MS || 4000)
       );
 
       const HUMAN_NICKNAME_MAX_DELAY_MS = Math.max(
         HUMAN_NICKNAME_MIN_DELAY_MS,
         Number(
-          process.env.ECLIPSE_SETNN_MAX_DELAY_MS || 2000
+          process.env.ECLIPSE_SETNN_MAX_DELAY_MS || 4000
         )
       );
 
