@@ -44,6 +44,12 @@ const UNAUTHORIZED_REPLIES = Object.freeze([
   "hindi porke gumagana yung slash, pwede mo nang paulit-ulit gamitin",
   "hev abi owns you, wag mo na patayin o buhayin, hindi ikaw ang may hawak",
   "tigil slash, wala kang permiso dito",
+  "bawal ka dito sa control panel, tambay ka muna",
+  "slash nang slash, may ambag ka ba?",
+  "hindi ka admin, extra ka lang sa eksena",
+  "pindot ka nang pindot, utak mo naka-off",
+  "permission denied, balik ka sa pagiging spectator",
+  "ang kulit mo, isang minuto ka munang manahimik",
 ]);
 
 function pick(list) {
@@ -58,8 +64,28 @@ function pickSlashBanat(mode = "on") {
   return pick(ON_REPLIES);
 }
 
-function pickUnauthorizedSlashBanat() {
-  return pick(UNAUTHORIZED_REPLIES);
+const unauthorizedUsed = new Map();
+const UNAUTHORIZED_HISTORY_LIMIT = 500;
+
+function pickUnauthorizedSlashBanat(threadId = "global", senderId = "unknown") {
+  const key = String(threadId) + ":" + String(senderId);
+  let used = unauthorizedUsed.get(key);
+  if (!used) used = new Set();
+
+  let candidates = UNAUTHORIZED_REPLIES.filter((line) => !used.has(line));
+  if (!candidates.length) {
+    used.clear();
+    candidates = UNAUTHORIZED_REPLIES.slice();
+  }
+
+  const selected = pick(candidates);
+  used.add(selected);
+  unauthorizedUsed.delete(key);
+  unauthorizedUsed.set(key, used);
+  while (unauthorizedUsed.size > UNAUTHORIZED_HISTORY_LIMIT) {
+    unauthorizedUsed.delete(unauthorizedUsed.keys().next().value);
+  }
+  return selected;
 }
 
 pickSlashBanat.onReplies = ON_REPLIES.slice();
