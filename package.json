@@ -5,12 +5,12 @@
   "main": "index.js",
   "scripts": {
     "start": "node bootstrap.js",
-    "prestart": "node --check index.js && node --check triggers.js && node --check banat-human.js && node --check bootstrap.js",
+    "prestart": "node --check index.js && node --check triggers.js && node --check banat-human.js && node --check banat-slash-pool.js && node --check bootstrap.js",
     "test": "node --test",
     "audit": "node scripts/audit-repo.js",
     "verify": "npm run audit && npm test && npm run check:syntax",
     "sync:english": "node scripts/sync-english-words.js",
-    "check:syntax": "node --check index.js && node --check triggers.js && node --check ai/index.js && node --check ai/prompt.js && node --check youtube.js"
+    "check:syntax": "node --check index.js && node --check triggers.js && node --check banat-slash-pool.js && node --check ai/index.js && node --check ai/prompt.js && node --check youtube.js"
   },
   "engines": {
     "node": ">=22.0.0"
