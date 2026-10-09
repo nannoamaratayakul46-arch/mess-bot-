@@ -295,9 +295,17 @@ function sendBanatReplyWithTyping(
                 return;
               }
 
+              // Explicitly connect every successful Banat send (including the
+              // backslash pool) to the self-laugh reaction. ws3-fca versions
+              // differ in the shape of messageInfo, so accept common ID keys.
               const sentMessageID = typeof messageInfo === "string"
                 ? messageInfo
-                : messageInfo?.messageID || messageInfo?.messageId || messageInfo?.id || null;
+                : messageInfo?.messageID ||
+                  messageInfo?.messageId ||
+                  messageInfo?.message_id ||
+                  messageInfo?.mid ||
+                  messageInfo?.id ||
+                  null;
 
               if (sentMessageID) {
                 // A human does not normally react to their own freshly sent
@@ -321,8 +329,14 @@ function sendBanatReplyWithTyping(
                     const reactionCallback = (reactionError) => {
                       if (reactionError) {
                         console.error(
-                          "[BANAT] Self-reaction failed:",
+                          "[BANAT] Self-laugh reaction failed for message " +
+                            String(sentMessageID) + ":",
                           reactionError
+                        );
+                      } else {
+                        console.log(
+                          "[BANAT] Self-laughed 😆 at own message:",
+                          String(sentMessageID)
                         );
                       }
                     };
@@ -340,14 +354,23 @@ function sendBanatReplyWithTyping(
                         String(sentMessageID),
                         reactionCallback
                       );
+                    } else {
+                      console.warn(
+                        "[BANAT] Cannot self-laugh: this API exposes no supported message-reaction method."
+                      );
                     }
                   } catch (reactionError) {
                     console.error(
-                      "[BANAT] Self-reaction error:",
+                      "[BANAT] Self-laugh reaction error:",
                       reactionError
                     );
                   }
                 }, reactionDelayMs);
+              } else {
+                console.warn(
+                  "[BANAT] Banat message sent without a readable message ID; self-laugh skipped.",
+                  messageInfo
+                );
               }
 
               // No follow-up meme send: the current turn already carries the meme/link.
