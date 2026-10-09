@@ -9728,7 +9728,9 @@ async function handleAutomaticBanatMessage({
     target.reason === "active-jammy-defense" ||
     target.reason === "defense-momentum";
 
-  if (useConversationReply) {
+  // The harsher backslash pool takes priority over context-generated replies.
+  // Target scoring still decides whether to respond; this only selects the reply source.
+  if (useConversationReply && !slashPoolEnabled) {
     try {
       banatReply = await getBanatConversationReply(
         body,
