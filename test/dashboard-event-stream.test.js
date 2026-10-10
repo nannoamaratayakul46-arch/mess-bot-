@@ -13,10 +13,11 @@ test("dashboard event stream uses actual SSE line delimiters", () => {
   assert.match(index, /: heartbeat \$\{Date\.now\(\)\}\\n\\n/);
   assert.doesNotMatch(index, /JSON\.stringify\(event\)\}\\\\n/);
   const healthStart = index.indexOf('app.get("/health"');
-  const healthEnd = index.indexOf("\\nconst port", healthStart);
+  const healthEnd = index.indexOf("const port =", healthStart);
   assert.notEqual(healthStart, -1, "public health route should exist");
   assert.notEqual(healthEnd, -1, "public health route should have a clear end");
   const publicHealth = index.slice(healthStart, healthEnd);
-  assert.match(publicHealth, /lastFailure: status\\.lastFailure\\s*\\? \\{ code: status\\.lastFailure\\.code, at: status\\.lastFailure\\.at \\}/);
-  assert.doesNotMatch(publicHealth, /trafficGovernor: trafficSafetyStatus\\(\\)/);
+  assert.ok(publicHealth.includes("lastFailure: status.lastFailure"));
+  assert.ok(publicHealth.includes("{ code: status.lastFailure.code, at: status.lastFailure.at }"));
+  assert.ok(!publicHealth.includes("trafficGovernor: trafficSafetyStatus()"));
 });
