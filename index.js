@@ -10258,7 +10258,18 @@ async function handleAutomaticBanatMessage({
     return false;
   }
 
-  if (!roastEnabled && !slashPoolEnabled) {
+  // A saved dashboard target activates the Jaiden pool on its own.
+  // Ordinary / and \ pool toggles are not prerequisites for targeted mode.
+  let savedBanatTarget = null;
+  let targetLookupSucceeded = false;
+  try {
+    savedBanatTarget = await db.getBanatThreadTarget(threadId);
+    targetLookupSucceeded = true;
+  } catch (error) {
+    console.warn("[BANAT] Could not load saved dashboard target:", error?.message || error);
+  }
+
+  if (!roastEnabled && !slashPoolEnabled && !savedBanatTarget?.target_user_id) {
     setBanatConversationMode(threadId, false);
     return false;
   }
@@ -10294,15 +10305,6 @@ async function handleAutomaticBanatMessage({
   // the scorer on incoming messages. Only dashboard admins can change them.
   // Read from the database so the target survives process restarts and does
   // not depend on someone opening the dashboard after a restart.
-  let savedBanatTarget = null;
-  let targetLookupSucceeded = false;
-  try {
-    savedBanatTarget = await db.getBanatThreadTarget(threadID);
-    targetLookupSucceeded = true;
-  } catch (error) {
-    console.warn("[BANAT] Could not load saved dashboard target:", error?.message || error);
-  }
-
   if (savedBanatTarget?.target_user_id) {
     setBanatDirectedTarget(
       threadId,
@@ -10358,14 +10360,10 @@ async function handleAutomaticBanatMessage({
       Boolean(dashboardTargetId) &&
       String(senderId || "").trim() === dashboardTargetId;
 
-    // The Jaiden trigger pool is only used for the manually selected target,
-    // and only in normal / Banat mode. The harsher backslash pool keeps priority.
-    if (
-      roastEnabled &&
-      !slashPoolEnabled &&
-      senderIsDashboardTarget &&
-      /\bjaiden\b/i.test(String(body || ""))
-    ) {
+    // A manually selected dashboard target always uses the Jaiden pool,
+    // regardless of whether / or \ is the active ordinary Banat pool.
+    // This check intentionally runs before ordinary pool selection.
+    if (senderIsDashboardTarget) {
       let dashboardTargetName = "";
 
       if (typeof api.getUserInfo === "function") {
@@ -10407,7 +10405,10 @@ async function handleAutomaticBanatMessage({
         threadID,
         api,
         event,
-        { targetName: dashboardTargetName }
+        {
+          targetName: dashboardTargetName,
+          forceJaidenTarget: true,
+        }
       );
     }
 

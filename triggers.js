@@ -2190,6 +2190,24 @@ async function getTriggerReply(
   );
 
 
+  // Dashboard-targeted Jaiden mode is explicit and takes priority over
+  // ordinary / and \ Banat pools. It does not require the incoming message
+  // to contain the word "Jaiden"; the selected member's messages use this pool.
+  if (options?.forceJaidenTarget === true) {
+    const jaidenGroup = groups.find((group) => group.name === "jaiden");
+    if (!jaidenGroup) return null;
+
+    let reply = getNextReply(jaidenGroup);
+    if (!reply) return null;
+
+    const targetName = String(options?.targetName || "").trim();
+    if (targetName) {
+      reply = reply.replace(/\bjaiden\b/gi, targetName);
+    }
+
+    return reply;
+  }
+
   // ----------------------------------------------------------
   // EXPLICIT WORD / PHRASE TRIGGERS
   // ----------------------------------------------------------
