@@ -2147,23 +2147,14 @@ async function getTriggerReply(
         reply = enforceBanatAddressStyle(reply, senderId);
       }
 
-      if (
-        String(fallbackReply).trim().toLowerCase() ===
-        "jaiden na naman"
-      ) {
+      if (/\bjaiden\b/i.test(String(fallbackReply || ""))) {
         replyTargetName =
           String(options?.targetName || "").trim() ||
           await resolveReplyTargetName(api, event);
 
         if (replyTargetName) {
-          reply = replyTargetName + " na naman";
+          reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
         }
-      }
-
-      // Keep every original pool entry intact, but personalize any entry that
-      // mentions Jaiden when a dashboard-selected target name is supplied.
-      if (replyTargetName) {
-        reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
       }
 
       // Groq adds variation to explicit trigger-word replies.
