@@ -4026,6 +4026,7 @@ app.get(
       return res.status(409).json({ ok: false, error: "Messenger is not connected." });
     }
 
+    // The directory is built from group threads the live listener has observed.
     const candidates = Array.from(activeThreads.entries())
       .sort((a, b) => Number(b[1]) - Number(a[1]))
       .slice(0, 100);
@@ -4036,12 +4037,14 @@ app.get(
         const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
         const participants = Array.isArray(info.participantIDs) ? info.participantIDs : [];
         if (participants.length < 3) continue;
+        const settings = await db.getThreadSettings(String(threadID));
         groups.push({
           thread_id: String(threadID),
           name: String(info.threadName || info.name || "Unnamed group").slice(0, 160),
           participant_count: participants.length,
           last_seen_at: new Date(Number(lastSeen) || Date.now()).toISOString(),
           is_group: true,
+          bot_enabled: settings.bot_enabled !== false,
         });
       } catch (error) {
         console.warn("[DASHBOARD] Could not inspect thread " + threadID + ":", error?.message || error);
@@ -4049,6 +4052,29 @@ app.get(
     }
 
     return res.json({ ok: true, groups, generated_at: new Date().toISOString() });
+  }
+);
+
+app.put(
+  "/api/dashboard/groups/:thread_id/settings",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.params.thread_id || "").trim();
+    const enabled = req.body?.bot_enabled;
+    if (!threadID || !activeThreads.has(threadID)) {
+      return res.status(400).json({ ok: false, error: "Choose a group the bot has recently seen." });
+    }
+    if (typeof enabled !== "boolean") {
+      return res.status(400).json({ ok: false, error: "bot_enabled must be true or false." });
+    }
+    try {
+      const settings = await db.setThreadSettings(threadID, { bot_enabled: enabled });
+      pushDashboardEvent("group", "Bot " + (enabled ? "enabled" : "disabled") + " in group " + threadID + ".");
+      return res.json({ ok: true, thread_id: threadID, bot_enabled: settings.bot_enabled !== false });
+    } catch (error) {
+      console.error("[DASHBOARD] Group setting update failed:", error);
+      return res.status(503).json({ ok: false, error: "Could not save this group's bot setting." });
+    }
   }
 );
 
@@ -7269,6 +7295,17 @@ async function handleMessage(
   // Banat must run while the bot is ON as well as while normal
   // commands are paused/shut down. Never run it for commands.
   // ==========================================================
+
+  // A group can be paused independently from the global bot state.
+  // Dashboard SetNN and the existing owner/admin control commands are handled above.
+  try {
+    const threadSettings = await db.getThreadSettings(threadId);
+    if (threadSettings.bot_enabled === false) {
+      return;
+    }
+  } catch (error) {
+    console.error("[DASHBOARD] Could not read group bot setting:", error);
+  }
 
   if (
     !originalText.startsWith("!")
