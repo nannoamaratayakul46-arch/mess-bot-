@@ -170,6 +170,17 @@ async function connect() {
       ADD COLUMN IF NOT EXISTS bot_enabled BOOLEAN NOT NULL DEFAULT TRUE;
   `);
 
+  // Persistent dashboard-selected Banat target, independent for each GC.
+  // A null row means no target is selected; no expiry is used.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS banat_thread_targets (
+      thread_id TEXT PRIMARY KEY,
+      target_user_id TEXT NOT NULL,
+      set_by TEXT NOT NULL,
+      updated_at BIGINT NOT NULL
+    );
+  `);
+
   // ═════════════════════════════════════════════════════════
 
   // ═════════════════════════════════════════════════════════
@@ -3392,6 +3403,43 @@ async function getThreadSettings(threadId) {
   return rows[0];
 }
 
+async function getBanatThreadTarget(threadId) {
+  const conn = requireConn();
+  const { rows } = await conn.query(
+    `SELECT thread_id, target_user_id, set_by, updated_at
+     FROM banat_thread_targets WHERE thread_id = $1`,
+    [String(threadId || "").trim()]
+  );
+  return rows[0] || null;
+}
+
+async function setBanatThreadTarget(threadId, targetUserId, setBy) {
+  const conn = requireConn();
+  const id = String(threadId || "").trim();
+  const target = String(targetUserId || "").trim();
+  const setter = String(setBy || "").trim();
+  if (!id || !target || !setter) throw new Error("thread_id, target_user_id, and set_by are required");
+  await conn.query(
+    `INSERT INTO banat_thread_targets(thread_id, target_user_id, set_by, updated_at)
+     VALUES($1, $2, $3, $4)
+     ON CONFLICT(thread_id) DO UPDATE SET
+       target_user_id = EXCLUDED.target_user_id,
+       set_by = EXCLUDED.set_by,
+       updated_at = EXCLUDED.updated_at`,
+    [id, target, setter, Date.now()]
+  );
+  return getBanatThreadTarget(id);
+}
+
+async function clearBanatThreadTarget(threadId) {
+  const conn = requireConn();
+  const { rowCount } = await conn.query(
+    `DELETE FROM banat_thread_targets WHERE thread_id = $1`,
+    [String(threadId || "").trim()]
+  );
+  return rowCount > 0;
+}
+
 async function setThreadSettings(threadId, fields) {
   const conn = requireConn();
   const id = String(threadId);
@@ -4027,6 +4075,9 @@ module.exports = {
   // Thread settings
   getThreadSettings,
   setThreadSettings,
+  getBanatThreadTarget,
+  setBanatThreadTarget,
+  clearBanatThreadTarget,
 
   // Roast / Banat
   isAdminForBible,
