@@ -12,4 +12,6 @@ test("dashboard event stream uses actual SSE line delimiters", () => {
   assert.match(index, /res\.write\(`event: ready\\ndata:/);
   assert.match(index, /: heartbeat \$\{Date\.now\(\)\}\\n\\n/);
   assert.doesNotMatch(index, /JSON\.stringify\(event\)\}\\\\n/);
+  assert.match(index, /lastFailure: status\.lastFailure\s*\? \{ code: status\.lastFailure\.code, at: status\.lastFailure\.at \}/);
+  assert.doesNotMatch(index, /trafficGovernor: trafficSafetyStatus\(\)/);
 });
