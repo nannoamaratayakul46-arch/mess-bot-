@@ -11,7 +11,7 @@ function normalizePhrase(value) {
   return String(value || "")
     .toLowerCase()
     .normalize("NFKC")
-    .replace(/\\s+/g, " ")
+    .replace(/\s+/g, " ")
     .trim();
 }
 
