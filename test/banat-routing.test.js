@@ -99,7 +99,7 @@ test("dashboard target API validates group membership and persists the target", 
   assert.match(body, /dashboardKnownGroups\.has\(threadID\)/);
   assert.match(body, /dashboardGetThreadInfo\(activeMessengerApi, threadID\)/);
   assert.match(body, /ids\.includes\(targetID\)/);
-  assert.match(body, /db\.setBanatThreadTarget\(threadID, targetID, "dashboard-admin"\)/);
+  assert.match(body, /db\.setBanatThreadTarget\(threadID, targetID, "dashboard-admin", requestedBangEnabled\)/);
   assert.match(body, /setBanatDirectedTarget\(threadID, targetID/);
 });
 
@@ -129,7 +129,8 @@ test("dashboard-selected target can take priority over a running queue turn", ()
   assert.match(queue, /if \(state\.running\)/);
   assert.match(queue, /job\.canSwitchTarget && incomingSenderId/);
   assert.match(queue, /state\.queue\.push\(\{[\s\S]*?queuedAt: now/);
-  const targetRoute = source.slice(source.indexOf("if (senderIsDashboardTarget)"), source.indexOf("// Ordinary Banat replies require", source.indexOf("if (senderIsDashboardTarget)")));
+  const targetRouteStart = source.indexOf("const bangJaidenCommand =");
+  const targetRoute = source.slice(targetRouteStart, source.indexOf("// Ordinary Banat replies require", targetRouteStart));
   assert.match(targetRoute, /canSwitchTarget: true/);
   assert.match(source, /clearBanatBurstState\(threadID\)/);
 });
@@ -199,4 +200,16 @@ test("Banat human layer varies behavior by incoming energy and social type", () 
   assert.match(source, /chooseSocialResponse\(incomingText, String\(message \|\| ""\), context\)/);
   assert.match(source, /socialTimingMultiplier\(social\)/);
   assert.match(source, /BANAT_HESITATION_RATE/);
+});
+
+
+test("dashboard ! mode routes bang-prefixed messages to the selected Jaiden target", () => {
+  const source = read("index.js");
+  const db = read("db.js");
+  assert.match(db, /ADD COLUMN IF NOT EXISTS bang_enabled BOOLEAN NOT NULL DEFAULT FALSE/);
+  assert.match(db, /bang_enabled = COALESCE\(\$4::boolean, banat_thread_targets\.bang_enabled\)/);
+  assert.match(source, /dashboardBangJaidenEnabled = target\?\.bang_enabled === true/);
+  assert.match(source, /const bangJaidenCommand =/);
+  assert.match(source, /bangJaidenCommand \|\| \(senderIsDashboardTarget && savedBanatTarget\?\.bang_enabled !== true\)/);
+  assert.match(source, /bang_enabled: saved\.bang_enabled === true/);
 });

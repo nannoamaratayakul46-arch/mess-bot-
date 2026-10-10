@@ -177,8 +177,12 @@ async function connect() {
       thread_id TEXT PRIMARY KEY,
       target_user_id TEXT NOT NULL,
       set_by TEXT NOT NULL,
+      bang_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       updated_at BIGINT NOT NULL
     );
+
+    ALTER TABLE banat_thread_targets
+      ADD COLUMN IF NOT EXISTS bang_enabled BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 
   // ═════════════════════════════════════════════════════════
@@ -3406,27 +3410,28 @@ async function getThreadSettings(threadId) {
 async function getBanatThreadTarget(threadId) {
   const conn = requireConn();
   const { rows } = await conn.query(
-    `SELECT thread_id, target_user_id, set_by, updated_at
+    `SELECT thread_id, target_user_id, set_by, bang_enabled, updated_at
      FROM banat_thread_targets WHERE thread_id = $1`,
     [String(threadId || "").trim()]
   );
   return rows[0] || null;
 }
 
-async function setBanatThreadTarget(threadId, targetUserId, setBy) {
+async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled = null) {
   const conn = requireConn();
   const id = String(threadId || "").trim();
   const target = String(targetUserId || "").trim();
   const setter = String(setBy || "").trim();
   if (!id || !target || !setter) throw new Error("thread_id, target_user_id, and set_by are required");
   await conn.query(
-    `INSERT INTO banat_thread_targets(thread_id, target_user_id, set_by, updated_at)
-     VALUES($1, $2, $3, $4)
+    `INSERT INTO banat_thread_targets(thread_id, target_user_id, set_by, bang_enabled, updated_at)
+     VALUES($1, $2, $3, COALESCE($4::boolean, FALSE), $5)
      ON CONFLICT(thread_id) DO UPDATE SET
        target_user_id = EXCLUDED.target_user_id,
        set_by = EXCLUDED.set_by,
+       bang_enabled = COALESCE($4::boolean, banat_thread_targets.bang_enabled),
        updated_at = EXCLUDED.updated_at`,
-    [id, target, setter, Date.now()]
+    [id, target, setter, typeof bangEnabled === "boolean" ? bangEnabled : null, Date.now()]
   );
   return getBanatThreadTarget(id);
 }

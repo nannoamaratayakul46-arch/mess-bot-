@@ -4068,12 +4068,13 @@ app.put(
       if (!ids.includes(targetID) || targetID === botID) {
         return res.status(400).json({ ok: false, error: "Target must be a member of this group, not the bot." });
       }
-      const saved = await db.setBanatThreadTarget(threadID, targetID, "dashboard-admin");
+      const requestedBangEnabled = typeof req.body?.bang_enabled === "boolean" ? req.body.bang_enabled : null;
+      const saved = await db.setBanatThreadTarget(threadID, targetID, "dashboard-admin", requestedBangEnabled);
       setBanatDirectedTarget(threadID, targetID, "dashboard-admin", { persistent: true });
       clearBanatConversationTarget(threadID);
       clearBanatBurstState(threadID);
       pushDashboardEvent("banat-target", "Dashboard target updated for group " + threadID + ".");
-      return res.json({ ok: true, thread_id: threadID, target_user_id: saved.target_user_id, target_set_at: new Date(Number(saved.updated_at)).toISOString() });
+      return res.json({ ok: true, thread_id: threadID, target_user_id: saved.target_user_id, bang_enabled: saved.bang_enabled === true, target_set_at: new Date(Number(saved.updated_at)).toISOString() });
     } catch (error) {
       console.error("[DASHBOARD] Could not save Banat target:", error);
       return res.status(503).json({ ok: false, error: "Could not save this group's Banat target." });
@@ -4214,6 +4215,7 @@ app.get(
           slash_pool_enabled: settings.slash_pool_enabled === true,
           fun_enabled: settings.fun_enabled === true,
           target_user_id: target?.target_user_id || null,
+          bang_enabled: target?.bang_enabled === true,
           target_set_at: target?.updated_at ? new Date(Number(target.updated_at)).toISOString() : null,
         });
       } catch (error) {
@@ -7572,9 +7574,17 @@ async function handleMessage(
   // commands are paused/shut down. Never run it for commands.
   // ==========================================================
 
-  if (
-    !originalText.startsWith("!")
-  ) {
+  let dashboardBangJaidenEnabled = false;
+  if (originalText.startsWith("!")) {
+    try {
+      const target = await db.getBanatThreadTarget(threadId);
+      dashboardBangJaidenEnabled = target?.bang_enabled === true;
+    } catch (error) {
+      console.warn("[BANAT] Could not check dashboard ! mode:", error?.message || error);
+    }
+  }
+
+  if (!originalText.startsWith("!") || dashboardBangJaidenEnabled) {
     const banatHandled = await handleAutomaticBanatMessage({
       api,
       event,
@@ -10297,6 +10307,18 @@ async function handleAutomaticBanatMessage({
 }) {
   const threadID = threadId;
 
+  // ! commands are routed here only when the dashboard explicitly enables
+  // the Jaiden trigger for this group's saved target.
+  if (/^!/.test(String(body || ""))) {
+    try {
+      const target = await db.getBanatThreadTarget(threadId);
+      if (target?.bang_enabled !== true || !target?.target_user_id) return false;
+    } catch (error) {
+      console.warn("[BANAT] Could not load dashboard ! mode:", error?.message || error);
+      return false;
+    }
+  }
+
   let roastEnabled = false;
   let slashPoolEnabled = false;
 
@@ -10418,7 +10440,11 @@ async function handleAutomaticBanatMessage({
     // A manually selected dashboard target always uses the Jaiden pool,
     // regardless of whether / or \ is the active ordinary Banat pool.
     // This check intentionally runs before ordinary pool selection.
-    if (senderIsDashboardTarget) {
+    // When ! mode is enabled, any ! message invokes the Jaiden pool for the
+    // saved target. Otherwise preserve the legacy selected-target behavior.
+    const bangJaidenCommand =
+      savedBanatTarget?.bang_enabled === true && /^!/.test(String(body || ""));
+    if (bangJaidenCommand || (senderIsDashboardTarget && savedBanatTarget?.bang_enabled !== true)) {
       let dashboardTargetName = "";
 
       if (typeof api.getUserInfo === "function") {
