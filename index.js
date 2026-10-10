@@ -10385,11 +10385,19 @@ async function handleAutomaticBanatMessage({
 
       if (typeof api.getUserInfo === "function") {
         try {
+          // Name lookup is cosmetic; it must never block a Jaiden reply.
+          // Some Facebook requests can stall without invoking the callback,
+          // so bound this lookup and fall back to the original Jaiden wording.
           const userInfo = await new Promise((resolve, reject) => {
             let settled = false;
+            const timeout = setTimeout(() => {
+              done(new Error("getUserInfo timed out after 2500ms"));
+            }, 2500);
+
             const done = (error, info) => {
               if (settled) return;
               settled = true;
+              clearTimeout(timeout);
               if (error) reject(error);
               else resolve(info || {});
             };
