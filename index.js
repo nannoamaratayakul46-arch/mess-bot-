@@ -850,6 +850,8 @@ let trafficGovernorInstalled = false;
 let trafficShuttingDown = false;
 let trafficLastSendAt = 0;
 let trafficTotalSent = 0;
+let trafficTotalFailed = 0;
+let trafficLastFailure = null;
 let trafficTotalDelayed = 0;
 let trafficTotalSuppressed = 0;
 let trafficTotalRejected = 0;
@@ -1274,6 +1276,10 @@ function trafficSafetyStatus() {
       trafficEffectiveGapMs(),
     totalSent:
       trafficTotalSent,
+    totalFailed:
+      trafficTotalFailed,
+    lastFailure:
+      trafficLastFailure,
     totalDelayed:
       trafficTotalDelayed,
     totalSuppressed:
@@ -1424,6 +1430,27 @@ async function trafficProcessQueue() {
                 job.threadID,
                 decision.fingerprint
               );
+            } else {
+              trafficTotalFailed++;
+              const rawCode = String(error?.code || error?.name || "SEND_FAILED").slice(0, 80);
+              const rawDetail = String(error?.message || "Messenger send failed.")
+                .replace(/(["']?(?:password|passwd|cookie|appstate|access[_-]?token|refresh[_-]?token|authorization)["']?\\s*[:=]\\s*)[^,;\\s}]+/gi, "$1[redacted]")
+                .replace(/\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b/gi, "[redacted email]")
+                .slice(0, 240);
+              trafficLastFailure = {
+                code: rawCode,
+                detail: rawDetail,
+                thread_id: String(job.threadID),
+                at: new Date().toISOString(),
+              };
+              console.error(`[TRAFFIC] Messenger send failed (${rawCode}) in thread ${String(job.threadID)}: ${rawDetail}`);
+              pushDashboardEvent("send-failed", "Messenger send failed: " + rawCode, {
+                code: rawCode,
+                detail: rawDetail,
+                thread_id: String(job.threadID),
+                attachment: Boolean(job.message && typeof job.message === "object" && job.message.attachment),
+                elapsed_ms: Math.max(0, Date.now() - Number(job.enqueuedAt || Date.now())),
+              });
             }
 
             if (typeof job.callback === "function") {
@@ -5087,6 +5114,12 @@ function attemptLogin() {
 
     loginSettled = true;
     dashboardLoginError = getFacebookLoginErrorMessage(error);
+    console.error(`[LOGIN] Login invocation failed: ${dashboardLoginError}`);
+    pushDashboardEvent("login-failed", "Messenger login invocation failed.", {
+      detail: dashboardLoginError.slice(0, 240),
+      attempt: loginAttempt + 1,
+      session_source: isReplacementSession ? "replacement" : appStateSource,
+    });
 
     // Missing authentication input is a configuration/recovery state, not a
     // reason to hammer Facebook with exponential retries.
@@ -5188,6 +5221,11 @@ function attemptLogin() {
         dashboardLoginError = getFacebookLoginErrorMessage(
           loginError || "No API object returned."
         );
+        pushDashboardEvent("login-failed", "Messenger login was rejected.", {
+          detail: dashboardLoginError.slice(0, 240),
+          attempt: loginAttempt + 1,
+          session_source: isReplacementSession ? "replacement" : appStateSource,
+        });
 
         // A replacement session must never take down a currently working
         // Messenger session. If Facebook rejects the replacement, discard it
