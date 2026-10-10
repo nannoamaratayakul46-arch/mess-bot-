@@ -158,6 +158,7 @@ const {
   getBanatConversationReply,
   scoreBanatAddressContext,
   setBanatDirectedTarget,
+  clearBanatDirectedTarget,
   getBanatConversationTarget,
   setBanatConversationTarget,
 } = require("./triggers");
@@ -10198,43 +10199,26 @@ async function handleAutomaticBanatMessage({
   // "reply to every message". The existing context state decides whether
   // this turn is actually worth entering. A direct reply/mention is never
   // required for ordinary Banat.
-  // "?" is a directed-target control when used as a reply. It binds
-  // Banat to the author of the replied-to message for a short window.
-  // It is deliberately silent: the user asked for a target, not an extra
-  // bot message. The target still goes through the normal context scorer.
-  if (
-    String(body || "").trim() === "?" &&
-    event?.messageReply
-  ) {
-    const targetId = String(
-      event.messageReply.senderID ||
-        event.messageReply.senderId ||
-        event.messageReply.sender_id ||
-        ""
-    ).trim();
+  // Dashboard-selected targets are persisted per GC and rehydrated into
+  // the scorer on incoming messages. Only dashboard admins can change them.
+  // Read from the database so the target survives process restarts and does
+  // not depend on someone opening the dashboard after a restart.
+  let savedBanatTarget = null;
+  try {
+    savedBanatTarget = await db.getBanatThreadTarget(threadID);
+  } catch (error) {
+    console.warn("[BANAT] Could not load saved dashboard target:", error?.message || error);
+  }
 
-    if (
-      targetId &&
-      targetId !== String(eclipseUserID || "").trim() &&
-      targetId !== String(senderId || "").trim()
-    ) {
-      setBanatDirectedTarget(
-        threadId,
-        targetId,
-        senderId
-      );
-
-      console.log(
-        "[BANAT] Directed roast target set: " +
-          targetId +
-          " in " +
-          threadId +
-          " by " +
-          senderId
-      );
-    }
-
-    return false;
+  if (savedBanatTarget?.target_user_id) {
+    setBanatDirectedTarget(
+      threadId,
+      savedBanatTarget.target_user_id,
+      savedBanatTarget.set_by || "dashboard",
+      { persistent: true }
+    );
+  } else {
+    clearBanatDirectedTarget(threadId);
   }
 
   const target = scoreBanatAddressContext({
@@ -10244,6 +10228,22 @@ async function handleAutomaticBanatMessage({
     event,
     botId: eclipseUserID,
   });
+
+  // Manual dashboard target takes precedence over the short-lived
+  // conversation target: only the selected person's messages can open a
+  // Banat turn while a manual target is active.
+  if (savedBanatTarget?.target_user_id) {
+    if (String(senderId || "").trim() === String(savedBanatTarget.target_user_id).trim()) {
+      target.shouldRespond = true;
+      target.score = Math.max(Number(target.score || 0), 0.9);
+      target.reason = "dashboard-target";
+      target.canSwitchTarget = true;
+    } else {
+      target.shouldRespond = false;
+      target.reason = "dashboard-target-wait";
+      target.canSwitchTarget = false;
+    }
+  }
 
   console.log(
     "[BANAT] Response decision " +
