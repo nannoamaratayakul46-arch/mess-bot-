@@ -3805,7 +3805,17 @@ app.get("/health", async (_req, res) => {
     database:
       databaseHealthy,
 
-    trafficGovernor: trafficSafetyStatus(),
+    // The unauthenticated health endpoint exposes only summary diagnostics.
+    // Detailed error text and Messenger thread IDs remain behind dashboard auth.
+    trafficGovernor: (() => {
+      const status = trafficSafetyStatus();
+      return {
+        ...status,
+        lastFailure: status.lastFailure
+          ? { code: status.lastFailure.code, at: status.lastFailure.at }
+          : null,
+      };
+    })(),
 
     music: {
       activeDownloads:
