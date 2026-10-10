@@ -214,7 +214,7 @@ const BANAT_DIRECTED_TARGET_TTL_MS = Math.max(
   Number(process.env.ECLIPSE_BANAT_TARGET_TTL_MS || 10 * 60 * 1000)
 );
 
-function setBanatDirectedTarget(threadId, targetId, setterId) {
+function setBanatDirectedTarget(threadId, targetId, setterId, { persistent = false } = {}) {
   const key = String(threadId || "").trim();
   const target = String(targetId || "").trim();
   const setter = String(setterId || "").trim();
@@ -234,9 +234,20 @@ function setBanatDirectedTarget(threadId, targetId, setterId) {
     targetId: target,
     setBy: setter,
     at: Date.now(),
-    expiresAt: Date.now() + BANAT_DIRECTED_TARGET_TTL_MS,
+    persistent: Boolean(persistent),
+    expiresAt: persistent ? null : Date.now() + BANAT_DIRECTED_TARGET_TTL_MS,
   };
 
+  state.at = Date.now();
+  banatContextState.set(key, state);
+  return true;
+}
+
+function clearBanatDirectedTarget(threadId) {
+  const key = String(threadId || "").trim();
+  const state = banatContextState.get(key);
+  if (!state?.directedTarget) return false;
+  delete state.directedTarget;
   state.at = Date.now();
   banatContextState.set(key, state);
   return true;
@@ -642,7 +653,10 @@ function getBanatDirectedTarget(threadId) {
 
   if (!state?.directedTarget) return null;
 
-  if (Date.now() >= Number(state.directedTarget.expiresAt || 0)) {
+  if (
+    !state.directedTarget.persistent &&
+    Date.now() >= Number(state.directedTarget.expiresAt || 0)
+  ) {
     delete state.directedTarget;
     state.at = Date.now();
     banatContextState.set(key, state);
@@ -3167,6 +3181,7 @@ module.exports = {
   scoreBanatAddressContext,
   setBanatDirectedTarget,
   getBanatDirectedTarget,
+  clearBanatDirectedTarget,
   updateJammyDefenseEngagement,
   getJammyDefenseEngagement,
   classifyJammyAttack,
