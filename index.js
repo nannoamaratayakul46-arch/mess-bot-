@@ -161,6 +161,7 @@ const {
   clearBanatDirectedTarget,
   getBanatConversationTarget,
   setBanatConversationTarget,
+  clearBanatConversationTarget,
 } = require("./triggers");
 
 // ============================================================

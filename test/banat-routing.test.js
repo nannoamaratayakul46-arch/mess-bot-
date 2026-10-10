@@ -61,6 +61,15 @@ test("dashboard Jaiden reply does not hang when target-name lookup stalls", () =
   assert.match(body, /Could not resolve dashboard target name/);
 });
 
+test("dashboard target cleanup helper is imported before target-save route uses it", () => {
+  const source = read("index.js");
+  const triggerImportsStart = source.indexOf("// TRIGGERS");
+  const triggerImportsEnd = source.indexOf('} = require("./triggers")', triggerImportsStart);
+  assert.ok(triggerImportsStart >= 0 && triggerImportsEnd > triggerImportsStart);
+  assert.match(source.slice(triggerImportsStart, triggerImportsEnd), /clearBanatConversationTarget/);
+  assert.match(read("triggers.js"), /clearBanatConversationTarget,/);
+});
+
 test("dashboard target API validates group membership and persists the target", () => {
   const source = read("index.js");
   const start = source.indexOf('app.put(\n  "/api/dashboard/groups/:thread_id/target"');
