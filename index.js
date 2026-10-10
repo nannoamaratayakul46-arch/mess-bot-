@@ -1444,7 +1444,7 @@ async function trafficProcessQueue() {
                 at: new Date().toISOString(),
               };
               console.error(`[TRAFFIC] Messenger send failed (${rawCode}) in thread ${String(job.threadID)}: ${rawDetail}`);
-              pushDashboardEvent("send-failed", "Messenger send failed: " + rawCode, {
+              pushDashboardEvent("send-failed", "Messenger send failed: " + rawCode + " — " + rawDetail, {
                 code: rawCode,
                 detail: rawDetail,
                 thread_id: String(job.threadID),
@@ -5115,7 +5115,7 @@ function attemptLogin() {
     loginSettled = true;
     dashboardLoginError = getFacebookLoginErrorMessage(error);
     console.error(`[LOGIN] Login invocation failed: ${dashboardLoginError}`);
-    pushDashboardEvent("login-failed", "Messenger login invocation failed.", {
+    pushDashboardEvent("login-failed", "Messenger login invocation failed: " + dashboardLoginError.slice(0, 240), {
       detail: dashboardLoginError.slice(0, 240),
       attempt: loginAttempt + 1,
       session_source: isReplacementSession ? "replacement" : appStateSource,
@@ -5221,7 +5221,7 @@ function attemptLogin() {
         dashboardLoginError = getFacebookLoginErrorMessage(
           loginError || "No API object returned."
         );
-        pushDashboardEvent("login-failed", "Messenger login was rejected.", {
+        pushDashboardEvent("login-failed", "Messenger login was rejected: " + dashboardLoginError.slice(0, 240), {
           detail: dashboardLoginError.slice(0, 240),
           attempt: loginAttempt + 1,
           session_source: isReplacementSession ? "replacement" : appStateSource,
