@@ -2034,7 +2034,8 @@ async function getTriggerReply(
   senderId,
   threadId,
   api,
-  event
+  event,
+  options = {}
 ) {
   if (!rawText) {
     return null;
@@ -2121,7 +2122,9 @@ async function getTriggerReply(
         String(fallbackReply).trim().toLowerCase() ===
         "jaiden na naman"
       ) {
-        replyTargetName = await resolveReplyTargetName(api, event);
+        replyTargetName =
+          String(options?.targetName || "").trim() ||
+          await resolveReplyTargetName(api, event);
 
         if (replyTargetName) {
           reply = replyTargetName + " na naman";
