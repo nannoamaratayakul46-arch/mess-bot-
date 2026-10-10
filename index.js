@@ -4114,10 +4114,22 @@ app.get(
       dashboardKnownGroups.set(group.thread_id, group);
       try {
         const settings = await db.getThreadSettings(group.thread_id);
-        groups.push({ ...group, bot_enabled: settings.bot_enabled !== false });
+        groups.push({
+          ...group,
+          bot_enabled: settings.bot_enabled !== false,
+          roast_enabled: settings.roast_enabled === true,
+          slash_pool_enabled: settings.slash_pool_enabled === true,
+          fun_enabled: settings.fun_enabled === true,
+        });
       } catch (error) {
         console.warn("[DASHBOARD] Could not read settings for group " + group.thread_id + ":", error?.message || error);
-        groups.push({ ...group, bot_enabled: true });
+        groups.push({
+          ...group,
+          bot_enabled: true,
+          roast_enabled: true,
+          slash_pool_enabled: false,
+          fun_enabled: true,
+        });
       }
     }
 
@@ -4130,20 +4142,45 @@ app.put(
   requireDashboardAccess,
   async (req, res) => {
     const threadID = String(req.params.thread_id || "").trim();
-    const enabled = req.body?.bot_enabled;
+    const body = req.body && typeof req.body === "object" ? req.body : {};
+    const allowedSettings = ["bot_enabled", "roast_enabled", "slash_pool_enabled", "fun_enabled"];
+    const updates = {};
+    for (const key of allowedSettings) {
+      if (Object.prototype.hasOwnProperty.call(body, key)) {
+        if (typeof body[key] !== "boolean") {
+          return res.status(400).json({ ok: false, error: key + " must be true or false." });
+        }
+        updates[key] = body[key];
+      }
+    }
     if (!threadID || (!activeThreads.has(threadID) && !dashboardKnownGroups.has(threadID))) {
       return res.status(400).json({ ok: false, error: "Choose a group in the bot group list." });
     }
-    if (typeof enabled !== "boolean") {
-      return res.status(400).json({ ok: false, error: "bot_enabled must be true or false." });
+    if (!Object.keys(updates).length) {
+      return res.status(400).json({ ok: false, error: "Provide at least one group setting to update." });
     }
     try {
-      const settings = await db.setThreadSettings(threadID, { bot_enabled: enabled });
-      pushDashboardEvent("group", "Bot " + (enabled ? "enabled" : "disabled") + " in group " + threadID + ".");
-      return res.json({ ok: true, thread_id: threadID, bot_enabled: settings.bot_enabled !== false });
+      const settings = await db.setThreadSettings(threadID, updates);
+      const settingLabels = {
+        bot_enabled: "bot",
+        roast_enabled: "/ Banat",
+        slash_pool_enabled: "\\ Banat",
+        fun_enabled: "games",
+      };
+      for (const [key, value] of Object.entries(updates)) {
+        pushDashboardEvent("group", settingLabels[key] + " " + (value ? "enabled" : "disabled") + " in group " + threadID + ".");
+      }
+      return res.json({
+        ok: true,
+        thread_id: threadID,
+        bot_enabled: settings.bot_enabled !== false,
+        roast_enabled: settings.roast_enabled === true,
+        slash_pool_enabled: settings.slash_pool_enabled === true,
+        fun_enabled: settings.fun_enabled === true,
+      });
     } catch (error) {
       console.error("[DASHBOARD] Group setting update failed:", error);
-      return res.status(503).json({ ok: false, error: "Could not save this group's bot setting." });
+      return res.status(503).json({ ok: false, error: "Could not save this group's settings." });
     }
   }
 );
