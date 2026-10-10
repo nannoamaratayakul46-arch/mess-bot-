@@ -3805,7 +3805,17 @@ app.get("/health", async (_req, res) => {
     database:
       databaseHealthy,
 
-    trafficGovernor: trafficSafetyStatus(),
+    // The unauthenticated health endpoint exposes only summary diagnostics.
+    // Detailed error text and Messenger thread IDs remain behind dashboard auth.
+    trafficGovernor: (() => {
+      const status = trafficSafetyStatus();
+      return {
+        ...status,
+        lastFailure: status.lastFailure
+          ? { code: status.lastFailure.code, at: status.lastFailure.at }
+          : null,
+      };
+    })(),
 
     music: {
       activeDownloads:
@@ -3872,7 +3882,7 @@ function pushDashboardEvent(type, message, meta = {}) {
     dashboardEventBuffer.length = DASHBOARD_EVENT_LIMIT;
   }
 
-  const payload = `data: ${JSON.stringify(event)}\\n\\n`;
+  const payload = `data: ${JSON.stringify(event)}\n\n`;
   for (const client of dashboardEventClients) {
     try {
       client.write(payload);
@@ -3912,14 +3922,14 @@ app.get(
     res.flushHeaders?.();
 
     const heartbeat = () => {
-      try { res.write(`: heartbeat ${Date.now()}\\n\\n`); } catch {}
+      try { res.write(`: heartbeat ${Date.now()}\n\n`); } catch {}
     };
 
     dashboardEventClients.add(res);
-    res.write(`event: ready\\ndata: ${JSON.stringify({
+    res.write(`event: ready\ndata: ${JSON.stringify({
       ok: true,
       generated_at: new Date().toISOString(),
-    })}\\n\\n`);
+    })}\n\n`);
 
     const heartbeatTimer = setInterval(heartbeat, 20_000);
     heartbeatTimer.unref?.();
