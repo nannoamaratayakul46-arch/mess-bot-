@@ -110,9 +110,12 @@ function pickBanatReply(threadId, replies, fallbackRecent = []) {
   // Keep the complete pool attached to one shuffle bag. Filtering the pool
   // before calling pickFromBag would rebuild the bag whenever the recent
   // window changed and would defeat the no-repeat guarantee.
+  // Use the same bag as pickDiverseBanatReply in triggers.js.
+  // A second bag for the same phrases could re-serve a reply that the main
+  // Banat selector already used.
   return pickFromBag(
     keyFor(threadId),
-    "reply-pool",
+    "banat-natural",
     replies,
     { avoidValues: recent }
   );
