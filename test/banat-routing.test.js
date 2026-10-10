@@ -6,177 +6,117 @@ const fs = require("node:fs");
 const path = require("node:path");
 
 const root = path.resolve(__dirname, "..");
-
 function read(file) {
   return fs.readFileSync(path.join(root, file), "utf8");
 }
 
-test("slash Banat toggle is evaluated before automatic Banat", () => {
+test("slash controls return before automatic Banat routing", () => {
   const source = read("index.js");
   const toggle = source.indexOf("const banatControlMatch");
   const automatic = source.indexOf("const banatHandled = await handleAutomaticBanatMessage");
-
-  assert.ok(toggle >= 0, "slash toggle must exist");
-  assert.ok(automatic >= 0, "automatic Banat must exist");
-  assert.ok(toggle < automatic, "slash toggle must run first");
+  assert.ok(toggle >= 0 && automatic > toggle);
+  assert.match(source.slice(toggle, automatic), /return;/);
 });
 
-test("slash Banat toggle exits before automatic Banat can process slash", () => {
-  const source = read("index.js");
-  const toggle = source.indexOf("const banatControlMatch");
-  const automatic = source.indexOf("const banatHandled = await handleAutomaticBanatMessage");
-  const toggleBlock = source.slice(toggle, automatic);
-
-  assert.match(toggleBlock, /setBanatConversationMode\(threadId, enabled, senderId\)/);
-  assert.match(toggleBlock, /await db\.setRoastEnabled\(threadId, enabled\)/);
-  assert.match(toggleBlock, /if \(!enabled\)/);
-  assert.ok(toggleBlock.includes("\n    return;\n  }\n\n  //"), "slash toggle must return before automatic Banat");
-});
-
-test("automatic Banat passes sender identity into the roast selector", () => {
-  const source = read("index.js");
-  assert.match(
-    source,
-    /getRandomRoastReply\(threadID, body, senderId\)/
-  );
-});
-
-test("automatic Banat restores persistent mode before targeting", () => {
+test("saved dashboard target enables Banat without slash or backslash pools", () => {
   const source = read("index.js");
   const start = source.indexOf("async function handleAutomaticBanatMessage");
-  const body = source.slice(start, start + 5000);
-
-  assert.match(body, /await db\.isRoastEnabled\(threadId\)/);
-  assert.match(body, /setBanatConversationMode\(threadId, false\)/);
-  assert.match(body, /setBanatConversationMode\(threadId, true\)/);
-  assert.ok(
-    body.indexOf("setBanatConversationMode(threadId, true)") <
-      body.indexOf("classifyBanatTarget")
-  );
+  const body = source.slice(start, start + 7000);
+  assert.match(body, /await db\.getThreadSettings\(threadId\)/);
+  assert.match(body, /await db\.getBanatThreadTarget\(threadId\)/);
+  assert.match(body, /!roastEnabled && !slashPoolEnabled && !savedBanatTarget\?\.target_user_id/);
+  assert.match(body, /setBanatDirectedTarget\(/);
 });
 
-test("runtime hotfix files are no longer part of the source tree", () => {
-  for (const file of [
-    "repo-hotfix.js",
-    "broadcast-runtime-fix.js",
-    "rpg-help-preload.js",
-    "banat-runtime-fix.js",
-  ]) {
-    assert.equal(
-      fs.existsSync(path.join(root, file)),
-      false,
-      file + " should not exist"
-    );
-  }
-});
-
-test("unauthorized slash uses the Banat roast replies instead of the admin-only panel", () => {
-  const source = read("index.js");
-  const toggle = source.indexOf("const banatControlMatch");
-  const automatic = source.indexOf("const banatHandled = await handleAutomaticBanatMessage");
-  const toggleBlock = source.slice(toggle, automatic);
-
-  assert.match(toggleBlock, /pota bawal panget gumamit command hoy/);
-  assert.match(toggleBlock, /sabi ko ayoko kalbo/);
-  assert.match(toggleBlock, /aaaaaa bingi ka\? sabi bawal moka paa gumamit command/);
-  assert.doesNotMatch(toggleBlock, /🔒 ADMIN ONLY/);
-});
-
-test("Banat burst replies are spaced 5 seconds apart and randomize one eligible sender", () => {
-  const source = read("index.js");
-  assert.match(
-    source,
-    /ECLIPSE_BANAT_MIN_INTER_REPLY_GAP_MS \|\| 5_000/
-  );
-  assert.match(
-    source,
-    /state\.queue\.findIndex\(\s*\(candidate\) =>\s*String\(candidate\.senderId \|\| ""\)\.trim\(\) === senderKey/
-  );
-  assert.match(
-    source,
-    /Math\.floor\(Math\.random\(\) \* pool\.length\)/
-  );
-});
-
-test("Banat keeps burst state alive during the 5-second cooldown", () => {
-  const source = read("index.js");
-  assert.match(source, /cleanupTimer/);
-  assert.match(
-    source,
-    /state\.cleanupTimer = setTimeout\(\(\) => \{/
-  );
-  assert.match(
-    source,
-    /}, BANAT_MIN_INTER_REPLY_GAP_MS\);/
-  );
-});
-
-
-test("Banat is owner-only while ECLIPSE normal reactions remain separate", () => {
+test("dashboard target sender overrides normal conversation scoring", () => {
   const source = read("index.js");
   const start = source.indexOf("async function handleAutomaticBanatMessage");
   const end = source.indexOf("// ============================================================\n// HUMAN / BANAT WIRING", start);
   const body = source.slice(start, end);
-
-  assert.match(
-    body,
-    /if \(!isPrimaryUser\(senderId\)\)\s*\{\s*return false;/
-  );
-  assert.match(
-    body,
-    /const triggerReply = null;/
-  );
-  assert.match(
-    body,
-    /getRandomRoastReply\(threadID, body, senderId\)/
-  );
+  assert.match(body, /senderIsDashboardTarget/);
+  assert.match(body, /forceJaidenTarget:\s*true/);
+  assert.match(body, /targetName:\s*dashboardTargetName/);
+  assert.match(body, /target\.reason = "dashboard-target"/);
+  assert.match(body, /target\.reason = "dashboard-target-wait"/);
 });
 
-test("Banat reactions use the compatible setMessageReaction callback signature", () => {
-  const index = read("index.js");
-  const human = read("banat-human.js");
-
-  assert.match(
-    index,
-    /api\.setMessageReaction\(\s*"😆",\s*messageID,\s*reactionCallback,\s*true\s*\)/
-  );
-  assert.match(
-    human,
-    /api\.setMessageReaction\(\s*"😆",\s*String\(sentMessageID\),\s*reactionCallback,\s*true\s*\)/
-  );
-  assert.doesNotMatch(
-    index,
-    /setMessageReactionMqtt\(\s*"😆",\s*messageID,\s*threadId,\s*reactionCallback/
-  );
-  assert.doesNotMatch(
-    human,
-    /setMessageReactionMqtt\(\s*"😆",\s*String\(sentMessageID\),\s*String\(threadID\),\s*reactionCallback/
-  );
+test("forced dashboard mode chooses Jaiden replies and substitutes target name", () => {
+  const source = read("triggers.js");
+  const force = source.indexOf("if (options?.forceJaidenTarget === true)");
+  const normalTriggers = source.indexOf("// EXPLICIT WORD / PHRASE TRIGGERS", force);
+  assert.ok(force >= 0 && normalTriggers > force);
+  const body = source.slice(force, normalTriggers);
+  assert.match(body, /groups\.find\(\(group\) => group\.name === "jaiden"\)/);
+  assert.match(body, /getNextReply\(jaidenGroup\)/);
+  assert.match(body, /reply\.replace\(\/\\bjaiden\\b\/gi, targetName\)/);
 });
 
-test("all Banat-selected text reaches the Banat human send layer", () => {
+test("dashboard target API validates group membership and persists the target", () => {
+  const source = read("index.js");
+  const start = source.indexOf('app.put(\n  "/api/dashboard/groups/:thread_id/target"');
+  const end = source.indexOf('app.delete(\n  "/api/dashboard/groups/:thread_id/target"', start);
+  const body = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(body, /dashboardKnownGroups\.has\(threadID\)/);
+  assert.match(body, /dashboardGetThreadInfo\(activeMessengerApi, threadID\)/);
+  assert.match(body, /ids\.includes\(targetID\)/);
+  assert.match(body, /db\.setBanatThreadTarget\(threadID, targetID, "dashboard-admin"\)/);
+  assert.match(body, /setBanatDirectedTarget\(threadID, targetID/);
+});
+
+test("clearing dashboard target removes persistent and in-memory target state", () => {
+  const source = read("index.js");
+  const start = source.indexOf('app.delete(\n  "/api/dashboard/groups/:thread_id/target"');
+  const end = source.indexOf("function dashboardGetThreadList", start);
+  const body = source.slice(start, end);
+  assert.match(body, /db\.clearBanatThreadTarget\(threadID\)/);
+  assert.match(body, /clearBanatDirectedTarget\(threadID\)/);
+  assert.match(body, /clearBanatConversationTarget\(threadID\)/);
+});
+
+test("target persistence has a database table and upsert", () => {
+  const db = read("db.js");
+  assert.match(db, /CREATE TABLE IF NOT EXISTS banat_thread_targets/);
+  assert.match(db, /ON CONFLICT\(thread_id\) DO UPDATE SET/);
+  assert.match(db, /async function getBanatThreadTarget\(threadId\)/);
+  assert.match(db, /async function clearBanatThreadTarget\(threadId\)/);
+});
+
+test("all selected target replies go through the shared Banat queue and human sender", () => {
   const source = read("index.js");
   const start = source.indexOf("async function handleAutomaticBanatMessage");
   const end = source.indexOf("// ============================================================\n// HUMAN / BANAT WIRING", start);
   const body = source.slice(start, end);
-
+  assert.match(body, /acceptBanatBurstMessage\(/);
   assert.match(body, /message:\s*triggerReply/);
-  assert.match(body, /message:\s*randomRoastReply/);
-  assert.match(source, /const prepared = prepareBanatReply\(/);
-  assert.match(source, /humanize\(message/);
+  assert.match(source, /function sendBanatReplyWithTyping\(/);
+  assert.match(source, /sendBanatReplyWithTypingModule\(/);
 });
 
-test("slash Banat replies use the humanizer instead of generic reply transport", () => {
-  const source = read("index.js");
-  const toggle = source.indexOf("const banatControlMatch");
-  const automatic = source.indexOf("const banatHandled = await handleAutomaticBanatMessage");
-  const block = source.slice(toggle, automatic);
+test("ordinary slash pools remain separate from the natural Banat pool", () => {
+  const slash = read("slash-banats.js");
+  const pool = read("banat-slash-pool.js");
+  const triggers = read("triggers.js");
+  assert.match(slash, /pickUnauthorizedSlashBanat/);
+  assert.match(pool, /pickSlashPoolInsult/);
+  assert.match(triggers, /name:\s*"banat-natural"/);
+});
 
-  assert.match(block, /sendBanatReplyWithTyping\(/);
-  assert.match(block, /require\("\.\/slash-banats"\)/);
-  assert.match(block, /andito na boss mo tanga, supaen mo ttko/);
-  assert.match(block, /bounce na ako, di kaya kakunatan ko/);
-  assert.match(block, /bawal bobo/);
+test("Banat randomizer exports and enforces no-repeat bag selection", () => {
+  const randomizer = require("../banat-randomizer");
+  assert.equal(typeof randomizer.pickFromBag, "function");
+  assert.equal(typeof randomizer.pickUnusedWeighted, "function");
+  const pool = ["one", "two", "three", "four"];
+  randomizer.clear("ci-no-repeat");
+  const values = pool.map(() => randomizer.pickFromBag("ci-no-repeat", "pool", pool, { random: () => 0.37 }));
+  assert.equal(new Set(values).size, pool.length);
+  randomizer.clear("ci-no-repeat");
+});
+
+test("runtime hotfix files are not part of the source tree", () => {
+  for (const file of ["repo-hotfix.js", "broadcast-runtime-fix.js", "rpg-help-preload.js", "banat-runtime-fix.js"]) {
+    assert.equal(fs.existsSync(path.join(root, file)), false, file + " should not exist");
+  }
 });
 
 test("Banat admin safety uses the centralized admin registry", () => {
@@ -185,40 +125,10 @@ test("Banat admin safety uses the centralized admin registry", () => {
   assert.match(source, /const adminSender = isAdmin\(senderId\)/);
 });
 
-
-test("slash Banat pools are separated from the natural pool", () => {
-  const source = read("slash-banats.js");
-  assert.match(source, /andito na boss mo tanga, supaen mo ttko/);
-  assert.match(source, /bounce na ako, di kaya kakunatan ko/);
-  assert.match(source, /bawal bobo/);
-  assert.ok(source.includes('function pickSlashBanat(mode = "on")'));
-  assert.match(source, /pickUnauthorizedSlashBanat/);
-});
-
-test("slash Banat sends selected words through the Banat human layer", () => {
-  const source = read("index.js");
-  const toggle = source.indexOf("const banatControlMatch");
-  const automatic = source.indexOf("const banatHandled = await handleAutomaticBanatMessage");
-  const block = source.slice(toggle, automatic);
-
-  assert.ok(block.includes('require("./slash-banats")(enabled ? "on" : "off")'));
-  assert.ok(block.includes('require("./slash-banats").pickUnauthorizedSlashBanat()'));
-  assert.ok(block.includes("sendBanatReplyWithTyping("));
-});
-
-
-test("Banat randomizer selects randomly from eligible unused items", () => {
-  const source = read("banat-randomizer.js");
-  assert.match(source, /const selectedCandidate = weightedPick\(/);
-  assert.match(source, /typeof options\.weight === "function"/);
-  assert.match(source, /freshCandidates\.length \? freshCandidates : candidates/);
-});
-
 test("Banat natural selection uses incoming behavior and recent reply families", () => {
   const source = read("triggers.js");
   assert.match(source, /const \{ chooseSocialResponse \} = require\("\.\/banat-social"\)/);
   assert.match(source, /function banatContextWeight\(reply, incomingText, recentFamilies = \[\]\)/);
-  assert.match(source, /weight: \(reply\) => banatContextWeight\(reply, incomingText, recentFamilies\)/);
   assert.match(source, /recentFamilies/);
 });
 

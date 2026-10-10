@@ -58,14 +58,14 @@ test("startup does not mutate source or patch the Node module loader", () => {
   const packageJson = read("package.json");
   const index = read("index.js");
 
-  assert.match(packageJson, /"start": "node bootstrap\\.js"/);
+  assert.match(packageJson, /"start": "node bootstrap\.js"/);
   assert.doesNotMatch(packageJson, /repo-hotfix|rpg-help-preload|broadcast-runtime-fix/);
   assert.doesNotMatch(packageJson, /postinstall.*repo-hotfix/);
 
-  assert.match(index, /assertTrafficGovernorApi\\(api, "MESSAGE ROUTER"\\)/);
-  assert.match(index, /function getBroadcastImageAttachment\\(event\\)/);
-  assert.match(index, /AbortSignal\\.timeout\\(30_000\\)/);
-  assert.match(index, /getRandomRoastReply\\(threadID, body, senderId\\)/);
+  assert.match(index, /assertTrafficGovernorApi\(api, "MESSAGE ROUTER"\)/);
+  assert.match(index, /function getBroadcastImageAttachment\(event\)/);
+  assert.match(index, /AbortSignal\.timeout\(30_000\)/);
+  assert.match(index, /getRandomRoastReply\(\s*threadID,\s*body,\s*senderId\s*\)/);
 });
 
 test("broadcast uses the requested speech prefix", () => {
