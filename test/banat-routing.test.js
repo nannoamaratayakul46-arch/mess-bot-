@@ -71,6 +71,16 @@ test("Banat turn timeout is cleared when the send settles first", () => {
   assert.match(body, /finally \{\s*if \(turnTimeout\) clearTimeout\(turnTimeout\)/);
 });
 
+test("SetNN defers members who have not spoken in the group and preserves them for retry", () => {
+  const source = read("index.js");
+  assert.match(source, /requiresPriorThreadMessage/);
+  assert.match(source, /at least one message in the thread/i);
+  assert.match(source, /deferredTargets\.push\(participantID\)/);
+  assert.match(source, /!deferredTargets\.length/);
+  assert.match(source, /deferredTargets,\s*0,\s*null/);
+  assert.match(source, /must send a message in this GC first/);
+});
+
 test("dashboard target cleanup helper is imported before target-save route uses it", () => {
   const source = read("index.js");
   const triggerImportsStart = source.indexOf("// TRIGGERS");

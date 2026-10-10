@@ -6026,6 +6026,9 @@ async function handleMessage(
       let changed = 0;
       let alreadyCorrect = 0;
       let failed = 0;
+      // Messenger cannot assign a nickname until the member has sent at
+      // least one message in this thread. Keep those IDs for a later retry.
+      let deferredTargets = [];
       let rateBlocked = false;
 
       let cancelled = false;
@@ -6124,8 +6127,6 @@ async function handleMessage(
             null
           );
         } catch (error) {
-          failed++;
-
           const errorCode = Number(
             error?.error ??
               error?.code ??
@@ -6135,6 +6136,7 @@ async function handleMessage(
           );
 
           const errorText = [
+            error?.error,
             error?.errorSummary,
             error?.errorDescription?.__html,
             error?.errorDescription,
@@ -6148,6 +6150,20 @@ async function handleMessage(
             /temporarily blocked|going too fast|rate.?limit/i.test(
               errorText
             );
+          const requiresPriorThreadMessage =
+            /thread that doesn't exist[\\s\\S]*at least one message in the thread/i.test(
+              errorText
+            );
+
+          if (requiresPriorThreadMessage) {
+            deferredTargets.push(participantID);
+            console.warn(
+              "[NICK GUARD] Deferring " + participantID +
+                " until they send a message in this GC; Messenger requires prior thread activity for nickname changes."
+            );
+          } else {
+            failed++;
+          }
 
           console.error(
             "[NICK GUARD] Failed to set nickname for " +
@@ -6240,7 +6256,8 @@ async function handleMessage(
 
       if (
         !rateBlocked &&
-        next >= targets.length
+        next >= targets.length &&
+        !deferredTargets.length
       ) {
         await setMassNicknameRun(
           threadID,
@@ -6253,6 +6270,18 @@ async function handleMessage(
 
         await clearMassNicknameRun(
           threadID
+        );
+      } else if (!rateBlocked && deferredTargets.length) {
+        // Keep only members who need to speak in the GC before Messenger
+        // will accept their nickname mutation. A repeated .setnn resumes
+        // this short pending list instead of silently losing these members.
+        await setMassNicknameRun(
+          threadID,
+          senderId,
+          requestedNickname,
+          deferredTargets,
+          0,
+          null
         );
       }
 
@@ -6296,6 +6325,11 @@ async function handleMessage(
               ? " · " +
                 failed +
                 " failed"
+              : "") +
+            (deferredTargets.length
+              ? " · " + deferredTargets.length +
+                " deferred: they must send a message in this GC first. Run .setnn " +
+                requestedNickname + " again after they speak"
               : "") +
             ".",
         threadID
