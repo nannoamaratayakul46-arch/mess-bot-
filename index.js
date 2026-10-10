@@ -4012,6 +4012,94 @@ function dashboardGetThreadInfo(api, threadID) {
   });
 }
 
+app.get(
+  "/api/dashboard/groups/:thread_id/members",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.params.thread_id || "").trim();
+    if (!threadID || !dashboardKnownGroups.has(threadID)) {
+      return res.status(400).json({ ok: false, error: "Choose a group in the refreshed group list." });
+    }
+    if (!activeMessengerApi || activeListenerGeneration <= 0) {
+      return res.status(409).json({ ok: false, error: "Messenger is not connected." });
+    }
+    try {
+      const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
+      const ids = Array.isArray(info.participantIDs) ? info.participantIDs.map(String) : [];
+      const rawInfo = info.userInfo || info.participants || {};
+      const infoRows = Array.isArray(rawInfo)
+        ? rawInfo
+        : Object.entries(rawInfo).map(([id, value]) => ({ id, ...(value && typeof value === "object" ? value : {}) }));
+      const names = new Map(infoRows.map(user => [
+        String(user.id || user.userID || user.userId || ""),
+        String(user.name || user.fullName || user.firstName || "").trim(),
+      ]));
+      const members = ids
+        .filter(id => id && id !== String(activeMessengerApi.getCurrentUserID?.() || ""))
+        .map(id => ({ user_id: id, name: names.get(id) || ("Messenger user " + id) }));
+      return res.json({ ok: true, thread_id: threadID, members });
+    } catch (error) {
+      console.error("[DASHBOARD] Could not load group members:", error);
+      return res.status(503).json({ ok: false, error: "Could not load this group's members from Messenger." });
+    }
+  }
+);
+
+app.put(
+  "/api/dashboard/groups/:thread_id/target",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.params.thread_id || "").trim();
+    const targetID = String(req.body?.target_user_id || "").trim();
+    if (!threadID || !dashboardKnownGroups.has(threadID)) {
+      return res.status(400).json({ ok: false, error: "Choose a group in the refreshed group list." });
+    }
+    if (!targetID) {
+      return res.status(400).json({ ok: false, error: "Choose a member to target." });
+    }
+    if (!activeMessengerApi || activeListenerGeneration <= 0) {
+      return res.status(409).json({ ok: false, error: "Messenger is not connected." });
+    }
+    try {
+      const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
+      const ids = Array.isArray(info.participantIDs) ? info.participantIDs.map(String) : [];
+      const botID = String(activeMessengerApi.getCurrentUserID?.() || "");
+      if (!ids.includes(targetID) || targetID === botID) {
+        return res.status(400).json({ ok: false, error: "Target must be a member of this group, not the bot." });
+      }
+      const saved = await db.setBanatThreadTarget(threadID, targetID, "dashboard-admin");
+      setBanatDirectedTarget(threadID, targetID, "dashboard-admin", { persistent: true });
+      clearBanatConversationTarget(threadID);
+      pushDashboardEvent("banat-target", "Dashboard target updated for group " + threadID + ".");
+      return res.json({ ok: true, thread_id: threadID, target_user_id: saved.target_user_id, target_set_at: new Date(Number(saved.updated_at)).toISOString() });
+    } catch (error) {
+      console.error("[DASHBOARD] Could not save Banat target:", error);
+      return res.status(503).json({ ok: false, error: "Could not save this group's Banat target." });
+    }
+  }
+);
+
+app.delete(
+  "/api/dashboard/groups/:thread_id/target",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.params.thread_id || "").trim();
+    if (!threadID || !dashboardKnownGroups.has(threadID)) {
+      return res.status(400).json({ ok: false, error: "Choose a group in the refreshed group list." });
+    }
+    try {
+      await db.clearBanatThreadTarget(threadID);
+      clearBanatDirectedTarget(threadID);
+      clearBanatConversationTarget(threadID);
+      pushDashboardEvent("banat-target", "Dashboard target cleared for group " + threadID + ".");
+      return res.json({ ok: true, thread_id: threadID, target_user_id: null });
+    } catch (error) {
+      console.error("[DASHBOARD] Could not clear Banat target:", error);
+      return res.status(503).json({ ok: false, error: "Could not clear this group's Banat target." });
+    }
+  }
+);
+
 function dashboardGetThreadList(api) {
   return new Promise((resolve, reject) => {
     let settled = false;
@@ -4115,12 +4203,15 @@ app.get(
       dashboardKnownGroups.set(group.thread_id, group);
       try {
         const settings = await db.getThreadSettings(group.thread_id);
+        const target = await db.getBanatThreadTarget(group.thread_id);
         groups.push({
           ...group,
           bot_enabled: settings.bot_enabled !== false,
           roast_enabled: settings.roast_enabled === true,
           slash_pool_enabled: settings.slash_pool_enabled === true,
           fun_enabled: settings.fun_enabled === true,
+          target_user_id: target?.target_user_id || null,
+          target_set_at: target?.updated_at ? new Date(Number(target.updated_at)).toISOString() : null,
         });
       } catch (error) {
         console.warn("[DASHBOARD] Could not read settings for group " + group.thread_id + ":", error?.message || error);
