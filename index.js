@@ -1434,8 +1434,8 @@ async function trafficProcessQueue() {
               trafficTotalFailed++;
               const rawCode = String(error?.code || error?.name || "SEND_FAILED").slice(0, 80);
               const rawDetail = String(error?.message || "Messenger send failed.")
-                .replace(/(["']?(?:password|passwd|cookie|appstate|access[_-]?token|refresh[_-]?token|authorization)["']?\\s*[:=]\\s*)[^,;\\s}]+/gi, "$1[redacted]")
-                .replace(/\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b/gi, "[redacted email]")
+                .replace(/(["']?(?:password|passwd|cookie|appstate|access[_-]?token|refresh[_-]?token|authorization)["']?\s*[:=]\s*)[^,;\s}]+/gi, "$1[redacted]")
+                .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted email]")
                 .slice(0, 240);
               trafficLastFailure = {
                 code: rawCode,
@@ -6191,7 +6191,7 @@ async function handleMessage(
               errorText
             );
           const requiresPriorThreadMessage =
-            /thread that doesn't exist[\\s\\S]*at least one message in the thread/i.test(
+            /thread that doesn't exist[\s\\S]*at least one message in the thread/i.test(
               errorText
             );
 
@@ -6594,7 +6594,7 @@ async function handleMessage(
   // ==========================================================
 
   const adminControlAttempt =
-    /^(?:!owner(?:\\s+(?:bot|automated|economy|rpg|music|moderation|system))?|!pause(?:\\s+status)?|!resume|!(?:bot(?:\\s+(?:off|on|status))?|shutdown|startup)|!watchdog(?:\\s+(?:status|restart))?|!cleanup(?:\\s+(?:status|disk|run|repair|optimize|full))?|!gcstatus|!broadcast(?:\\s|$)|!game(?:\\s+(?:on|off|status))?|!mod(?:\\s|$)|!automod(?:\\s|$)|!economy(?:\\s|$)|!debug(?:\\s|$)|!lucien(?:\\s|$)|!warn(?:\\s|$)|!ban(?:\\s|$)|!kick(?:\\s|$)|!unban(?:\\s|$)|!modlog(?:\\s|$)|!banat(?:\\s|$)|!music\\s+(?:pause|resume|play))$/i.test(originalText);  if (
+    /^(?:!owner(?:\s+(?:bot|automated|economy|rpg|music|moderation|system))?|!pause(?:\s+status)?|!resume|!(?:bot(?:\s+(?:off|on|status))?|shutdown|startup)|!watchdog(?:\s+(?:status|restart))?|!cleanup(?:\s+(?:status|disk|run|repair|optimize|full))?|!gcstatus|!broadcast(?:\s|$)|!game(?:\s+(?:on|off|status))?|!mod(?:\s|$)|!automod(?:\s|$)|!economy(?:\s|$)|!debug(?:\s|$)|!lucien(?:\s|$)|!warn(?:\s|$)|!ban(?:\s|$)|!kick(?:\s|$)|!unban(?:\s|$)|!modlog(?:\s|$)|!banat(?:\s|$)|!music\s+(?:pause|resume|play))$/i.test(originalText);  if (
     adminControlAttempt &&
     !senderIsAdmin
   ) {
@@ -8864,7 +8864,7 @@ async function handleMessage(
       .join("|");
 
   const gameCommandPattern = new RegExp(
-    "^!(" + registeredGameCommandsPattern + ")(?:\\s+(.*))?$",
+    "^!(" + registeredGameCommandsPattern + ")(?:\s+(.*))?$",
     "i"
   );
 
