@@ -51,6 +51,16 @@ test("forced dashboard mode chooses Jaiden replies and substitutes target name",
   assert.match(body, /reply\.replace\(\/\\bjaiden\\b\/gi, targetName\)/);
 });
 
+test("dashboard Jaiden reply does not hang when target-name lookup stalls", () => {
+  const source = read("index.js");
+  const start = source.indexOf("async function handleAutomaticBanatMessage");
+  const end = source.indexOf("// ============================================================\n// HUMAN / BANAT WIRING", start);
+  const body = source.slice(start, end);
+  assert.match(body, /getUserInfo timed out after 2500ms/);
+  assert.match(body, /clearTimeout\(timeout\)/);
+  assert.match(body, /Could not resolve dashboard target name/);
+});
+
 test("dashboard target API validates group membership and persists the target", () => {
   const source = read("index.js");
   const start = source.indexOf('app.put(\n  "/api/dashboard/groups/:thread_id/target"');
