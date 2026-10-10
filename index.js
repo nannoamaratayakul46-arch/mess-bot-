@@ -10295,8 +10295,10 @@ async function handleAutomaticBanatMessage({
   // Read from the database so the target survives process restarts and does
   // not depend on someone opening the dashboard after a restart.
   let savedBanatTarget = null;
+  let targetLookupSucceeded = false;
   try {
     savedBanatTarget = await db.getBanatThreadTarget(threadID);
+    targetLookupSucceeded = true;
   } catch (error) {
     console.warn("[BANAT] Could not load saved dashboard target:", error?.message || error);
   }
@@ -10308,7 +10310,7 @@ async function handleAutomaticBanatMessage({
       savedBanatTarget.set_by || "dashboard",
       { persistent: true }
     );
-  } else {
+  } else if (targetLookupSucceeded) {
     clearBanatDirectedTarget(threadId);
   }
 
@@ -10334,6 +10336,9 @@ async function handleAutomaticBanatMessage({
       target.reason = "dashboard-target-wait";
       target.canSwitchTarget = false;
     }
+  } else if (!targetLookupSucceeded) {
+    // If the database is temporarily unavailable, don't erase an in-memory
+    // target. Normal scoring remains in place until the saved target can load.
   }
 
   console.log(
