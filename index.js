@@ -5522,6 +5522,20 @@ async function handleMessage(
   const senderIsAdmin =
     isAdmin(senderId);
 
+  // A disabled group ignores normal commands and automatic replies.
+  // Keep owner SetNN and explicit bot/pause controls available.
+  try {
+    const threadSettings = await db.getThreadSettings(threadId);
+    const allowedWhileGroupOff =
+      /^\.setnn(?:\s|$)/i.test(originalText) ||
+      /^!(?:pause(?:\s+status)?|resume|bot(?:\s+(?:on|off|status))?|shutdown|startup)$/i.test(originalText);
+    if (threadSettings.bot_enabled === false && !allowedWhileGroupOff) {
+      return;
+    }
+  } catch (error) {
+    console.error("[DASHBOARD] Could not read group bot setting:", error);
+  }
+
   // ==========================================================
   // MASS NICKNAME GUARD — OWNER ONLY
   // .setnn <nickname> -> set the same nickname for every member
@@ -7295,17 +7309,6 @@ async function handleMessage(
   // Banat must run while the bot is ON as well as while normal
   // commands are paused/shut down. Never run it for commands.
   // ==========================================================
-
-  // A group can be paused independently from the global bot state.
-  // Dashboard SetNN and the existing owner/admin control commands are handled above.
-  try {
-    const threadSettings = await db.getThreadSettings(threadId);
-    if (threadSettings.bot_enabled === false) {
-      return;
-    }
-  } catch (error) {
-    console.error("[DASHBOARD] Could not read group bot setting:", error);
-  }
 
   if (
     !originalText.startsWith("!")
