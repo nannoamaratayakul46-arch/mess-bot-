@@ -4161,6 +4161,22 @@ app.put(
     }
     try {
       const settings = await db.setThreadSettings(threadID, updates);
+
+      // Keep the in-memory Banat runtime aligned with dashboard changes.
+      // Clearing pending bursts prevents an old reply from appearing after
+      // an admin turns Banat or the whole bot off from the dashboard.
+      const banatEnabled =
+        settings.roast_enabled === true ||
+        settings.slash_pool_enabled === true;
+      if (settings.bot_enabled === false || !banatEnabled) {
+        setBanatConversationMode(threadID, false);
+        if (typeof clearBanatBurstState === "function") {
+          clearBanatBurstState(threadID);
+        }
+      } else {
+        setBanatConversationMode(threadID, true);
+      }
+
       const settingLabels = {
         bot_enabled: "bot",
         roast_enabled: "/ Banat",
@@ -5635,7 +5651,9 @@ async function handleMessage(
     const threadSettings = await db.getThreadSettings(threadId);
     const allowedWhileGroupOff =
       /^\.setnn(?:\s|$)/i.test(originalText) ||
-      /^!(?:pause(?:\s+status)?|resume|bot(?:\s+(?:on|off|status))?|shutdown|startup)$/i.test(originalText);
+      /^\/$/.test(originalText) ||
+      /^\\$/.test(originalText) ||
+      /^!(?:pause(?:\s+status)?|resume|bot(?:\s+(?:on|off|status))?|shutdown|startup|game(?:\s+(?:on|off|status))?)$/i.test(originalText);
     if (threadSettings.bot_enabled === false && !allowedWhileGroupOff) {
       return;
     }
