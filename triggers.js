@@ -80,6 +80,29 @@ const groups = [
       "moka ka beetle juice",
       "si jaiden spotted namamakla",
       "yung tipong nag work out ka para lumaki katawan, eh kaso naging kamukha mo si jaiden",
+      "jaiden pumasok sa usapan, bumaba agad yung quality",
+      "jaiden, ikaw ba yung loading screen na hindi matapos-tapos?",
+      "moka ka electric fan, puro hangin walang ambag",
+      "jaiden spotted, ingay ang ambag pero wala yung point",
+      "bro talks like may premium subscription sa kalat",
+      "jaiden, pati autocorrect sumusuko na sa argumento mo",
+      "may sinabi ka na naman, pwede na ulit mag-mute",
+      "jaiden ikaw yung plot twist na sana tinanggal sa script",
+      "moka ka sirang alarm, maingay pero walang silbi sa oras",
+      "jaiden, ang confidence mo pang finals pero yung sagot pang practice",
+      "puro ka side quest, wala ka namang main mission",
+      "jaiden nag-loading pa rin yung punchline mo, kanina pa kami naghihintay",
+      "moka ka low-battery warning, puro ka paalala walang gawa",
+      "may ambag ka ba o nag-check in ka lang sa chat?",
+      "jaiden, parang group project ka—present sa pangalan, missing sa gawa",
+      "bro entered the chat just to lower the frame rate",
+      "moka ka calculator na walang equals button, paikot-ikot lang",
+      "jaiden, kahit yung typing indicator mo mas may sense kaysa sa message",
+      "ang tapang ng delivery, nasaan yung laman?",
+      "moka ka expired voucher, mukhang may value pero wala nang silbi",
+      "jaiden, ikaw yung ad na hindi ma-skip sa usapan",
+      "pindot ka nang pindot ng send, pero wala pa ring point",
+      "moka ka sirang GPS, lakas mag-direksyon pero ligaw naman",
     ],
   },
 
@@ -2135,6 +2158,12 @@ async function getTriggerReply(
         if (replyTargetName) {
           reply = replyTargetName + " na naman";
         }
+      }
+
+      // Keep every original pool entry intact, but personalize any entry that
+      // mentions Jaiden when a dashboard-selected target name is supplied.
+      if (replyTargetName) {
+        reply = reply.replace(/\\bjaiden\\b/gi, replyTargetName);
       }
 
       // Groq adds variation to explicit trigger-word replies.
