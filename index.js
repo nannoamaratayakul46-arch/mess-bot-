@@ -4168,12 +4168,18 @@ app.put(
       const banatEnabled =
         settings.roast_enabled === true ||
         settings.slash_pool_enabled === true;
+      const banatModeWasDisabled =
+        updates.roast_enabled === false ||
+        updates.slash_pool_enabled === false;
       if (settings.bot_enabled === false || !banatEnabled) {
         setBanatConversationMode(threadID, false);
         if (typeof clearBanatBurstState === "function") {
           clearBanatBurstState(threadID);
         }
       } else {
+        if (banatModeWasDisabled && typeof clearBanatBurstState === "function") {
+          clearBanatBurstState(threadID);
+        }
         setBanatConversationMode(threadID, true);
       }
 
@@ -6791,12 +6797,16 @@ async function handleMessage(
       const enabled = !currentlyEnabled;
 
       await db.setRoastEnabled(threadId, enabled);
-      setBanatConversationMode(threadId, enabled, senderId);
+      const settings = await db.getThreadSettings(threadId);
+      const anyBanatEnabled =
+        settings.bot_enabled !== false &&
+        (settings.roast_enabled === true || settings.slash_pool_enabled === true);
+      setBanatConversationMode(threadId, anyBanatEnabled, senderId);
 
-      // Turning Banat off must also kill any delayed/randomized burst that
-      // was already queued before the toggle. Otherwise an old reply can
-      // fire after / has disabled the mode and make the toggle look broken.
-      if (!enabled && typeof clearBanatBurstState === "function") {
+      // A queued reply from the mode being switched off must not leak into
+      // the other mode. The next incoming message will use whichever mode
+      // remains enabled.
+      if ((!enabled || settings.bot_enabled === false) && typeof clearBanatBurstState === "function") {
         clearBanatBurstState(threadId);
       }
 
@@ -6879,19 +6889,17 @@ async function handleMessage(
         slash_pool_enabled: enabled,
       });
 
-      if (
-        !enabled &&
-        settings.roast_enabled !== true &&
-        typeof clearBanatBurstState === "function"
-      ) {
+      const anyBanatEnabled =
+        settings.bot_enabled !== false &&
+        (enabled || settings.roast_enabled === true);
+
+      // Cancel pending replies from the backslash pool as soon as it is
+      // disabled, even if normal / Banat remains enabled.
+      if ((!enabled || settings.bot_enabled === false) && typeof clearBanatBurstState === "function") {
         clearBanatBurstState(threadId);
       }
 
-      setBanatConversationMode(
-        threadId,
-        enabled || settings.roast_enabled === true,
-        senderId
-      );
+      setBanatConversationMode(threadId, anyBanatEnabled, senderId);
 
       sendBanatReplyWithTyping(
         api,
