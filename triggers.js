@@ -1,6 +1,6 @@
 const { generateTriggerReply } = require("./ai/provider");
 const { isPrimaryUser } = require("./ai/access");
-const { rememberBanatReply, pickBanatReply } = require("./banat-memory");
+const { rememberBanatReply, pickBanatReply, isRecent } = require("./banat-memory");
 const { pickFromBag, pickTriggerVariant } = require("./banat-randomizer");
 const { chooseSocialResponse } = require("./banat-social");
 const { isAdmin } = require("./permissions");
@@ -2981,10 +2981,15 @@ async function getBanatConversationReply(
       ...momentumFallbacks,
     ];
 
+    const recentDefenseReplies =
+      banatContextState.get(String(threadId || "unknown"))?.recentReplies || [];
     const defenseFallback =
-      fallbackPool[
-        Math.floor(Math.random() * fallbackPool.length)
-      ];
+      pickFromBag(
+        String(threadId || "unknown"),
+        "banat-defense",
+        fallbackPool,
+        { avoidValues: recentDefenseReplies }
+      ) || fallback;
 
     try {
       const aiDefense = await generateTriggerReply({
@@ -3008,7 +3013,12 @@ async function getBanatConversationReply(
       });
 
       if (typeof aiDefense === "string" && aiDefense.trim()) {
-        return aiDefense.trim().slice(0, 1200);
+        const candidate = aiDefense.trim().slice(0, 1200);
+        const selected = isRecent(threadId, candidate)
+          ? defenseFallback
+          : candidate;
+        rememberBanatReply(String(threadId || "unknown"), selected, senderId);
+        return selected;
       }
     } catch (error) {
       console.warn(
@@ -3017,6 +3027,7 @@ async function getBanatConversationReply(
       );
     }
 
+    rememberBanatReply(String(threadId || "unknown"), defenseFallback, senderId);
     return defenseFallback;
   }
 
@@ -3041,12 +3052,16 @@ async function getBanatConversationReply(
     });
 
     if (typeof aiReply === "string" && aiReply.trim()) {
-      reply = aiReply.trim().slice(0, 1200);
+      const candidate = aiReply.trim().slice(0, 1200);
+      const styledCandidate = enforceBanatAddressStyle(candidate, senderId);
+      const addressedCandidate = replyTargetName
+        ? styledCandidate.replace(/\bjaiden\b/gi, replyTargetName)
+        : styledCandidate;
 
-      reply = enforceBanatAddressStyle(reply, senderId);
-
-      if (replyTargetName) {
-        reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
+      // The model can ignore context and repeat itself. Keep the pool-picked
+      // fallback when the generated line matches recent text or its opening.
+      if (!isRecent(threadId, addressedCandidate)) {
+        reply = addressedCandidate;
       }
     }
   } catch (error) {
