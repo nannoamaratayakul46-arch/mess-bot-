@@ -89,28 +89,14 @@ function pickSlashBanat(mode = "on", threadId = "global", senderId = "unknown") 
   return pickWithoutRepeating(pool, key);
 }
 
-const unauthorizedUsed = new Map();
-const UNAUTHORIZED_HISTORY_LIMIT = 500;
-
 function pickUnauthorizedSlashBanat(threadId = "global", senderId = "unknown") {
-  const key = String(threadId) + ":" + String(senderId);
-  let used = unauthorizedUsed.get(key);
-  if (!used) used = new Set();
+  const key = [
+    "unauthorized",
+    String(threadId || "global"),
+    String(senderId || "unknown")
+  ].join(":");
 
-  let candidates = UNAUTHORIZED_REPLIES.filter((line) => !used.has(line));
-  if (!candidates.length) {
-    used.clear();
-    candidates = UNAUTHORIZED_REPLIES.slice();
-  }
-
-  const selected = pick(candidates);
-  used.add(selected);
-  unauthorizedUsed.delete(key);
-  unauthorizedUsed.set(key, used);
-  while (unauthorizedUsed.size > UNAUTHORIZED_HISTORY_LIMIT) {
-    unauthorizedUsed.delete(unauthorizedUsed.keys().next().value);
-  }
-  return selected;
+  return pickWithoutRepeating(UNAUTHORIZED_REPLIES, key);
 }
 
 pickSlashBanat.onReplies = ON_REPLIES.slice();
