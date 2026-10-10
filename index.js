@@ -4061,7 +4061,7 @@ app.get(
           : Array.isArray(thread.participants)
             ? thread.participants
             : [];
-        const isGroup = thread.threadType === 2 ||
+        const isGroup = Number(thread.threadType) === 2 ||
           String(thread.threadType || "").toUpperCase() === "GROUP" ||
           participants.length >= 3;
         if (!isGroup) continue;
