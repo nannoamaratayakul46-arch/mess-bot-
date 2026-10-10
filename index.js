@@ -10352,7 +10352,64 @@ async function handleAutomaticBanatMessage({
   try {
     // The owner is protected from roast/trigger generation. The existing
     // admin-safe Banat pool below provides the reaction instead.
-    const triggerReply = null;
+    let triggerReply = null;
+    const dashboardTargetId = String(savedBanatTarget?.target_user_id || "").trim();
+    const senderIsDashboardTarget =
+      Boolean(dashboardTargetId) &&
+      String(senderId || "").trim() === dashboardTargetId;
+
+    // The Jaiden trigger pool is only used for the manually selected target,
+    // and only in normal / Banat mode. The harsher backslash pool keeps priority.
+    if (
+      roastEnabled &&
+      !slashPoolEnabled &&
+      senderIsDashboardTarget &&
+      /\\bjaiden\\b/i.test(String(body || ""))
+    ) {
+      let dashboardTargetName = "";
+
+      if (typeof api.getUserInfo === "function") {
+        try {
+          const userInfo = await new Promise((resolve, reject) => {
+            let settled = false;
+            const done = (error, info) => {
+              if (settled) return;
+              settled = true;
+              if (error) reject(error);
+              else resolve(info || {});
+            };
+
+            try {
+              const result = api.getUserInfo(dashboardTargetId, done);
+              if (result && typeof result.then === "function") {
+                result.then((info) => done(null, info)).catch(done);
+              }
+            } catch (error) {
+              done(error);
+            }
+          });
+
+          const targetInfo = userInfo?.[dashboardTargetId] || {};
+          dashboardTargetName = String(
+            targetInfo.name || targetInfo.fullName || ""
+          ).trim();
+        } catch (error) {
+          console.warn(
+            "[TRIGGERS] Could not resolve dashboard target name:",
+            error?.message || error
+          );
+        }
+      }
+
+      triggerReply = await getTriggerReply(
+        body,
+        senderId,
+        threadID,
+        api,
+        event,
+        { targetName: dashboardTargetName }
+      );
+    }
 
     // Explicit triggers remain opt-in for non-admin senders.
     if (triggerReply) {
