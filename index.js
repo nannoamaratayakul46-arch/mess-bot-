@@ -10364,7 +10364,7 @@ async function handleAutomaticBanatMessage({
       roastEnabled &&
       !slashPoolEnabled &&
       senderIsDashboardTarget &&
-      /\\bjaiden\\b/i.test(String(body || ""))
+      /\bjaiden\b/i.test(String(body || ""))
     ) {
       let dashboardTargetName = "";
 
