@@ -852,6 +852,28 @@ let trafficLastSendAt = 0;
 let trafficTotalSent = 0;
 let trafficTotalFailed = 0;
 let trafficLastFailure = null;
+const trafficDeliveryHistory = [];
+const TRAFFIC_DELIVERY_HISTORY_LIMIT = 5000;
+const TRAFFIC_DELIVERY_RETENTION_MS = 24 * 60 * 60 * 1000;
+
+function trafficRecordDeliveryOutcome(outcome, job, code = null) {
+  const now = Date.now();
+  trafficDeliveryHistory.push({
+    at: new Date(now).toISOString(),
+    outcome,
+    code: code ? String(code).slice(0, 80) : null,
+    elapsed_ms: Math.max(0, now - Number(job?.enqueuedAt || now)),
+    attachment: Boolean(job?.message && typeof job.message === "object" && job.message.attachment),
+  });
+
+  const cutoff = now - TRAFFIC_DELIVERY_RETENTION_MS;
+  while (trafficDeliveryHistory.length && Date.parse(trafficDeliveryHistory[0].at) < cutoff) {
+    trafficDeliveryHistory.shift();
+  }
+  while (trafficDeliveryHistory.length > TRAFFIC_DELIVERY_HISTORY_LIMIT) {
+    trafficDeliveryHistory.shift();
+  }
+}
 let trafficTotalDelayed = 0;
 let trafficTotalSuppressed = 0;
 let trafficTotalRejected = 0;
@@ -1430,9 +1452,11 @@ async function trafficProcessQueue() {
                 job.threadID,
                 decision.fingerprint
               );
+              trafficRecordDeliveryOutcome("sent", job);
             } else {
               trafficTotalFailed++;
               const rawCode = String(error?.code || error?.name || "SEND_FAILED").slice(0, 80);
+              trafficRecordDeliveryOutcome("failed", job, rawCode);
               const rawDetail = String(error?.message || "Messenger send failed.")
                 .replace(/(["']?(?:password|passwd|cookie|appstate|access[_-]?token|refresh[_-]?token|authorization)["']?\s*[:=]\s*)[^,;\s}]+/gi, "$1[redacted]")
                 .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted email]")
@@ -3893,6 +3917,90 @@ function pushDashboardEvent(type, message, meta = {}) {
 
   return event;
 }
+
+
+function buildTrafficDeliveryAnalytics(hours = 24) {
+  const now = Date.now();
+  const cutoff = now - hours * 60 * 60 * 1000;
+  const recent = trafficDeliveryHistory.filter((event) => Date.parse(event.at) >= cutoff);
+  const sent = recent.filter((event) => event.outcome === "sent");
+  const failed = recent.filter((event) => event.outcome === "failed");
+  const total = sent.length + failed.length;
+  const avgLatencyMs = total
+    ? Math.round(recent.reduce((sum, event) => sum + event.elapsed_ms, 0) / total)
+    : 0;
+  const failureCodes = {};
+  for (const event of failed) {
+    const code = event.code || "SEND_FAILED";
+    failureCodes[code] = (failureCodes[code] || 0) + 1;
+  }
+
+  const currentHour = Math.floor(now / 3_600_000) * 3_600_000;
+  const hourly = Array.from({ length: hours }, (_, index) => {
+    const start = currentHour - (hours - index - 1) * 3_600_000;
+    return {
+      hour: new Date(start).toISOString(),
+      sent: 0,
+      failed: 0,
+      avgLatencyMs: 0,
+      _latencyTotal: 0,
+      _latencyCount: 0,
+    };
+  });
+  const bucketByHour = new Map(hourly.map((bucket) => [Date.parse(bucket.hour), bucket]));
+  for (const event of recent) {
+    const bucket = bucketByHour.get(Math.floor(Date.parse(event.at) / 3_600_000) * 3_600_000);
+    if (!bucket) continue;
+    if (event.outcome === "sent") bucket.sent++;
+    else if (event.outcome === "failed") bucket.failed++;
+    bucket._latencyTotal += event.elapsed_ms;
+    bucket._latencyCount++;
+  }
+  for (const bucket of hourly) {
+    bucket.avgLatencyMs = bucket._latencyCount
+      ? Math.round(bucket._latencyTotal / bucket._latencyCount)
+      : 0;
+    delete bucket._latencyTotal;
+    delete bucket._latencyCount;
+  }
+
+  const lastFailure = failed.length
+    ? failed.reduce((latest, event) => Date.parse(event.at) > Date.parse(latest.at) ? event : latest)
+    : null;
+  return {
+    generated_at: new Date(now).toISOString(),
+    hours,
+    retention_hours: 24,
+    retention_limit: TRAFFIC_DELIVERY_HISTORY_LIMIT,
+    sample_count: recent.length,
+    sent: sent.length,
+    failed: failed.length,
+    success_rate: total ? Math.round((sent.length / total) * 1000) / 10 : null,
+    avg_latency_ms: avgLatencyMs,
+    lifetime: { sent: trafficTotalSent, failed: trafficTotalFailed },
+    failure_codes: failureCodes,
+    last_failure: lastFailure ? {
+      at: lastFailure.at,
+      code: lastFailure.code || "SEND_FAILED",
+      elapsed_ms: lastFailure.elapsed_ms,
+      attachment: lastFailure.attachment,
+    } : null,
+    hourly,
+    note: "Delivery history is in process memory, limited to 24 hours and 5,000 outcomes; it resets when the process restarts.",
+  };
+}
+
+app.get(
+  "/api/dashboard/delivery-analytics",
+  requireDashboardAccess,
+  (req, res) => {
+    const hours = Math.min(
+      24,
+      Math.max(1, Number.parseInt(String(req.query.hours || "24"), 10) || 24)
+    );
+    return res.json({ ok: true, analytics: buildTrafficDeliveryAnalytics(hours) });
+  }
+);
 
 app.get(
   "/api/dashboard/events",
