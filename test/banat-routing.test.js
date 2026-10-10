@@ -61,6 +61,16 @@ test("dashboard Jaiden reply does not hang when target-name lookup stalls", () =
   assert.match(body, /Could not resolve dashboard target name/);
 });
 
+test("Banat turn timeout is cleared when the send settles first", () => {
+  const source = read("index.js");
+  const start = source.indexOf("function runBanatBurstQueue(");
+  const end = source.indexOf("async function handleAutomaticBanatMessage", start);
+  const body = source.slice(start, end);
+  assert.match(body, /let turnTimeout = null/);
+  assert.match(body, /turnTimeout = setTimeout\(/);
+  assert.match(body, /finally \{\s*if \(turnTimeout\) clearTimeout\(turnTimeout\)/);
+});
+
 test("dashboard target cleanup helper is imported before target-save route uses it", () => {
   const source = read("index.js");
   const triggerImportsStart = source.indexOf("// TRIGGERS");

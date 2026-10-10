@@ -10145,6 +10145,7 @@ async function runBanatBurstQueue(threadID) {
     );
 
     let sent = false;
+    let turnTimeout = null;
 
     try {
       sent = await Promise.race([
@@ -10159,7 +10160,7 @@ async function runBanatBurstQueue(threadID) {
           job.incomingText || ""
         ),
         new Promise((resolve) => {
-          setTimeout(() => {
+          turnTimeout = setTimeout(() => {
             console.error(
               "[BANAT] Turn timed out after " +
                 BANAT_TURN_TIMEOUT_MS +
@@ -10177,6 +10178,8 @@ async function runBanatBurstQueue(threadID) {
         error
       );
       sent = false;
+    } finally {
+      if (turnTimeout) clearTimeout(turnTimeout);
     }
 
     if (sent) {
