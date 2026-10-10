@@ -104,6 +104,107 @@ const groups = [
       "pindot ka nang pindot ng send, pero wala pa ring point",
       "moka ka sirang GPS, lakas mag-direksyon pero ligaw naman",
     ],
+      "jaiden nag-drop ng hot take, kaso malamig pa sa ref",
+      "moka ka electric bill, ang taas ng singil wala namang serbisyo",
+      "jaiden ikaw yung update na puro bug ang dala",
+      "parang printer ka, ang ingay mo pero walang lumalabas na matinong output",
+      "jaiden, nag-open ka ng bibig tapos nag-close yung common sense",
+      "moka ka loading bar na stuck sa 1 percent",
+      "bro nag-type ng paragraph para sabihin na wala siyang point",
+      "jaiden, yung argumento mo parang free trial—bitin at walang kwenta",
+      "moka ka sirang remote, pindot nang pindot walang nangyayari",
+      "jaiden pumasok na naman, nag-timeout yung katahimikan",
+      "parang app ka na laging may update pero walang improvement",
+      "jaiden, ang dami mong tabs bukas pero wala kang conclusion",
+      "moka ka low storage, puro kalat ang laman",
+      "bro nagdala ng resibo pero resibo ng sariling kapalpakan",
+      "jaiden, yung logic mo nag-commute pero hindi nakarating",
+      "moka ka Wi-Fi sa elevator, nawawala pag kailangan",
+      "ang lakas ng intro mo, nasaan yung actual content?",
+      "jaiden, parang trailer ka lang—maingay pero walang full movie",
+      "moka ka keyboard na kulang ang spacebar, dikit-dikit yung nonsense",
+      "bro nag-submit ng opinion na walang supporting documents",
+      "jaiden, ikaw yung notification na walang importanteng laman",
+      "moka ka expired coupon, sayang lang yung pag-click",
+      "parang calculator ka na naka-demo mode, limitado ang sagot",
+      "jaiden, nag-announce ng comeback pero walang umalis na impressed",
+      "moka ka sirang vending machine, pera na nga wala pang product",
+      "bro nagdala ng confidence pero naiwan sa bahay yung facts",
+      "jaiden, yung point mo nag-apply pero hindi natanggap",
+      "moka ka traffic cone, nasa gitna ka lang at sagabal",
+      "ang daming sinabi, parang wala namang na-save na progress",
+      "jaiden, ikaw yung tutorial na mas nakakalito kaysa sa problema",
+      "moka ka alarm clock na walang snooze, nakakainis na nga mali pa oras",
+      "bro nag-flex ng IQ tapos nag-error yung calculator",
+      "jaiden, parang draft message na dapat hindi na-send",
+      "moka ka empty folder, pangalan lang ang laman",
+      "yung banat mo parang soft launch, walang follow-through",
+      "jaiden, nag-buffer yung utak mo sa pinakamadaling tanong",
+      "moka ka broken link, click nang click walang destination",
+      "bro nagdala ng plot armor pero side character pa rin",
+      "jaiden, ikaw yung meeting na puwedeng email na lang",
+      "moka ka paper straw, mabilis mawalan ng silbi",
+      "ang point mo parang lost parcel, hindi na mahanap",
+      "jaiden, yung punchline mo na-late sa sarili niyang joke",
+      "moka ka phone na 2 percent, puro warning walang action",
+      "bro nag-open ng debate tapos nagdala lang ng vibes",
+      "jaiden, parang menu na puro pictures tapos walang available",
+      "moka ka captcha, paulit-ulit ka lang at walang gustong gumawa",
+      "yung argumento mo parang screenshot na cropped yung context",
+      "jaiden, nag-claim ng victory sa tutorial level",
+      "moka ka calendar reminder, lagi kang present sa maling oras",
+      "bro nag-type ng trust me imbes na magbigay ng proof",
+      "jaiden, ikaw yung loading spinner ng group chat",
+      "moka ka elevator music, naririnig ka pero walang nakikinig",
+      "yung rebuttal mo parang empty cart, walang laman pag checkout",
+      "jaiden, parang beta version na hindi na na-update",
+      "moka ka password hint, mas nakakalito ka pa sa password",
+      "bro nagdala ng source: trust me bro university",
+      "jaiden, yung thought process mo naka-airplane mode",
+      "moka ka flashlight na low battery, mahina na nga nangingislap pa",
+      "ang haba ng explanation mo para sa isang maling sagot",
+      "jaiden, parang pop-up ad na biglang sumingit sa magandang scene",
+      "moka ka shopping cart na may isang gulong na baliktad",
+      "bro naglabas ng statement na kailangan pa ng fact-check",
+      "jaiden, yung comeback mo parang package na walang laman",
+      "moka ka keyboard shortcut na walang assigned function",
+      "puro ka plot twist, kaso walang plot",
+      "jaiden, nag-start ng argument tapos nag-afk sa logic",
+      "moka ka sirang mic, volume lang ang contribution",
+      "bro nagdala ng evidence pero puro vibes ang attachment",
+      "jaiden, ikaw yung loading screen bago pa mag-crash yung app",
+      "moka ka unskippable tutorial, alam na namin pero pinipilit mo pa",
+      "ang reply mo parang auto-save na hindi talaga nag-save",
+      "jaiden, yung confidence mo naka-4K, yung reasoning naka-144p",
+      "moka ka map na walang legend, walang nakakaintindi",
+      "bro nag-post ng announcement para i-report ang sarili",
+      "jaiden, parang group chat poll na walang options",
+      "moka ka charger na kailangan i-angle para gumana",
+      "yung logic mo nag-404 not found",
+      "jaiden, ikaw yung patch notes na walang na-fix",
+      "moka ka printer queue, puro pending walang output",
+      "bro nagbigay ng final answer na may loading icon pa",
+      "jaiden, parang free sample—maingay ang packaging, konti ang laman",
+      "moka ka USB na pangatlong baliktad bago pumasok",
+      "ang rebuttal mo parang typo na naging buong paragraph",
+      "jaiden, yung argumento mo naka-save as draft",
+      "moka ka low-res screenshot, malabo na nga kulang pa details",
+      "bro nag-open ng thread tapos walang thread na na-connect",
+      "jaiden, ikaw yung extra step sa proseso na walang purpose",
+      "moka ka broken search bar, tanong ka nang tanong walang result",
+      "yung banat mo parang demo account, walang access sa punchline",
+      "jaiden, nagdala ng confidence pero walang kasamang manual",
+      "moka ka lag spike, saglit ka lang pero sira buong flow",
+      "bro nagbigay ng hot take na kailangan pa painitin",
+      "jaiden, parang app review na one star pero walang explanation",
+      "moka ka sticky note na natanggal bago pa mabasa",
+      "ang point mo parang typo sa headline, yun lang ang napansin",
+      "jaiden, ikaw yung error message na walang solution",
+      "moka ka empty battery icon, warning ka lang buong araw",
+      "bro nag-enter ng chat na parang accidental tap",
+      "jaiden, yung comeback mo naka-schedule pero hindi dumating",
+      "moka ka sirang scanner, kahit malinaw na hindi mabasa",
+  },
   },
 
   {
@@ -2157,52 +2258,56 @@ async function getTriggerReply(
         }
       }
 
-      // Groq adds variation to explicit trigger-word replies.
-      // If Groq is unavailable, rate-limited, times out, or returns
-      // anything unusable, the existing pool remains the fallback.
-      try {
-        const matchingTriggers = group.triggers.filter((trigger) =>
-          matchesTrigger(text, trigger)
-        );
-
-        const matchedTrigger = pickTriggerVariant(
-          threadId || normalizedSenderId || "global",
-          group.name,
-          group.triggers,
-          {
-            eligibleValues: matchingTriggers.length
-              ? matchingTriggers
-              : group.triggers,
+      // Use the Jaiden pool verbatim so each entry can be exhausted once.
+      if (group.name !== "jaiden") {
+        // Groq adds variation to explicit trigger-word replies.
+        // If Groq is unavailable, rate-limited, times out, or returns
+        // anything unusable, the existing pool remains the fallback.
+        try {
+          const matchingTriggers = group.triggers.filter((trigger) =>
+            matchesTrigger(text, trigger)
+          );
+  
+          const matchedTrigger = pickTriggerVariant(
+            threadId || normalizedSenderId || "global",
+            group.name,
+            group.triggers,
+            {
+              eligibleValues: matchingTriggers.length
+                ? matchingTriggers
+                : group.triggers,
+            }
+          );
+  
+          const aiReply = await generateTriggerReply({
+            trigger: matchedTrigger,
+            groupName: group.name,
+            incomingText: rawText,
+            fallback: reply,
+            replyTargetName,
+            conversationContext: banatContextPrompt(threadId),
+          });
+  
+          if (typeof aiReply === "string" && aiReply.trim()) {
+            reply = aiReply.trim().slice(0, 1200);
+  
+            if (isFlirtyBanatGroup) {
+              reply = enforceBanatAddressStyle(reply, senderId);
+            }
+  
+            if (replyTargetName) {
+              reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
+            }
+  
+            // The generated reply is the actual reply the thread sees, so
+            // remember it too; this prevents AI variation from bypassing
+            // the Banat repetition guard.
+            if (isFlirtyBanatGroup) {
+              rememberBanatReply(threadId, reply, senderId);
+            }
           }
-        );
-
-        const aiReply = await generateTriggerReply({
-          trigger: matchedTrigger,
-          groupName: group.name,
-          incomingText: rawText,
-          fallback: reply,
-          replyTargetName,
-          conversationContext: banatContextPrompt(threadId),
-        });
-
-        if (typeof aiReply === "string" && aiReply.trim()) {
-          reply = aiReply.trim().slice(0, 1200);
-
-          if (isFlirtyBanatGroup) {
-            reply = enforceBanatAddressStyle(reply, senderId);
-          }
-
-          if (replyTargetName) {
-            reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
-          }
-
-          // The generated reply is the actual reply the thread sees, so
-          // remember it too; this prevents AI variation from bypassing
-          // the Banat repetition guard.
-          if (isFlirtyBanatGroup) {
-            rememberBanatReply(threadId, reply, senderId);
-          }
-        }
+  
+      }
       } catch (aiError) {
         console.warn(
           "[TRIGGERS] Groq unavailable; using generic trigger pool:",
@@ -3143,22 +3248,26 @@ function getNextReply(group) {
     return null;
   }
 
-  if (
-    !Number.isInteger(group.index)
-  ) {
-    group.index = 0;
+  // Shuffle bag for Jaiden: every reply is used once before refilling.
+  if (group.name === "jaiden") {
+    if (!Array.isArray(group.replyBag) || group.replyBag.length === 0) {
+      group.replyBag = group.replies.map((_, index) => index);
+      for (let i = group.replyBag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [group.replyBag[i], group.replyBag[j]] = [
+          group.replyBag[j],
+          group.replyBag[i],
+        ];
+      }
+    }
+    return group.replies[group.replyBag.pop()];
   }
 
-  const reply =
-    group.replies[
-      group.index %
-      group.replies.length
-    ];
-
-  group.index =
-    (group.index + 1) %
-    group.replies.length;
-
+  if (!Number.isInteger(group.index)) {
+    group.index = 0;
+  }
+  const reply = group.replies[group.index % group.replies.length];
+  group.index = (group.index + 1) % group.replies.length;
   return reply;
 }
 
