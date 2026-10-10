@@ -2306,13 +2306,12 @@ async function getTriggerReply(
               rememberBanatReply(threadId, reply, senderId);
             }
           }
-  
-      }
-      } catch (aiError) {
-        console.warn(
-          "[TRIGGERS] Groq unavailable; using generic trigger pool:",
-          aiError?.status || aiError?.message || aiError
-        );
+        } catch (aiError) {
+          console.warn(
+            "[TRIGGERS] Groq unavailable; using generic trigger pool:",
+            aiError?.status || aiError?.message || aiError
+          );
+        }
       }
 
       return reply;
