@@ -4,6 +4,42 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const pool = require("../banat-slash-pool");
 const slashBanats = require("../slash-banats");
+const triggers = require("../triggers");
+
+
+function normalizePhrase(value) {
+  return String(value || "")
+    .toLowerCase()
+    .normalize("NFKC")
+    .replace(/\\s+/g, " ")
+    .trim();
+}
+
+test("normal Banat pool has no duplicate phrases", () => {
+  const group = triggers.groups.find((item) => item.name === "banat-natural");
+  assert.ok(group, "natural Banat group should exist");
+  const normalized = group.replies.map(normalizePhrase);
+  assert.equal(new Set(normalized).size, normalized.length);
+});
+
+test("normal Banat phrases do not duplicate slash or backslash pools", () => {
+  const group = triggers.groups.find((item) => item.name === "banat-natural");
+  const normalPhrases = new Set(group.replies.map(normalizePhrase));
+  const otherPhrases = [
+    ...slashBanats.onReplies,
+    ...slashBanats.offReplies,
+    ...slashBanats.unauthorizedReplies,
+    ...pool.INSULTS
+  ].map(normalizePhrase);
+
+  for (const phrase of otherPhrases) {
+    assert.equal(
+      normalPhrases.has(phrase),
+      false,
+      "duplicate phrase found across Banat pools: " + phrase
+    );
+  }
+});
 
 test("slash pool has unique phrases", () => {
   assert.ok(pool.INSULTS.length >= 190 && pool.INSULTS.length <= 250);
