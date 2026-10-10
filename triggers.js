@@ -2163,7 +2163,7 @@ async function getTriggerReply(
       // Keep every original pool entry intact, but personalize any entry that
       // mentions Jaiden when a dashboard-selected target name is supplied.
       if (replyTargetName) {
-        reply = reply.replace(/\\bjaiden\\b/gi, replyTargetName);
+        reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
       }
 
       // Groq adds variation to explicit trigger-word replies.
