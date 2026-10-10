@@ -156,7 +156,8 @@ async function connect() {
       fun_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       banat_link_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      slash_pool_enabled BOOLEAN NOT NULL DEFAULT FALSE
+      slash_pool_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      bot_enabled BOOLEAN NOT NULL DEFAULT TRUE
     );
   `);
 
@@ -165,7 +166,8 @@ async function connect() {
       ADD COLUMN IF NOT EXISTS fun_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       ADD COLUMN IF NOT EXISTS banat_link_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       ADD COLUMN IF NOT EXISTS banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS slash_pool_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+      ADD COLUMN IF NOT EXISTS slash_pool_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS bot_enabled BOOLEAN NOT NULL DEFAULT TRUE;
   `);
 
   // ═════════════════════════════════════════════════════════
@@ -3368,9 +3370,10 @@ async function getThreadSettings(threadId) {
         fun_enabled,
         banat_link_enabled,
         banat_meme_enabled,
-        slash_pool_enabled
+        slash_pool_enabled,
+        bot_enabled
       )
-      VALUES($1, TRUE, TRUE, TRUE, FALSE, FALSE)
+      VALUES($1, TRUE, TRUE, TRUE, FALSE, FALSE, TRUE)
       ON CONFLICT(thread_id) DO NOTHING
       `,
       [id]
@@ -3401,6 +3404,7 @@ async function setThreadSettings(threadId, fields) {
     "banat_link_enabled",
     "banat_meme_enabled",
     "slash_pool_enabled",
+    "bot_enabled",
   ];
 
   const safeFields = Object.keys(fields || {}).filter((key) =>
