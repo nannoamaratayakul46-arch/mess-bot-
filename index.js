@@ -4070,6 +4070,7 @@ app.put(
       const saved = await db.setBanatThreadTarget(threadID, targetID, "dashboard-admin");
       setBanatDirectedTarget(threadID, targetID, "dashboard-admin", { persistent: true });
       clearBanatConversationTarget(threadID);
+      clearBanatBurstState(threadID);
       pushDashboardEvent("banat-target", "Dashboard target updated for group " + threadID + ".");
       return res.json({ ok: true, thread_id: threadID, target_user_id: saved.target_user_id, target_set_at: new Date(Number(saved.updated_at)).toISOString() });
     } catch (error) {
@@ -4091,6 +4092,7 @@ app.delete(
       await db.clearBanatThreadTarget(threadID);
       clearBanatDirectedTarget(threadID);
       clearBanatConversationTarget(threadID);
+      clearBanatBurstState(threadID);
       pushDashboardEvent("banat-target", "Dashboard target cleared for group " + threadID + ".");
       return res.json({ ok: true, thread_id: threadID, target_user_id: null });
     } catch (error) {
@@ -9963,6 +9965,21 @@ function acceptBanatBurstMessage(threadID, job) {
   // The active sender's additional messages will be picked up on the next
   // decision window.
   if (state.running) {
+    // A dashboard-selected target is an explicit override, not an ordinary
+    // conversational switch. Queue it behind an in-flight send instead of
+    // dropping it; runBanatBurstQueue will honor the normal cooldown.
+    if (job.canSwitchTarget && incomingSenderId) {
+      state.queue.length = 0;
+      state.activeSenderId = incomingSenderId;
+      state.activeTargetId = incomingSenderId;
+      state.queue.push({
+        ...job,
+        senderId: incomingSenderId,
+        queuedAt: now,
+      });
+      return true;
+    }
+
     return false;
   }
 
@@ -10450,6 +10467,7 @@ async function handleAutomaticBanatMessage({
             : null,
           incomingText: body,
           senderId,
+          canSwitchTarget: true,
         }
       );
 

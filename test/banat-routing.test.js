@@ -82,6 +82,19 @@ test("target persistence has a database table and upsert", () => {
   assert.match(db, /async function clearBanatThreadTarget\(threadId\)/);
 });
 
+test("dashboard-selected target can take priority over a running queue turn", () => {
+  const source = read("index.js");
+  const queueStart = source.indexOf("function acceptBanatBurstMessage");
+  const queueEnd = source.indexOf("function clearBanatBurstState", queueStart);
+  const queue = source.slice(queueStart, queueEnd);
+  assert.match(queue, /if \(state\.running\)/);
+  assert.match(queue, /job\.canSwitchTarget && incomingSenderId/);
+  assert.match(queue, /state\.queue\.push\(\{[\s\S]*?queuedAt: now/);
+  const targetRoute = source.slice(source.indexOf("if (senderIsDashboardTarget)"), source.indexOf("// Ordinary Banat replies require", source.indexOf("if (senderIsDashboardTarget)")));
+  assert.match(targetRoute, /canSwitchTarget: true/);
+  assert.match(source, /clearBanatBurstState\(threadID\)/);
+});
+
 test("all selected target replies go through the shared Banat queue and human sender", () => {
   const source = read("index.js");
   const start = source.indexOf("async function handleAutomaticBanatMessage");
