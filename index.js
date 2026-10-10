@@ -6704,7 +6704,7 @@ async function handleMessage(
 
         sendBanatReplyWithTyping(
           api,
-          require("./slash-banats").pickUnauthorizedSlashBanat(),
+          require("./slash-banats").pickUnauthorizedSlashBanat(threadID, senderId),
           threadID,
           event.messageID,
           false,
@@ -6747,7 +6747,7 @@ async function handleMessage(
 
       sendBanatReplyWithTyping(
         api,
-        require("./slash-banats")(enabled ? "on" : "off"),
+        require("./slash-banats")(enabled ? "on" : "off", threadID, senderId),
         threadID,
         event.messageID,
         false,
