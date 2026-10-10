@@ -30,7 +30,7 @@ test("slash Banat toggle exits before automatic Banat can process slash", () => 
   assert.match(toggleBlock, /setBanatConversationMode\(threadId, enabled, senderId\)/);
   assert.match(toggleBlock, /await db\.setRoastEnabled\(threadId, enabled\)/);
   assert.match(toggleBlock, /if \(!enabled\)/);
-  assert.match(toggleBlock, /\n    return;\n  }\n\n  \/\/);
+  assert.ok(toggleBlock.includes("\n    return;\n  }\n\n  //"), "slash toggle must return before automatic Banat");
 });
 
 test("automatic Banat passes sender identity into the roast selector", () => {
@@ -191,7 +191,7 @@ test("slash Banat pools are separated from the natural pool", () => {
   assert.match(source, /andito na boss mo tanga, supaen mo ttko/);
   assert.match(source, /bounce na ako, di kaya kakunatan ko/);
   assert.match(source, /bawal bobo/);
-  assert.match(source, /function pickSlashBanat\\(mode = "on"\\)/);
+  assert.ok(source.includes('function pickSlashBanat(mode = "on")'));
   assert.match(source, /pickUnauthorizedSlashBanat/);
 });
 
@@ -201,9 +201,9 @@ test("slash Banat sends selected words through the Banat human layer", () => {
   const automatic = source.indexOf("const banatHandled = await handleAutomaticBanatMessage");
   const block = source.slice(toggle, automatic);
 
-  assert.match(block, /require\\("\\.\\/slash-banats"\\)\\(enabled \\? "on" : "off"\\)/);
-  assert.match(block, /require\\("\\.\\/slash-banats"\\)\\.pickUnauthorizedSlashBanat\\(\\)/);
-  assert.match(block, /sendBanatReplyWithTyping\\(/);
+  assert.ok(block.includes('require("./slash-banats")(enabled ? "on" : "off")'));
+  assert.ok(block.includes('require("./slash-banats").pickUnauthorizedSlashBanat()'));
+  assert.ok(block.includes("sendBanatReplyWithTyping("));
 });
 
 

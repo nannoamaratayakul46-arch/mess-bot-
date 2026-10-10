@@ -210,6 +210,9 @@ const ACTIVE_THREAD_EXPIRY_MS =
 
 const lastRandomRoastByThread = new Map();
 const activeThreads = new Map();
+const dashboardSetNNJobs = new Map();
+let dashboardSharedLocation = null;
+const dashboardSetNNStopRequests = new Set();
 
 // ============================================================
 // WATCHDOG
@@ -3322,7 +3325,7 @@ function dashboardCors(req, res, next) {
     allowedOrigin === "*" ? "*" : origin === allowedOrigin ? origin : allowedOrigin
   );
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-ECLIPSE-DASHBOARD-KEY");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
   res.setHeader("Vary", "Origin");
 
   if (req.method === "OPTIONS") {
@@ -3976,6 +3979,395 @@ app.post(
     resumeMusicProcessing();
     pushDashboardEvent("music", "Music queue resumed from Command Center.");
     return res.json({ ok: true, paused: false });
+  }
+);
+
+
+// ============================================================
+// DASHBOARD OPERATIONS API
+// ============================================================
+// These endpoints reuse the existing dashboard-key middleware. They do not
+// read, rewrite, replace, or clear FB_COOKIES or the durable Messenger session.
+// ============================================================
+
+function dashboardGetThreadInfo(api, threadID) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (error, info) => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve(info || {});
+    };
+    try {
+      const result = api.getThreadInfo(String(threadID), done);
+      if (result && typeof result.then === "function") {
+        result.then((info) => done(null, info)).catch(done);
+      }
+    } catch (error) {
+      done(error);
+    }
+  });
+}
+
+function dashboardOwnerId() {
+  const { ADMIN_IDS, isOwner } = require("./permissions");
+  for (const candidate of ADMIN_IDS) {
+    if (isOwner(candidate)) return String(candidate);
+  }
+  return "";
+}
+
+app.get(
+  "/api/dashboard/groups",
+  requireDashboardAccess,
+  async (_req, res) => {
+    if (!activeMessengerApi || activeListenerGeneration <= 0) {
+      return res.status(409).json({ ok: false, error: "Messenger is not connected." });
+    }
+
+    const candidates = Array.from(activeThreads.entries())
+      .sort((a, b) => Number(b[1]) - Number(a[1]))
+      .slice(0, 100);
+    const groups = [];
+
+    for (const [threadID, lastSeen] of candidates) {
+      try {
+        const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
+        const participants = Array.isArray(info.participantIDs) ? info.participantIDs : [];
+        if (participants.length < 3) continue;
+        groups.push({
+          thread_id: String(threadID),
+          name: String(info.threadName || info.name || "Unnamed group").slice(0, 160),
+          participant_count: participants.length,
+          last_seen_at: new Date(Number(lastSeen) || Date.now()).toISOString(),
+          is_group: true,
+        });
+      } catch (error) {
+        console.warn("[DASHBOARD] Could not inspect thread " + threadID + ":", error?.message || error);
+      }
+    }
+
+    return res.json({ ok: true, groups, generated_at: new Date().toISOString() });
+  }
+);
+
+app.post(
+  "/api/dashboard/setnn/start",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.body?.thread_id || "").trim();
+    const nickname = String(req.body?.nickname || "").trim();
+    const interval = Number(req.body?.interval_seconds ?? 10);
+    const ownerId = dashboardOwnerId();
+
+    if (!ownerId) {
+      return res.status(503).json({
+        ok: false,
+        error: "Set ADMIN_IDS to the bot owner's Messenger ID before enabling dashboard SetNN.",
+      });
+    }
+    if (!activeMessengerApi || activeListenerGeneration <= 0) {
+      return res.status(409).json({ ok: false, error: "Messenger is not connected." });
+    }
+    if (!threadID || !activeThreads.has(threadID)) {
+      return res.status(400).json({ ok: false, error: "Choose a recently observed Messenger group." });
+    }
+    if (!nickname || nickname.length > 80 || /[\u0000-\u001f\u007f]/.test(nickname) || /^off$/i.test(nickname)) {
+      return res.status(400).json({ ok: false, error: "Enter a nickname of 1–80 characters; use Stop to cancel a job." });
+    }
+    if (!Number.isInteger(interval) || interval < 2 || interval > 60) {
+      return res.status(400).json({ ok: false, error: "Interval must be between 2 and 60 seconds." });
+    }
+    if (dashboardSetNNJobs.get(threadID)?.status === "running") {
+      return res.status(409).json({ ok: false, error: "A SetNN job is already running for this group." });
+    }
+
+    const job = {
+      thread_id: threadID,
+      nickname,
+      interval_seconds: interval,
+      status: "running",
+      started_at: new Date().toISOString(),
+      finished_at: null,
+      error: null,
+    };
+    dashboardSetNNJobs.set(threadID, job);
+    dashboardSetNNStopRequests.delete(threadID);
+    pushDashboardEvent("setnn", "SetNN job started for group " + threadID + ".");
+
+    void handleMessage(activeMessengerApi, {
+      threadID,
+      senderID: ownerId,
+      body: ".setnn " + interval + " " + nickname,
+      isGroup: true,
+    }).then(() => {
+      job.status = dashboardSetNNStopRequests.has(threadID) ? "stopped" : "completed";
+      job.finished_at = new Date().toISOString();
+      pushDashboardEvent("setnn", "SetNN job " + job.status + " for group " + threadID + ".");
+    }).catch((error) => {
+      job.status = "failed";
+      job.error = String(error?.message || error).slice(0, 500);
+      job.finished_at = new Date().toISOString();
+      pushDashboardEvent("error", "SetNN job failed for group " + threadID + ".");
+      console.error("[DASHBOARD] SetNN job failed:", error);
+    }).finally(() => {
+      dashboardSetNNStopRequests.delete(threadID);
+    });
+
+    return res.status(202).json({ ok: true, job });
+  }
+);
+
+app.get(
+  "/api/dashboard/setnn/status",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.query.thread_id || "").trim();
+    if (!threadID) return res.status(400).json({ ok: false, error: "thread_id is required." });
+    const job = dashboardSetNNJobs.get(threadID) || null;
+    let checkpoint = null;
+    try {
+      checkpoint = await getMassNicknameRun(threadID);
+    } catch (error) {
+      console.error("[DASHBOARD] SetNN checkpoint read failed:", error);
+    }
+    return res.json({
+      ok: true,
+      job,
+      checkpoint: checkpoint ? {
+        nickname: checkpoint.nickname || null,
+        total: Array.isArray(checkpoint.targets) ? checkpoint.targets.length : 0,
+        next_index: Number(checkpoint.next_index || 0),
+        blocked_until: Number(checkpoint.blocked_until || 0) || null,
+      } : null,
+    });
+  }
+);
+
+app.post(
+  "/api/dashboard/setnn/stop",
+  requireDashboardAccess,
+  (req, res) => {
+    const threadID = String(req.body?.thread_id || "").trim();
+    if (!threadID) return res.status(400).json({ ok: false, error: "thread_id is required." });
+    const job = dashboardSetNNJobs.get(threadID);
+    if (!job || job.status !== "running") {
+      return res.status(409).json({ ok: false, error: "No active SetNN job exists for this group." });
+    }
+    dashboardSetNNStopRequests.add(threadID);
+    pushDashboardEvent("setnn", "SetNN stop requested for group " + threadID + ".");
+    return res.json({ ok: true, stopping: true, message: "The job will stop after its current nickname operation and preserve its checkpoint." });
+  }
+);
+
+app.post(
+  "/api/dashboard/commands/execute",
+  requireDashboardAccess,
+  (req, res) => {
+    const threadID = String(req.body?.thread_id || "").trim();
+    const command = String(req.body?.command || "").trim();
+    const ownerId = dashboardOwnerId();
+    const allowed = new Set(["!help", "!ping", "!rpg help"]);
+
+    if (!ownerId) {
+      return res.status(503).json({ ok: false, error: "Set ADMIN_IDS to the bot owner's Messenger ID before enabling command execution." });
+    }
+    if (!activeMessengerApi || activeListenerGeneration <= 0) {
+      return res.status(409).json({ ok: false, error: "Messenger is not connected." });
+    }
+    if (!threadID || !activeThreads.has(threadID)) {
+      return res.status(400).json({ ok: false, error: "Choose a recently observed Messenger thread." });
+    }
+    if (!allowed.has(command.toLowerCase())) {
+      return res.status(400).json({ ok: false, allowed_commands: Array.from(allowed), error: "This playground only executes allowlisted, low-risk commands." });
+    }
+
+    pushDashboardEvent("command", "Dashboard command " + command + " sent to thread " + threadID + ".");
+    void handleMessage(activeMessengerApi, {
+      threadID,
+      senderID: ownerId,
+      body: command,
+      isGroup: true,
+    }).catch((error) => {
+      console.error("[DASHBOARD] Command playground execution failed:", error);
+      pushDashboardEvent("error", "Command playground execution failed.");
+    });
+
+    return res.status(202).json({ ok: true, accepted: true, command, thread_id: threadID, message: "Command dispatched to Messenger; its reply appears in the selected conversation." });
+  }
+);
+
+app.get(
+  "/api/dashboard/preferences/appearance",
+  requireDashboardAccess,
+  async (_req, res) => {
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
+          preference_key TEXT PRIMARY KEY,
+          preference_value JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      const { rows } = await db.query(
+        "SELECT preference_value, updated_at FROM eclipse_dashboard_preferences WHERE preference_key = $1 LIMIT 1",
+        ["appearance"]
+      );
+      return res.json({
+        ok: true,
+        appearance: rows[0]?.preference_value || null,
+        updated_at: rows[0]?.updated_at || null,
+      });
+    } catch (error) {
+      console.error("[DASHBOARD] Appearance preference read failed:", error);
+      return res.status(503).json({ ok: false, error: "Server appearance preferences are temporarily unavailable." });
+    }
+  }
+);
+
+app.put(
+  "/api/dashboard/preferences/appearance",
+  requireDashboardAccess,
+  async (req, res) => {
+    const value = req.body?.appearance;
+    const overlay = Number(value?.overlay);
+    const glass = Number(value?.glass);
+    const accent = String(value?.accent || "");
+    const compact = value?.compact;
+    if (!Number.isInteger(overlay) || overlay < 35 || overlay > 95 ||
+        !Number.isInteger(glass) || glass < 45 || glass > 95 ||
+        !/^#[0-9a-f]{6}$/i.test(accent) || typeof compact !== "boolean") {
+      return res.status(400).json({ ok: false, error: "Appearance settings are invalid." });
+    }
+    const appearance = { overlay, glass, accent, compact };
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
+          preference_key TEXT PRIMARY KEY,
+          preference_value JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      const { rows } = await db.query(
+        `INSERT INTO eclipse_dashboard_preferences (preference_key, preference_value, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (preference_key)
+         DO UPDATE SET preference_value = EXCLUDED.preference_value, updated_at = NOW()
+         RETURNING updated_at`,
+        ["appearance", JSON.stringify(appearance)]
+      );
+      pushDashboardEvent("preferences", "Dashboard appearance preferences saved to the server.");
+      return res.json({ ok: true, appearance, updated_at: rows[0]?.updated_at || new Date().toISOString() });
+    } catch (error) {
+      console.error("[DASHBOARD] Appearance preference save failed:", error);
+      return res.status(503).json({ ok: false, error: "Could not save server appearance preferences." });
+    }
+  }
+);
+
+app.get(
+  "/api/dashboard/deployment",
+  requireDashboardAccess,
+  (_req, res) => {
+    const configured = Boolean(
+      String(process.env.RENDER_API_KEY || process.env.RENDER_API_TOKEN || "").trim() &&
+      String(process.env.RENDER_SERVICE_ID || "").trim()
+    );
+    return res.json({
+      ok: true,
+      provider: "render",
+      configured,
+      restart_enabled: configured,
+      service_id_configured: Boolean(String(process.env.RENDER_SERVICE_ID || "").trim()),
+      message: configured
+        ? "Render deployment controls are configured."
+        : "Set RENDER_API_KEY and RENDER_SERVICE_ID in the bot deployment environment to enable authenticated restart controls.",
+      version: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || null,
+      node_version: process.version,
+      uptime_seconds: Math.floor(process.uptime()),
+    });
+  }
+);
+
+app.post(
+  "/api/dashboard/deployment/restart",
+  requireDashboardAccess,
+  async (_req, res) => {
+    const token = String(process.env.RENDER_API_KEY || process.env.RENDER_API_TOKEN || "").trim();
+    const serviceId = String(process.env.RENDER_SERVICE_ID || "").trim();
+    if (!token || !serviceId) {
+      return res.status(503).json({ ok: false, error: "Configure RENDER_API_KEY and RENDER_SERVICE_ID on the server first." });
+    }
+
+    try {
+      const response = await fetch("https://api.render.com/v1/services/" + encodeURIComponent(serviceId) + "/restart", {
+        method: "POST",
+        headers: { Authorization: "Bearer " + token, Accept: "application/json" },
+      });
+      if (!response.ok) {
+        const detail = await response.text().catch(() => "");
+        console.error("[DASHBOARD] Render restart request failed:", response.status, detail.slice(0, 300));
+        return res.status(502).json({ ok: false, error: "Render rejected the restart request (" + response.status + ")." });
+      }
+      pushDashboardEvent("deployment", "Render restart requested from the dashboard.");
+      return res.json({ ok: true, requested: true, message: "Render accepted the restart request." });
+    } catch (error) {
+      console.error("[DASHBOARD] Render restart request failed:", error);
+      return res.status(502).json({ ok: false, error: "Could not reach Render's API." });
+    }
+  }
+);
+
+app.post(
+  "/api/dashboard/location",
+  requireDashboardAccess,
+  (req, res) => {
+    const latitude = Number(req.body?.latitude);
+    const longitude = Number(req.body?.longitude);
+    const accuracy = Number(req.body?.accuracy);
+    const consent = req.body?.consent === true;
+    if (!consent) return res.status(400).json({ ok: false, error: "Explicit location-sharing consent is required." });
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90 ||
+        !Number.isFinite(longitude) || longitude < -180 || longitude > 180 ||
+        !Number.isFinite(accuracy) || accuracy < 0 || accuracy > 1_000_000) {
+      return res.status(400).json({ ok: false, error: "Valid coordinates and accuracy are required." });
+    }
+    const location = {
+      latitude: Number(latitude.toFixed(5)),
+      longitude: Number(longitude.toFixed(5)),
+      accuracy: Math.round(accuracy),
+      captured_at: new Date().toISOString(),
+      expires_at: Date.now() + 60 * 60 * 1000,
+    };
+    dashboardSharedLocation = location;
+    pushDashboardEvent("location", "Location was shared explicitly with the dashboard; coordinates are not included in event logs.");
+    return res.json({ ok: true, location: { ...location, expires_at: new Date(location.expires_at).toISOString() }, expires_in_seconds: 3600 });
+  }
+);
+
+app.get(
+  "/api/dashboard/location",
+  requireDashboardAccess,
+  (_req, res) => {
+    if (dashboardSharedLocation && dashboardSharedLocation.expires_at <= Date.now()) {
+      dashboardSharedLocation = null;
+    }
+    const location = dashboardSharedLocation;
+    return res.json({
+      ok: true,
+      location: location ? { ...location, expires_at: new Date(location.expires_at).toISOString() } : null,
+    });
+  }
+);
+
+app.delete(
+  "/api/dashboard/location",
+  requireDashboardAccess,
+  (_req, res) => {
+    dashboardSharedLocation = null;
+    pushDashboardEvent("location", "Shared location was cleared from server memory.");
+    return res.json({ ok: true, cleared: true });
   }
 );
 
@@ -5370,11 +5762,26 @@ async function handleMessage(
       let failed = 0;
       let rateBlocked = false;
 
+      let cancelled = false;
+
       for (
         let i = nextIndex;
         i < targets.length;
         i++
       ) {
+        if (dashboardSetNNStopRequests.has(String(threadID))) {
+          cancelled = true;
+          await setMassNicknameRun(
+            threadID,
+            senderId,
+            requestedNickname,
+            targets,
+            i,
+            null
+          );
+          break;
+        }
+
         const participantID =
           targets[i];
 
@@ -5607,6 +6014,10 @@ async function handleMessage(
             "Wait for the cooldown, then run .setnn " +
             requestedNickname +
             " again to resume."
+          : cancelled
+          ? "🎀 setnn stopped — checkpoint saved at the next member. Run .setnn " +
+            requestedNickname +
+            " to resume."
           : "🎀 setnn done — " +
             changed +
             " changed" +

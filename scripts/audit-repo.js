@@ -99,7 +99,7 @@ if (!fs.existsSync(banatHumanPath)) {
 } else {
   const banatHuman = source(banatHumanPath);
   for (const required of [
-    "humanize(message",
+    "humanize(",
     "BANAT_SHORTHANDS",
     "calculateHumanDelay",
     "trafficSendMessage(",
