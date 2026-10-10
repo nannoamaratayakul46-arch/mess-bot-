@@ -52,16 +52,41 @@ const UNAUTHORIZED_REPLIES = Object.freeze([
   "ang kulit mo, isang minuto ka munang manahimik",
 ]);
 
-function pick(list) {
-  return list[Math.floor(Math.random() * list.length)];
-}
+const usedByModeAndSender = new Map();
+const SLASH_HISTORY_LIMIT = 500;
 
-function pickSlashBanat(mode = "on") {
-  if (String(mode).toLowerCase() === "off") {
-    return pick(OFF_REPLIES);
+function pickWithoutRepeating(list, key) {
+  let used = usedByModeAndSender.get(key);
+  if (!used) used = new Set();
+
+  let candidates = list.filter((line) => !used.has(line));
+  if (!candidates.length) {
+    used.clear();
+    candidates = list.slice();
   }
 
-  return pick(ON_REPLIES);
+  const selected = candidates[Math.floor(Math.random() * candidates.length)];
+  used.add(selected);
+
+  usedByModeAndSender.delete(key);
+  usedByModeAndSender.set(key, used);
+  while (usedByModeAndSender.size > SLASH_HISTORY_LIMIT) {
+    usedByModeAndSender.delete(usedByModeAndSender.keys().next().value);
+  }
+
+  return selected;
+}
+
+function pickSlashBanat(mode = "on", threadId = "global", senderId = "unknown") {
+  const normalizedMode = String(mode).toLowerCase() === "off" ? "off" : "on";
+  const pool = normalizedMode === "off" ? OFF_REPLIES : ON_REPLIES;
+  const key = [
+    String(threadId || "global"),
+    String(senderId || "unknown"),
+    normalizedMode
+  ].join(":");
+
+  return pickWithoutRepeating(pool, key);
 }
 
 const unauthorizedUsed = new Map();
