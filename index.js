@@ -3921,6 +3921,10 @@ function pushDashboardEvent(type, message, meta = {}) {
 
 function buildTrafficDeliveryAnalytics(hours = 24) {
   const now = Date.now();
+  const retentionCutoff = now - TRAFFIC_DELIVERY_RETENTION_MS;
+  while (trafficDeliveryHistory.length && Date.parse(trafficDeliveryHistory[0].at) < retentionCutoff) {
+    trafficDeliveryHistory.shift();
+  }
   const cutoff = now - hours * 60 * 60 * 1000;
   const recent = trafficDeliveryHistory.filter((event) => Date.parse(event.at) >= cutoff);
   const sent = recent.filter((event) => event.outcome === "sent");
