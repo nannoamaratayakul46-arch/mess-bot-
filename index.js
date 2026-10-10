@@ -210,6 +210,7 @@ const ACTIVE_THREAD_EXPIRY_MS =
 
 const lastRandomRoastByThread = new Map();
 const activeThreads = new Map();
+const dashboardKnownGroups = new Map();
 const dashboardSetNNJobs = new Map();
 let dashboardSharedLocation = null;
 const dashboardSetNNStopRequests = new Set();
@@ -4010,6 +4011,29 @@ function dashboardGetThreadInfo(api, threadID) {
   });
 }
 
+function dashboardGetThreadList(api) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (error, threads) => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve(Array.isArray(threads) ? threads : []);
+    };
+    try {
+      if (typeof api.getThreadList !== "function") {
+        return reject(new Error("Messenger thread list is unavailable."));
+      }
+      const result = api.getThreadList(100, null, [], done);
+      if (result && typeof result.then === "function") {
+        result.then((threads) => done(null, threads)).catch(done);
+      }
+    } catch (error) {
+      done(error);
+    }
+  });
+}
+
 function dashboardOwnerId() {
   const { ADMIN_IDS, isOwner } = require("./permissions");
   for (const candidate of ADMIN_IDS) {
@@ -4026,28 +4050,74 @@ app.get(
       return res.status(409).json({ ok: false, error: "Messenger is not connected." });
     }
 
-    // The directory is built from group threads the live listener has observed.
+    const known = new Map();
+    try {
+      const inboxThreads = await dashboardGetThreadList(activeMessengerApi);
+      for (const thread of inboxThreads) {
+        const threadID = String(thread.threadID || thread.threadId || thread.thread_id || "").trim();
+        if (!threadID) continue;
+        const participants = Array.isArray(thread.participantIDs)
+          ? thread.participantIDs
+          : Array.isArray(thread.participants)
+            ? thread.participants
+            : [];
+        const isGroup = thread.threadType === 2 ||
+          String(thread.threadType || "").toUpperCase() === "GROUP" ||
+          participants.length >= 3;
+        if (!isGroup) continue;
+        const seenAt = activeThreads.get(threadID);
+        const messageTime = Number(thread.lastMessageTimestamp || thread.last_message_timestamp || 0);
+        const fallbackTime = messageTime > 0
+          ? (messageTime < 1e12 ? messageTime * 1000 : messageTime)
+          : null;
+        known.set(threadID, {
+          thread_id: threadID,
+          name: String(thread.name || thread.threadName || "Unnamed group").slice(0, 160),
+          participant_count: participants.length,
+          last_seen_at: seenAt ? new Date(Number(seenAt)).toISOString()
+            : fallbackTime ? new Date(fallbackTime).toISOString() : null,
+          is_group: true,
+        });
+      }
+    } catch (error) {
+      console.warn("[DASHBOARD] Could not fetch Messenger thread list:", error?.message || error);
+    }
+
+    // Include recently active groups that may not be present in the inbox page.
     const candidates = Array.from(activeThreads.entries())
       .sort((a, b) => Number(b[1]) - Number(a[1]))
       .slice(0, 100);
-    const groups = [];
-
     for (const [threadID, lastSeen] of candidates) {
+      if (known.has(String(threadID))) {
+        known.get(String(threadID)).last_seen_at = new Date(Number(lastSeen) || Date.now()).toISOString();
+        continue;
+      }
       try {
         const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
         const participants = Array.isArray(info.participantIDs) ? info.participantIDs : [];
         if (participants.length < 3) continue;
-        const settings = await db.getThreadSettings(String(threadID));
-        groups.push({
+        known.set(String(threadID), {
           thread_id: String(threadID),
           name: String(info.threadName || info.name || "Unnamed group").slice(0, 160),
           participant_count: participants.length,
           last_seen_at: new Date(Number(lastSeen) || Date.now()).toISOString(),
           is_group: true,
-          bot_enabled: settings.bot_enabled !== false,
         });
       } catch (error) {
         console.warn("[DASHBOARD] Could not inspect thread " + threadID + ":", error?.message || error);
+      }
+    }
+
+    dashboardKnownGroups.clear();
+    const groups = [];
+    for (const group of Array.from(known.values()).slice(0, 100)) {
+      dashboardKnownGroups.set(group.thread_id, group);
+      try {
+        const settings = await db.getThreadSettings(group.thread_id);
+        groups.push({ ...group, bot_enabled: settings.bot_enabled !== false });
+      } catch (error) {
+        console.warn("[DASHBOARD] Could not read settings for group " + group.thread_id + ":", error?.message || error);
+        groups.push({ ...group, bot_enabled: true });
       }
     }
 
@@ -4061,8 +4131,8 @@ app.put(
   async (req, res) => {
     const threadID = String(req.params.thread_id || "").trim();
     const enabled = req.body?.bot_enabled;
-    if (!threadID || !activeThreads.has(threadID)) {
-      return res.status(400).json({ ok: false, error: "Choose a group the bot has recently seen." });
+    if (!threadID || (!activeThreads.has(threadID) && !dashboardKnownGroups.has(threadID))) {
+      return res.status(400).json({ ok: false, error: "Choose a group in the bot group list." });
     }
     if (typeof enabled !== "boolean") {
       return res.status(400).json({ ok: false, error: "bot_enabled must be true or false." });
@@ -4096,8 +4166,8 @@ app.post(
     if (!activeMessengerApi || activeListenerGeneration <= 0) {
       return res.status(409).json({ ok: false, error: "Messenger is not connected." });
     }
-    if (!threadID || !activeThreads.has(threadID)) {
-      return res.status(400).json({ ok: false, error: "Choose a recently observed Messenger group." });
+    if (!threadID || (!activeThreads.has(threadID) && !dashboardKnownGroups.has(threadID))) {
+      return res.status(400).json({ ok: false, error: "Choose a group in the bot group list." });
     }
     if (!nickname || nickname.length > 80 || /[\u0000-\u001f\u007f]/.test(nickname) || /^off$/i.test(nickname)) {
       return res.status(400).json({ ok: false, error: "Enter a nickname of 1–80 characters; use Stop to cancel a job." });
@@ -4202,8 +4272,8 @@ app.post(
     if (!activeMessengerApi || activeListenerGeneration <= 0) {
       return res.status(409).json({ ok: false, error: "Messenger is not connected." });
     }
-    if (!threadID || !activeThreads.has(threadID)) {
-      return res.status(400).json({ ok: false, error: "Choose a recently observed Messenger thread." });
+    if (!threadID || (!activeThreads.has(threadID) && !dashboardKnownGroups.has(threadID))) {
+      return res.status(400).json({ ok: false, error: "Choose a group in the bot group list." });
     }
     if (!allowed.has(command.toLowerCase())) {
       return res.status(400).json({ ok: false, allowed_commands: Array.from(allowed), error: "This playground only executes allowlisted, low-risk commands." });
