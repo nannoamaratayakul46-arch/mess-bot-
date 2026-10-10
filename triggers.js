@@ -103,7 +103,6 @@ const groups = [
       "jaiden, ikaw yung ad na hindi ma-skip sa usapan",
       "pindot ka nang pindot ng send, pero wala pa ring point",
       "moka ka sirang GPS, lakas mag-direksyon pero ligaw naman",
-    ],
       "jaiden nag-drop ng hot take, kaso malamig pa sa ref",
       "moka ka electric bill, ang taas ng singil wala namang serbisyo",
       "jaiden ikaw yung update na puro bug ang dala",
@@ -204,7 +203,7 @@ const groups = [
       "bro nag-enter ng chat na parang accidental tap",
       "jaiden, yung comeback mo naka-schedule pero hindi dumating",
       "moka ka sirang scanner, kahit malinaw na hindi mabasa",
-  },
+    ],
   },
 
   {
