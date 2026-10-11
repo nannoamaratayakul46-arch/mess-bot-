@@ -1536,7 +1536,7 @@ async function handleAutoModCommand(
         "",
         analyzerConnected
           ? "♡ Automatic moderation is ready."
-          : "♡ No automatic punishment will occur until the analyzer is connected.",
+          : "♡ Spam guard is active; AI-based moderation waits for the analyzer.",
         "",
         "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
       ].join("\n")
