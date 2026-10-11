@@ -1,14 +1,18 @@
 "use strict";
 
 /**
- * Coordinates the visible Messenger typing indicator with the duration
- * calculated by human-delay.js. The actual message send happens only after
- * that same duration; indicator API failures never block the send.
+ * Coordinates Messenger's typing indicator with the reply delay.
+ *
+ * ws3-fca 2.0.1 uses sendTypingIndicator(threadID, callback) and returns an
+ * end() function. It does NOT accept an isTyping boolean as its second
+ * argument. Keep the returned end function so the indicator can be stopped
+ * explicitly after the message is sent.
  */
 
 const ENABLED = !/^(false|0|no|off)$/i.test(
   String(process.env.TYPING_ENABLED || "true")
 );
+const activeEnds = new WeakMap();
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -20,44 +24,76 @@ function reportTypingError(action, error) {
   }
 }
 
+function getThreadEnds(api) {
+  let ends = activeEnds.get(api);
+  if (!ends) {
+    ends = new Map();
+    activeEnds.set(api, ends);
+  }
+  return ends;
+}
+
 function stopTyping(api, threadID) {
   if (!api || !threadID || !ENABLED) return false;
-  try {
-    // ws3-fca uses (threadID, isTyping, callback); false explicitly clears
-    // the indicator. Prefer the same API used to start it.
-    if (typeof api.sendTypingIndicator === "function") {
-      api.sendTypingIndicator(String(threadID), false, (error) => {
-        reportTypingError("Stop", error);
-      });
+
+  const key = String(threadID);
+  const ends = activeEnds.get(api);
+  const end = ends?.get(key);
+
+  if (typeof end === "function") {
+    ends.delete(key);
+    try {
+      end((error) => reportTypingError("Stop", error));
       return true;
+    } catch (error) {
+      reportTypingError("Stop", error);
+      return false;
     }
-    if (typeof api.sendTyping === "function") {
-      api.sendTyping(String(threadID), false);
+  }
+
+  // Compatibility fallback for clients exposing a boolean-style sendTyping.
+  if (typeof api.sendTyping === "function") {
+    try {
+      api.sendTyping(key, false);
       return true;
+    } catch (error) {
+      reportTypingError("Stop", error);
     }
-  } catch (error) {
-    reportTypingError("Stop", error);
   }
   return false;
 }
 
 function startTyping(api, threadID) {
   if (!api || !threadID || !ENABLED) return () => {};
+
+  const key = String(threadID);
   try {
-    // ws3-fca signature: sendTypingIndicator(threadID, isTyping, callback).
     if (typeof api.sendTypingIndicator === "function") {
-      api.sendTypingIndicator(String(threadID), true, (error) => {
+      const end = api.sendTypingIndicator(key, (error) => {
         reportTypingError("Start", error);
       });
-      return () => stopTyping(api, threadID);
+
+      if (typeof end === "function") {
+        getThreadEnds(api).set(key, end);
+        return () => stopTyping(api, key);
+      }
+
+      console.warn(
+        "[HUMAN-TYPING] sendTypingIndicator did not return its stop function."
+      );
+      return () => stopTyping(api, key);
     }
+
     if (typeof api.sendTyping === "function") {
-      api.sendTyping(String(threadID), true);
-      return () => stopTyping(api, threadID);
+      api.sendTyping(key, true);
+      return () => stopTyping(api, key);
     }
+
+    console.warn("[HUMAN-TYPING] No supported typing-indicator API is available.");
   } catch (error) {
     reportTypingError("Start", error);
   }
+
   return () => {};
 }
 
