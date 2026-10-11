@@ -2,18 +2,14 @@
 
 /**
  * Shared typing-indicator lifecycle for generic and Banat replies.
- * The API-specific start/end handling lives in typingIndicator.js so all
- * reply paths use the same ws3-fca-compatible implementation.
+ * Durations should come from the human-mimic timing calculation.
  */
-
-const {
-  startTyping,
-  stopTyping,
-} = require("./typingIndicator");
+const { startTyping, stopTyping } = require("./typingIndicator");
 
 function withTyping(api, threadID, durationMs, send) {
   const duration = Math.max(0, Number(durationMs) || 0);
-  const stop = startTyping(api, threadID);
+  if (typeof send !== "function") return Promise.resolve(false);
+  if (duration > 0) startTyping(api, threadID);
 
   return new Promise((resolve, reject) => {
     setTimeout(async () => {
@@ -22,16 +18,10 @@ function withTyping(api, threadID, durationMs, send) {
       } catch (error) {
         reject(error);
       } finally {
-        stop();
-        // Keep compatibility for callers that independently use stopTyping.
-        stopTyping(api, threadID);
+        if (duration > 0) stopTyping(api, threadID);
       }
     }, duration);
   });
 }
 
-module.exports = {
-  startTyping,
-  stopTyping,
-  withTyping,
-};
+module.exports = { startTyping, stopTyping, withTyping };
