@@ -3424,7 +3424,7 @@ async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled =
   const id = String(threadId || "").trim();
   const target = String(targetUserId || "").trim();
   const setter = String(setBy || "").trim();
-  const name = String(targetName || "").replace(/\\s+/g, " ").trim().slice(0, 120) || null;
+  const name = String(targetName || "").replace(/\s+/g, " ").trim().slice(0, 120) || null;
   if (!id || !target || !setter) throw new Error("thread_id, target_user_id, and set_by are required");
   await conn.query(
     `INSERT INTO banat_thread_targets(thread_id, target_user_id, target_name, set_by, bang_enabled, updated_at)
