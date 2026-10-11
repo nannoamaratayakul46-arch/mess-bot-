@@ -3389,7 +3389,7 @@ function dashboardCors(req, res, next) {
     allowedOrigin === "*" ? "*" : origin === allowedOrigin ? origin : allowedOrigin
   );
   res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-ECLIPSE-DASHBOARD-KEY");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
   res.setHeader("Vary", "Origin");
 
   if (req.method === "OPTIONS") {
