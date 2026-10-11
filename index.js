@@ -10836,12 +10836,11 @@ async function handleAutomaticBanatMessage({
     if (bangJaidenCommand || (senderIsDashboardTarget && savedBanatTarget?.bang_enabled !== true)) {
       const resolvedTarget = await resolveTargetName(api, threadID, dashboardTargetId, {
         savedName: savedBanatTarget?.target_name,
-        seenName: String(
-          event?.senderName ||
-          event?.authorName ||
-          event?.userName ||
-          ""
-        ),
+        // Only trust a name observed on a message from the selected target;
+        // in ! mode, the command may have been sent by somebody else.
+        seenName: senderIsDashboardTarget
+          ? String(event?.senderName || event?.authorName || event?.userName || "")
+          : "",
       });
       const dashboardTargetName = resolvedTarget.name || "";
 
