@@ -1,107 +1,122 @@
 "use strict";
 
 const ENABLED = !/^(false|0|no|off)$/i.test(String(process.env.TYPING_ENABLED || "true"));
-const activeEnds = new WeakMap();
+const activeStates = new WeakMap();
+const REFRESH_MS = 25000;
 
-function sleep(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function getThreadStates(api) {
+  let states = activeStates.get(api);
+  if (!states) {
+    states = new Map();
+    activeStates.set(api, states);
+  }
+  return states;
 }
 
-function getThreadEnds(api) {
-  let ends = activeEnds.get(api);
-  if (!ends) {
-    ends = new Map();
-    activeEnds.set(api, ends);
+function requestTyping(api, key, state) {
+  if (state.stopped) return false;
+  try {
+    if (typeof api.sendTypingIndicator === "function") {
+      console.log("[BANAT-TYPING] Requesting Messenger indicator for thread " + key);
+      const end = api.sendTypingIndicator(key, (error) => {
+        if (error) {
+          console.warn("[BANAT-TYPING] API callback error for thread " + key + ":", error?.message || error);
+        } else {
+          console.log("[BANAT-TYPING] API callback completed without error for thread " + key);
+        }
+      });
+      state.end = typeof end === "function" ? end : null;
+      if (typeof end !== "function") {
+        console.warn("[BANAT-TYPING] API returned no end function for thread " + key + "; indicator may expire automatically.");
+      }
+      return true;
+    }
+    if (typeof api.sendTyping === "function") {
+      console.log("[BANAT-TYPING] Requesting fallback typing indicator for thread " + key);
+      api.sendTyping(key, true);
+      state.end = null;
+      return true;
+    }
+    console.warn("[BANAT-TYPING] No supported typing-indicator API for thread " + key);
+  } catch (error) {
+    console.warn("[BANAT-TYPING] Request threw for thread " + key + ":", error?.message || error);
   }
-  return ends;
+  return false;
 }
 
 function startTyping(api, threadID) {
   if (!ENABLED || !api || !threadID) return false;
   const key = String(threadID);
-
   try {
-    if (typeof api.sendTypingIndicator === "function") {
-      const ends = getThreadEnds(api);
-      // Avoid repeatedly starting the same indicator for a thread.
-      if (ends.has(key)) return true;
+    const states = getThreadStates(api);
+    const existing = states.get(key);
+    if (existing && !existing.stopped) return true;
 
-      // ws3-fca 2.x takes (threadID, callback) and returns an end function.
-      const end = api.sendTypingIndicator(key, (error) => {
-        if (error) {
-          console.warn("[HUMAN-TYPING] Start failed:", error?.message || error);
-        }
-      });
-      if (typeof end === "function") ends.set(key, end);
-      return true;
+    const state = { end: null, timer: null, stopped: false };
+    states.set(key, state);
+    if (!requestTyping(api, key, state)) {
+      states.delete(key);
+      return false;
     }
 
-    if (typeof api.sendTyping === "function") {
-      api.sendTyping(key, true);
-      return true;
-    }
-
-    console.warn("[HUMAN-TYPING] No supported typing-indicator API is available.");
+    const refresh = () => {
+      if (state.stopped || states.get(key) !== state) return;
+      try {
+        if (typeof state.end === "function") state.end();
+      } catch (error) {
+        console.warn("[BANAT-TYPING] Refresh stop failed for thread " + key + ":", error?.message || error);
+      }
+      state.end = null;
+      requestTyping(api, key, state);
+      state.timer = setTimeout(refresh, REFRESH_MS);
+      if (state.timer && typeof state.timer.unref === "function") state.timer.unref();
+    };
+    state.timer = setTimeout(refresh, REFRESH_MS);
+    if (state.timer && typeof state.timer.unref === "function") state.timer.unref();
+    return true;
   } catch (error) {
-    console.warn("[HUMAN-TYPING] Start failed:", error?.message || error);
+    console.warn("[BANAT-TYPING] Start failed for thread " + key + ":", error?.message || error);
+    return false;
   }
-  return false;
 }
 
 function stopTyping(api, threadID) {
   if (!api || !threadID) return false;
   const key = String(threadID);
-
   try {
-    if (typeof api.sendTypingIndicator === "function") {
-      const ends = activeEnds.get(api);
-      const end = ends?.get(key);
-      if (typeof end === "function") {
-        ends.delete(key);
-        end();
-        return true;
-      }
-      // The library auto-expires an indicator if no end function was returned.
+    const states = activeStates.get(api);
+    const state = states?.get(key);
+    if (state) {
+      state.stopped = true;
+      if (state.timer) clearTimeout(state.timer);
+      states.delete(key);
+      if (typeof state.end === "function") state.end();
+      state.end = null;
+      console.log("[BANAT-TYPING] Indicator stopped for thread " + key);
       return true;
     }
-
-    if (typeof api.sendTyping === "function") {
+    if (typeof api.sendTyping === "function" && typeof api.sendTypingIndicator !== "function") {
       api.sendTyping(key, false);
       return true;
     }
+    return false;
   } catch (error) {
-    console.warn("[HUMAN-TYPING] Stop failed:", error?.message || error);
+    console.warn("[BANAT-TYPING] Stop failed for thread " + key + ":", error?.message || error);
+    return false;
   }
-  return false;
 }
 
-/**
- * Uses the human-mimic duration passed in opts.ms. ws3-fca's indicator is
- * ended via the function returned from sendTypingIndicator(threadID, callback).
- */
 async function typeBeforeSend(api, threadID, message, opts = {}, send) {
   if (typeof send !== "function") return false;
-  if (opts.skip) return send();
-
   const duration = Math.max(0, Number(opts.ms) || 0);
-  if (!duration) return send();
-
-  if (ENABLED) startTyping(api, threadID);
+  if (!opts.skip && duration > 0) startTyping(api, threadID);
   try {
-    let remaining = duration;
-    while (remaining > 0) {
-      // ws3-fca's indicator expires after ~30 seconds; refresh before then.
-      const slice = Math.min(25000, remaining);
-      await sleep(slice);
-      remaining -= slice;
-      if (ENABLED && remaining > 0) {
-        stopTyping(api, threadID);
-        startTyping(api, threadID);
-      }
+    if (!opts.skip && duration > 0) {
+      await new Promise((resolve) => setTimeout(resolve, duration));
     }
     return await send();
   } finally {
-    if (ENABLED) stopTyping(api, threadID);
+    stopTyping(api, threadID);
   }
 }
 
