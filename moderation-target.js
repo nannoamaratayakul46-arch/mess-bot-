@@ -9,7 +9,7 @@ function normalizeName(value) {
     .replace(/[<>]/g, "")
     .replace(/\s+/g, " ")
     .trim()
-    .toLocaleLowerCase();
+    .toLowerCase();
 }
 
 function validId(value) {
@@ -87,13 +87,15 @@ function memberCandidates(info) {
  * or cannot be resolved.
  */
 async function resolveModerationTarget(api, event, threadID, args = []) {
-  const mentions = event?.mentions && typeof event.mentions === "object"
-    ? Object.keys(event.mentions).map(validId).filter(Boolean)
+  const rawMentionIds = event?.mentions && typeof event.mentions === "object"
+    ? Object.keys(event.mentions)
     : [];
+  if (rawMentionIds.length > 1) return null;
 
-  if (mentions.length > 1) return null;
-  if (mentions.length === 1) {
-    return { targetId: mentions[0], consumedArgs: Math.min(args.length, 1) };
+  if (rawMentionIds.length === 1) {
+    const mentionedId = validId(rawMentionIds[0]);
+    if (!mentionedId) return null;
+    return { targetId: mentionedId, consumedArgs: Math.min(args.length, 1) };
   }
 
   const first = String(args[0] || "").trim().replace(/^@/, "").replace(/[<>]/g, "");
