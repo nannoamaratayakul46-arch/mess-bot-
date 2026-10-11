@@ -41,6 +41,14 @@ test("rejects multiple mentions instead of picking one arbitrarily", async () =>
   );
 });
 
+
+test("rejects malformed mention IDs instead of falling back to a typed name", async () => {
+  assert.equal(
+    await resolveModerationTarget(callbackApi(), { mentions: { "not-a-facebook-id": "Abdullah" } }, "200000000001", ["Abdullah", "spam"]),
+    null
+  );
+});
+
 test("accepts a numeric Facebook user ID directly", async () => {
   assert.deepEqual(
     await resolveModerationTarget({}, {}, "200000000001", ["100000000001", "spam"]),
