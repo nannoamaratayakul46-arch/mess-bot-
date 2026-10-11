@@ -174,6 +174,8 @@ const {
   prepareBanatReply,
 } = require("./banat-human");
 
+const { startTyping, stopTyping } = require("./typingIndicator");
+
 const {
   classifyBanatTarget,
   setBanatConversationMode,
@@ -10337,6 +10339,7 @@ function acceptBanatBurstMessage(threadID, job) {
         senderId: incomingSenderId,
         queuedAt: now,
       });
+      startTyping(job.api, key);
       return true;
     }
 
@@ -10355,6 +10358,7 @@ function acceptBanatBurstMessage(threadID, job) {
         senderId: incomingSenderId,
         queuedAt: now,
       });
+      startTyping(job.api, key);
     }
 
     return false;
@@ -10377,6 +10381,7 @@ function acceptBanatBurstMessage(threadID, job) {
         senderId: incomingSenderId,
         queuedAt: now,
       });
+      startTyping(job.api, key);
       return true;
     }
 
@@ -10414,6 +10419,7 @@ function acceptBanatBurstMessage(threadID, job) {
     senderId: incomingSenderId,
     queuedAt: now,
   });
+      startTyping(job.api, key);
 
   const decisionMs = Math.max(
     BANAT_DECISION_MIN_MS,
@@ -11086,6 +11092,7 @@ function sendBanatReplyWithTyping(
   replyDelayMs = BANAT_REPLY_DELAY_MS,
   incomingText = ""
 ) {
+  startTyping(api, threadID);
   return sendBanatReplyWithTypingModule(
     api,
     message,
