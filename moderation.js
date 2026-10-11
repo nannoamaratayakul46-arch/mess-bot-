@@ -4779,6 +4779,7 @@ async function handleModerationMessage(
 
 module.exports = {
   handleModerationMessage,
+  removeFromGroup,
 
   isBotOwner,
   isTrustedAdmin,
