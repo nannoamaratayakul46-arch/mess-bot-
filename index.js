@@ -140,6 +140,8 @@ const {
   isLocallyBanned,
 } = require("./moderation");
 
+const { createAntiSpam } = require("./antiSpam");
+
 // ============================================================
 // YOUTUBE
 // ============================================================
@@ -3441,6 +3443,19 @@ registerGroupProfileRoutes(app, {
   audit: message => console.log(message),
 });
 
+// Spam protection shares the existing persistent !automod on/off setting.
+// It monitors all members independently of owner presence.
+const antiSpam = createAntiSpam({
+  db,
+  getApi: () =>
+    activeMessengerApi && activeListenerGeneration > 0
+      ? activeMessengerApi
+      : null,
+  isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
+  log: message => console.log(message),
+});
+antiSpam.registerRoutes(app, requireDashboardAccess);
+
 // ============================================================
 // ECLIPSE LAB / BANAT SIMULATOR API
 // ============================================================
@@ -6008,6 +6023,12 @@ async function handleMessage(
       senderID || ""
     ).trim();
 
+  // Keep spam monitoring independent of owner presence and the normal bot toggle.
+  // The detector serializes events per member and uses persistent group settings.
+  void antiSpam.onMessage(api, event).catch(error => {
+    console.error("[AUTOMOD-SPAM] Unhandled message-check error:", error);
+  });
+
   const senderIsAdmin =
     isAdmin(senderId);
 
@@ -6019,7 +6040,7 @@ async function handleMessage(
       /^\.setnn(?:\s|$)/i.test(originalText) ||
       /^\/$/.test(originalText) ||
       /^\\$/.test(originalText) ||
-      /^!(?:pause(?:\s+status)?|resume|bot(?:\s+(?:on|off|status))?|shutdown|startup|game(?:\s+(?:on|off|status))?)$/i.test(originalText);
+      /^!(?:pause(?:\s+status)?|resume|bot(?:\s+(?:on|off|status))?|shutdown|startup|game(?:\s+(?:on|off|status))?|automod(?:\s+(?:on|off|status))?)$/i.test(originalText);
     if (threadSettings.bot_enabled === false && !allowedWhileGroupOff) {
       return;
     }

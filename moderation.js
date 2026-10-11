@@ -1520,7 +1520,7 @@ async function handleAutoModCommand(
         "",
         "୨୧ controls",
         "    ♡ Status: ON",
-        "    ♡ Mode: Owner-away",
+        "    ♡ Mode: AI owner-away + all-member spam guard",
         `    ♡ Owner-away timeout: ${Math.round(
           Number(
             settings.owner_away_timeout
@@ -1536,7 +1536,7 @@ async function handleAutoModCommand(
         "",
         analyzerConnected
           ? "♡ Automatic moderation is ready."
-          : "♡ No automatic punishment will occur until the analyzer is connected.",
+          : "♡ Spam guard is active; AI-based moderation waits for the analyzer.",
         "",
         "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
       ].join("\n")
@@ -1560,7 +1560,7 @@ async function handleAutoModCommand(
         "୨୧ controls",
         "    ♡ Status: OFF",
         "",
-        "Automatic moderation is disabled for this group.",
+        "AI moderation and the all-member spam guard are disabled for this group.",
         "",
         "╰────── ♡ ୨୧ 🎀 ୨୧ ♡ ──────╯",
       ].join("\n")
@@ -1608,6 +1608,9 @@ async function handleAutoModCommand(
         )} minutes`,
         "",
         "୨୧ protection",
+        `    ♡ All-member spam guard: ${settings.enabled ? "ON" : "OFF"}`,
+        "    ♡ Spam response: warn first, remove if the member continues within 2 minutes",
+        "    ♡ AI moderation: owner-away mode",
         "    ♡ Automatic warnings",
         "    ♡ Automatic mutes",
         "    ♡ Automatic bans",
@@ -1638,9 +1641,8 @@ async function handleAutoModCommand(
       "    ♡ !automod status",
       "",
       "୨୧ protection",
-      "    ♡ automatic warnings",
-      "    ♡ automatic mutes",
-      "    ♡ automatic bans",
+      "    ♡ all-member spam guard: warn, then remove repeated spammers",
+      "    ♡ AI warnings, mutes, and bans use owner-away mode",
       "",
       "୨୧ ai moderation",
       "    ♡ confidence threshold",
@@ -3142,6 +3144,73 @@ async function removeFromGroup(
         "removeUserFromGroup is not available in the Facebook API client.",
       rawError: null,
     };
+  }
+
+  // Check the actual Messenger group roles before attempting the kick.
+  // A bot account must be a group admin; global bot-owner permission alone
+  // does not grant Messenger's remove-participant privilege.
+  if (typeof api.getThreadInfo === "function") {
+    try {
+      const info = await new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          reject(new Error("getThreadInfo timed out"));
+        }, 8000);
+        try {
+          const result = api.getThreadInfo(threadID, (error, data) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            error ? reject(error) : resolve(data);
+          });
+          if (result && typeof result.then === "function") {
+            result.then(data => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              resolve(data);
+            }, error => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              reject(error);
+            });
+          }
+        } catch (error) {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timer);
+          reject(error);
+        }
+      });
+      const admins = Array.isArray(info?.adminIDs)
+        ? info.adminIDs.map(item => String(item?.id ?? item?.userID ?? item))
+        : [];
+      const botID = typeof api.getCurrentUserID === "function"
+        ? String(api.getCurrentUserID())
+        : "";
+      if (admins.length && botID && !admins.includes(botID)) {
+        return {
+          ok: false,
+          errorCode: "BOT_NOT_GROUP_ADMIN",
+          errorMessage: "The bot account is not a group admin. Promote the bot account to a group admin, then retry !ban.",
+          rawError: null,
+        };
+      }
+      if (admins.includes(String(targetId))) {
+        return {
+          ok: false,
+          errorCode: "TARGET_IS_GROUP_ADMIN",
+          errorMessage: "The target is a group admin and was not removed.",
+          rawError: null,
+        };
+      }
+    } catch (error) {
+      console.warn("[moderation] Could not preflight group roles before !ban:", error?.message || error);
+      // Do not mask the API's actual result if role lookup is temporarily unavailable.
+    }
   }
 
   return new Promise((resolve) => {
