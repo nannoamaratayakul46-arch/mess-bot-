@@ -10419,7 +10419,7 @@ function acceptBanatBurstMessage(threadID, job) {
     senderId: incomingSenderId,
     queuedAt: now,
   });
-      startTyping(job.api, key);
+  startTyping(job.api, key);
 
   const decisionMs = Math.max(
     BANAT_DECISION_MIN_MS,
@@ -10460,12 +10460,17 @@ function clearBanatBurstState(threadID) {
 
   state.decisionTimer = null;
   state.cleanupTimer = null;
-  state.queue.length = 0;
 
-  // If a reply is already in flight, leave its API call alone but prevent
-  // any queued continuation from surviving the / toggle.
+  // If no send is in flight, close any indicator held for queued Banat work.
   if (!state.running) {
+    for (const queuedJob of state.queue) {
+      stopTyping(queuedJob.api, key);
+    }
+    state.queue.length = 0;
     banatBurstState.delete(key);
+  } else {
+    // The active send owns the indicator and will close it in its finally path.
+    state.queue.length = 0;
   }
 
   return true;
@@ -10503,6 +10508,7 @@ async function runBanatBurstQueue(threadID) {
     const now = Date.now();
 
     // Drop stale jobs before selecting a target.
+    const queuedTypingApi = state.queue[0]?.api || null;
     state.queue = state.queue.filter((candidate) => {
       const age = now - Number(candidate.queuedAt || now);
 
@@ -10517,6 +10523,7 @@ async function runBanatBurstQueue(threadID) {
     });
 
     if (!state.queue.length) {
+      if (queuedTypingApi) stopTyping(queuedTypingApi, key);
       return;
     }
 
