@@ -117,6 +117,8 @@ test("clearing dashboard target removes persistent and in-memory target state", 
 test("target persistence has a database table and upsert", () => {
   const db = read("db.js");
   assert.match(db, /CREATE TABLE IF NOT EXISTS banat_thread_targets/);
+  assert.match(db, /target_name TEXT/);
+  assert.match(db, /target_name = CASE WHEN EXCLUDED\.target_user_id/);
   assert.match(db, /ON CONFLICT\(thread_id\) DO UPDATE SET/);
   assert.match(db, /async function getBanatThreadTarget\(threadId\)/);
   assert.match(db, /async function clearBanatThreadTarget\(threadId\)/);
