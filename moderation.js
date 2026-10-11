@@ -2387,6 +2387,8 @@ function cleanReason(reason) {
 |--------------------------------------------------------------------------
 */
 
+const FACEBOOK_USER_ID_RE = /^\d{6,20}$/;
+
 function parseTargetId(
   event,
   args
@@ -2399,28 +2401,34 @@ function parseTargetId(
     typeof mentions === "object"
   ) {
     const mentionIds =
-      Object.keys(mentions);
+      Object.keys(mentions)
+        .map((id) => String(id).trim())
+        .filter((id) => FACEBOOK_USER_ID_RE.test(id));
 
-    if (mentionIds.length > 0) {
-      return String(
-        mentionIds[0]
-      );
+    // Only trust a single valid mention. If multiple people were mentioned,
+    // do not silently moderate whichever ID happened to be first.
+    if (mentionIds.length === 1) {
+      return mentionIds[0];
+    }
+
+    if (mentionIds.length > 1) {
+      return null;
     }
   }
 
   const first =
     String(
       args[0] || ""
-    ).trim();
-
-  if (!first) {
-    return null;
-  }
-
-  return first
+    ).trim()
     .replace(/^@/, "")
     .replace(/[<>]/g, "")
     .trim();
+
+  // A display name is not a Facebook user ID. Reject it instead of passing
+  // it into permissions checks, ban storage, or removeUserFromGroup().
+  return FACEBOOK_USER_ID_RE.test(first)
+    ? first
+    : null;
 }
 
 function getReason(
