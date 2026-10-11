@@ -4,13 +4,14 @@ process.env.TYPING_ENABLED = "true";
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { typeBeforeSend } = require("../typingIndicator");
+const { typeBeforeSend, startTyping } = require("../typingIndicator");
 
-test("typing indicator uses the supplied human delay before sending and stops afterward", async () => {
+test("ws3-fca typing indicator receives true before send and false after send", async () => {
   const calls = [];
   const api = {
-    sendTyping(threadID, active) {
-      calls.push(active ? "typing:start" : "typing:stop");
+    sendTypingIndicator(threadID, isTyping, callback) {
+      calls.push([threadID, isTyping, typeof callback]);
+      if (typeof callback === "function") callback(null);
     }
   };
 
@@ -20,19 +21,35 @@ test("typing indicator uses the supplied human delay before sending and stops af
     "a sample reply",
     { ms: 5 },
     async () => {
-      calls.push("send");
+      calls.push(["send"]);
       return true;
     }
   );
 
   assert.equal(result, true);
-  assert.deepEqual(calls, ["typing:start", "send", "typing:stop"]);
+  assert.deepEqual(calls, [
+    ["typing-test-thread", true, "function"],
+    ["send"],
+    ["typing-test-thread", false, "function"]
+  ]);
+});
+
+test("legacy sendTyping API is supported as a fallback", async () => {
+  const calls = [];
+  const api = {
+    sendTyping(threadID, active) {
+      calls.push([threadID, active]);
+    }
+  };
+
+  await typeBeforeSend(api, "legacy-thread", "reply", { ms: 1 }, async () => "sent");
+  assert.deepEqual(calls, [["legacy-thread", true], ["legacy-thread", false]]);
 });
 
 test("typing API errors never prevent the message send", async () => {
   let sent = false;
   const api = {
-    sendTyping() {
+    sendTypingIndicator() {
       throw new Error("typing unsupported");
     }
   };
@@ -56,4 +73,21 @@ test("typing API errors never prevent the message send", async () => {
   } finally {
     console.warn = originalWarn;
   }
+});
+
+test("public start/stop helpers use the same API signature", () => {
+  const calls = [];
+  const api = {
+    sendTypingIndicator(threadID, isTyping, callback) {
+      calls.push([threadID, isTyping]);
+      if (callback) callback(null);
+    }
+  };
+
+  const stop = startTyping(api, "manual-thread");
+  stop();
+  assert.deepEqual(calls, [
+    ["manual-thread", true],
+    ["manual-thread", false]
+  ]);
 });
