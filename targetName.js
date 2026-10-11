@@ -101,8 +101,8 @@ const escapeRe = value => String(value).replace(/[.*+?^$\\{}()|[\]\\]/g, "\\$&")
 function renderTargetReply(template, name) {
   const who = cleanName(name) || "you";
   return String(template || "")
-    .replace(/\{\{\s*target\s*\}\}/gi, () => who)
-    .replace(new RegExp("\\b" + escapeRe("Jaiden") + "\\b", "gi"), () => who);
+    .replace(new RegExp("\\b" + escapeRe("Jaiden") + "\\b", "gi"), () => who)
+    .replace(/\{\{\s*target\s*\}\}/gi, () => who);
 }
 
 function clearTargetNameCache(threadID, userID) {
