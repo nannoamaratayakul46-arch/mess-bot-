@@ -22,6 +22,7 @@ const express = require("express");
 const { login } = require("ws3-fca");
 
 const db = require("./db");
+const { resolveTargetName } = require("./targetName");
 
 const {
   ensureNicknameGuardTable,
@@ -4220,12 +4221,31 @@ app.put(
         return res.status(400).json({ ok: false, error: "Target must be a member of this group, not the bot." });
       }
       const requestedBangEnabled = typeof req.body?.bang_enabled === "boolean" ? req.body.bang_enabled : null;
-      const saved = await db.setBanatThreadTarget(threadID, targetID, "dashboard-admin", requestedBangEnabled);
+      const infoRows = Array.isArray(info?.userInfo)
+        ? info.userInfo
+        : Object.entries(info?.userInfo || info?.participants || {}).map(([id, value]) => ({
+            id,
+            ...(value && typeof value === "object" ? value : {}),
+          }));
+      const targetMember = infoRows.find(member =>
+        String(member?.id || member?.userID || member?.userId || member?.uid || "") === targetID
+      );
+      const targetName = String(
+        req.body?.target_name ||
+        info?.nicknames?.[targetID] ||
+        targetMember?.firstName ||
+        targetMember?.name ||
+        targetMember?.fullName ||
+        ""
+      ).replace(/\\s+/g, " ").trim().slice(0, 120);
+      const saved = await db.setBanatThreadTarget(
+        threadID, targetID, "dashboard-admin", requestedBangEnabled, targetName
+      );
       setBanatDirectedTarget(threadID, targetID, "dashboard-admin", { persistent: true });
       clearBanatConversationTarget(threadID);
       clearBanatBurstState(threadID);
       pushDashboardEvent("banat-target", "Dashboard target updated for group " + threadID + ".");
-      return res.json({ ok: true, thread_id: threadID, target_user_id: saved.target_user_id, bang_enabled: saved.bang_enabled === true, target_set_at: new Date(Number(saved.updated_at)).toISOString() });
+      return res.json({ ok: true, thread_id: threadID, target_user_id: saved.target_user_id, target_name: saved.target_name || null, bang_enabled: saved.bang_enabled === true, target_set_at: new Date(Number(saved.updated_at)).toISOString() });
     } catch (error) {
       console.error("[DASHBOARD] Could not save Banat target:", error);
       return res.status(503).json({ ok: false, error: "Could not save this group's Banat target." });
@@ -4366,6 +4386,7 @@ app.get(
           slash_pool_enabled: settings.slash_pool_enabled === true,
           fun_enabled: settings.fun_enabled === true,
           target_user_id: target?.target_user_id || null,
+          target_name: target?.target_name || null,
           bang_enabled: target?.bang_enabled === true,
           target_set_at: target?.updated_at ? new Date(Number(target.updated_at)).toISOString() : null,
         });
@@ -10813,95 +10834,25 @@ async function handleAutomaticBanatMessage({
     const bangJaidenCommand =
       savedBanatTarget?.bang_enabled === true && /^!/.test(String(body || ""));
     if (bangJaidenCommand || (senderIsDashboardTarget && savedBanatTarget?.bang_enabled !== true)) {
-      let dashboardTargetName = "";
-
-      if (typeof api.getUserInfo === "function") {
-        try {
-          // Name lookup is cosmetic; it must never block a Jaiden reply.
-          // Some Facebook requests can stall without invoking the callback,
-          // so bound this lookup and fall back to the original Jaiden wording.
-          const userInfo = await new Promise((resolve, reject) => {
-            let settled = false;
-            const timeout = setTimeout(() => {
-              done(new Error("getUserInfo timed out after 2500ms"));
-            }, 2500);
-
-            const done = (error, info) => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(timeout);
-              if (error) reject(error);
-              else resolve(info || {});
-            };
-
-            try {
-              const result = api.getUserInfo(dashboardTargetId, done);
-              if (result && typeof result.then === "function") {
-                result.then((info) => done(null, info)).catch(done);
-              }
-            } catch (error) {
-              done(error);
-            }
-          });
-
-          const targetInfo = userInfo?.[dashboardTargetId] || {};
-          dashboardTargetName = String(
-            targetInfo.name || targetInfo.fullName || ""
-          ).trim();
-        } catch (error) {
-          console.warn(
-            "[TRIGGERS] Could not resolve dashboard target name:",
-            error?.message || error
-          );
-        }
-      }
-
-      // Fallback to this group's nickname for the selected member when the
-      // profile lookup is unavailable. Keep this lookup bounded as well.
-      if (!dashboardTargetName && typeof api.getThreadInfo === "function") {
-        try {
-          const info = await new Promise((resolve, reject) => {
-            let settled = false;
-            const timeout = setTimeout(() => done(new Error("getThreadInfo timed out after 2500ms")), 2500);
-            const done = (error, value) => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(timeout);
-              if (error) reject(error);
-              else resolve(value || {});
-            };
-            try {
-              const result = api.getThreadInfo(String(threadID), done);
-              if (result && typeof result.then === "function") {
-                result.then((value) => done(null, value)).catch(done);
-              }
-            } catch (error) {
-              done(error);
-            }
-          });
-          const threadMember = Array.isArray(info?.userInfo)
-            ? info.userInfo.find((member) =>
-                String(member?.id || member?.userID || member?.uid || "") === dashboardTargetId
-              )
-            : null;
-          dashboardTargetName = String(
-            info?.nicknames?.[dashboardTargetId] ||
-            info?.nicknames?.[String(dashboardTargetId)] ||
-            threadMember?.name ||
-            threadMember?.fullName ||
-            event?.mentions?.[dashboardTargetId] ||
-            ""
-          ).trim();
-        } catch (error) {
-          console.warn("[TRIGGERS] Could not resolve target group nickname:", error?.message || error);
-        }
-      }
+      const resolvedTarget = await resolveTargetName(api, threadID, dashboardTargetId, {
+        savedName: savedBanatTarget?.target_name,
+        seenName: String(
+          event?.senderName ||
+          event?.authorName ||
+          event?.userName ||
+          ""
+        ),
+      });
+      const dashboardTargetName = resolvedTarget.name || "";
 
       console.log(
-        "[BANAT] Jaiden target pool connected for group " + threadID +
-        "; target=" + dashboardTargetId +
-        "; nameResolved=" + Boolean(dashboardTargetName)
+        "[BANAT] Jaiden target resolved: target=" + dashboardTargetId +
+        " name=" + (dashboardTargetName || "<unresolved>") +
+        " source=" + resolvedTarget.source
       );
+      if (!dashboardTargetName) {
+        console.warn("[BANAT] Name lookup failed for target " + dashboardTargetId + "; Jaiden replies will use the safe fallback.");
+      }
 
       triggerReply = await getTriggerReply(
         body,
