@@ -42,8 +42,9 @@ test("forced Jaiden routing is connected to the dedicated target pool", () => {
   assert.match(source, /pickJaidenTargetReply\(\s*threadId/);
   const index = read("index.js");
   assert.match(index, /forceJaidenTarget:\s*true/);
-  assert.match(index, /Jaiden target pool connected/);
-  assert.match(index, /info\?\.nicknames\?\.\[dashboardTargetId\]/);
+  assert.match(index, /resolveTargetName\(api, threadID, dashboardTargetId/);
+  assert.match(index, /Jaiden target resolved:/);
+  assert.match(index, /forceJaidenTarget:\s*true/);
 });
 
 test("single-member SetNN validates group membership and only updates one protected nickname", () => {
