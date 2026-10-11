@@ -187,6 +187,27 @@ async function connect() {
       ADD COLUMN IF NOT EXISTS bang_enabled BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 
+  // Durable group photo backups and per-group auto-restore settings.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS group_photo_guard (
+      thread_id TEXT PRIMARY KEY,
+      enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      image_data BYTEA,
+      image_mime TEXT NOT NULL DEFAULT 'image/jpeg',
+      expected_image_url TEXT,
+      updated_at BIGINT NOT NULL DEFAULT 0,
+      last_restore_at BIGINT
+    );
+    ALTER TABLE group_photo_guard
+      ADD COLUMN IF NOT EXISTS enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS image_data BYTEA,
+      ADD COLUMN IF NOT EXISTS image_mime TEXT NOT NULL DEFAULT 'image/jpeg',
+      ADD COLUMN IF NOT EXISTS expected_image_url TEXT,
+      ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS last_restore_at BIGINT;
+  `);
+
+
   // ═════════════════════════════════════════════════════════
 
   // ═════════════════════════════════════════════════════════

@@ -3437,6 +3437,7 @@ registerGroupProfileRoutes(app, {
       ? activeMessengerApi
       : null,
   isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
+  db,
   audit: message => console.log(message),
 });
 
