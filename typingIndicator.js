@@ -90,7 +90,11 @@ function stopTyping(api, threadID) {
       state.stopped = true;
       if (state.timer) clearTimeout(state.timer);
       states.delete(key);
-      if (typeof state.end === "function") state.end();
+      if (typeof state.end === "function") {
+        state.end();
+      } else if (typeof api.sendTyping === "function" && typeof api.sendTypingIndicator !== "function") {
+        api.sendTyping(key, false);
+      }
       state.end = null;
       console.log("[BANAT-TYPING] Indicator stopped for thread " + key);
       return true;
