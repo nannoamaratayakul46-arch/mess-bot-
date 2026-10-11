@@ -1,5 +1,7 @@
 "use strict";
 
+const { resolveModerationTarget } = require("./moderation-target");
+
 const db = require("./db");
 
 const {
@@ -2387,60 +2389,16 @@ function cleanReason(reason) {
 |--------------------------------------------------------------------------
 */
 
-const FACEBOOK_USER_ID_RE = /^\d{6,20}$/;
-
-function parseTargetId(
-  event,
-  args
-) {
-  const mentions =
-    event?.mentions || {};
-
-  if (
-    mentions &&
-    typeof mentions === "object"
-  ) {
-    const mentionIds =
-      Object.keys(mentions)
-        .map((id) => String(id).trim())
-        .filter((id) => FACEBOOK_USER_ID_RE.test(id));
-
-    // Only trust a single valid mention. If multiple people were mentioned,
-    // do not silently moderate whichever ID happened to be first.
-    if (mentionIds.length === 1) {
-      return mentionIds[0];
-    }
-
-    if (mentionIds.length > 1) {
-      return null;
-    }
-  }
-
-  const first =
-    String(
-      args[0] || ""
-    ).trim()
-    .replace(/^@/, "")
-    .replace(/[<>]/g, "")
-    .trim();
-
-  // A display name is not a Facebook user ID. Reject it instead of passing
-  // it into permissions checks, ban storage, or removeUserFromGroup().
-  return FACEBOOK_USER_ID_RE.test(first)
-    ? first
-    : null;
-}
-
 function getReason(
   args,
-  targetId
+  consumedArgs = 1
 ) {
   if (!args.length) {
     return "No reason provided";
   }
 
   const reasonArgs =
-    args.slice(1);
+    args.slice(consumedArgs);
 
   if (!reasonArgs.length) {
     return "No reason provided";
@@ -3608,17 +3566,20 @@ async function handleWarn(
     return true;
   }
 
-  const targetId =
-    parseTargetId(
+  const resolvedTarget =
+    await resolveModerationTarget(
+      api,
       event,
+      threadID,
       args
     );
+  const targetId = resolvedTarget?.targetId || null;
 
   if (!targetId) {
     await send(
       api,
       threadID,
-      "Usage: !warn @user reason"
+      "Could not identify one unique group member. Use @mention, exact member name, or numeric user ID."
     );
 
     return true;
@@ -3661,7 +3622,7 @@ async function handleWarn(
   const reason =
     getReason(
       args,
-      targetId
+      resolvedTarget.consumedArgs
     );
 
   const warnings =
@@ -3767,17 +3728,20 @@ async function handleKick(
     return true;
   }
 
-  const targetId =
-    parseTargetId(
+  const resolvedTarget =
+    await resolveModerationTarget(
+      api,
       event,
+      threadID,
       args
     );
+  const targetId = resolvedTarget?.targetId || null;
 
   if (!targetId) {
     await send(
       api,
       threadID,
-      "Usage: !kick @user reason"
+      "Could not identify one unique group member. Use @mention, exact member name, or numeric user ID."
     );
 
     return true;
@@ -3820,7 +3784,7 @@ async function handleKick(
   const reason =
     getReason(
       args,
-      targetId
+      resolvedTarget.consumedArgs
     );
 
   const removal =
@@ -3936,17 +3900,20 @@ async function handleBan(
     return true;
   }
 
-  const targetId =
-    parseTargetId(
+  const resolvedTarget =
+    await resolveModerationTarget(
+      api,
       event,
+      threadID,
       args
     );
+  const targetId = resolvedTarget?.targetId || null;
 
   if (!targetId) {
     await send(
       api,
       threadID,
-      "Usage: !ban @user reason"
+      "Could not identify one unique group member. Use @mention, exact member name, or numeric user ID."
     );
 
     return true;
@@ -3989,7 +3956,7 @@ async function handleBan(
   const reason =
     getReason(
       args,
-      targetId
+      resolvedTarget.consumedArgs
     );
 
   await createBan(
