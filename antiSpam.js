@@ -39,7 +39,7 @@ function callbackCall(invoke, timeoutMs = 10000) {
   });
 }
 
-function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, log = () => {} }) {
+function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, log = () => {}, getSettings = getAutoModSettings, setEnabled = setAutoModEnabled }) {
   if (!db || typeof db.query !== "function") throw new TypeError("antiSpam requires the persistent db query interface");
 
   const hits = new Map();
@@ -148,7 +148,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     if (!threadID || !userID || !text) return;
     if (typeof api?.getCurrentUserID === "function" && userID === String(api.getCurrentUserID())) return;
 
-    const autoSettings = await getAutoModSettings(threadID);
+    const autoSettings = await getSettings(threadID);
     if (autoSettings?.enabled !== true) return;
 
     const cfg = await getConfig(threadID);
@@ -254,7 +254,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
              warn_text = EXCLUDED.warn_text, updated_at = NOW()`,
           [threadID, cfg.max_messages, cfg.window_seconds, cfg.repeat_max, cfg.warn_first, cfg.warn_grace_seconds, cfg.warn_text],
         );
-        const settings = await setAutoModEnabled(threadID, body.enabled === true);
+        const settings = await setEnabled(threadID, body.enabled === true);
         log(`[AUTOMOD-SPAM] ${settings.enabled ? "enabled" : "disabled"} for all members in ${threadID}`);
         return res.json({ antispam: { ...cfg, enabled: settings.enabled === true } });
       } catch (error) {
@@ -267,7 +267,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       try {
         const threadID = String(req.params.threadId || "").trim();
         if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the bot's current group list." });
-        await setAutoModEnabled(threadID, false);
+        await setEnabled(threadID, false);
         await ensureTables();
         await db.query("DELETE FROM automod_spam_settings WHERE thread_id = $1", [threadID]);
         await db.query("DELETE FROM automod_spam_warnings WHERE thread_id = $1", [threadID]);
