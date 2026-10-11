@@ -4454,6 +4454,67 @@ app.put(
 );
 
 app.post(
+  "/api/dashboard/setnn/single",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.body?.thread_id || "").trim();
+    const participantID = String(req.body?.participant_id || "").trim();
+    const nickname = String(req.body?.nickname || "").trim();
+    const ownerId = dashboardOwnerId();
+
+    if (!ownerId) {
+      return res.status(503).json({
+        ok: false,
+        error: "Set ADMIN_IDS to the bot owner's Messenger ID before enabling dashboard SetNN.",
+      });
+    }
+    if (!activeMessengerApi || activeListenerGeneration <= 0) {
+      return res.status(409).json({ ok: false, error: "Messenger is not connected." });
+    }
+    if (!threadID || (!activeThreads.has(threadID) && !dashboardKnownGroups.has(threadID))) {
+      return res.status(400).json({ ok: false, error: "Choose a group in the bot group list." });
+    }
+    if (!participantID) {
+      return res.status(400).json({ ok: false, error: "Choose one group member." });
+    }
+    if (!nickname || nickname.length > 80 || /[\u0000-\u001f\u007f]/.test(nickname) || /^off$/i.test(nickname)) {
+      return res.status(400).json({ ok: false, error: "Enter a nickname of 1–80 characters; use Clear only if you want a separate reset flow." });
+    }
+
+    try {
+      const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
+      const ids = Array.isArray(info.participantIDs) ? info.participantIDs.map(String) : [];
+      const botID = String(activeMessengerApi.getCurrentUserID?.() || "");
+      if (!ids.includes(participantID) || participantID === botID) {
+        return res.status(400).json({ ok: false, error: "The selected target must be a member of this group, not the bot." });
+      }
+
+      await changeNicknameAsync(activeMessengerApi, nickname, threadID, participantID);
+      const protectedNicknames = await getProtectedNicknames(threadID);
+      protectedNicknames[participantID] = nickname;
+      await setProtectedNicknames(threadID, ownerId, protectedNicknames);
+
+      pushDashboardEvent("setnn", "Single-member SetNN completed for group " + threadID + ".");
+      return res.json({
+        ok: true,
+        thread_id: threadID,
+        participant_id: participantID,
+        nickname,
+        status: "completed",
+        message: "Nickname updated for the selected member only.",
+      });
+    } catch (error) {
+      console.error("[DASHBOARD] Single-member SetNN failed:", error);
+      pushDashboardEvent("error", "Single-member SetNN failed for group " + threadID + ".");
+      return res.status(503).json({
+        ok: false,
+        error: String(error?.message || "Could not update this member's nickname.").slice(0, 300),
+      });
+    }
+  }
+);
+
+app.post(
   "/api/dashboard/setnn/start",
   requireDashboardAccess,
   async (req, res) => {
