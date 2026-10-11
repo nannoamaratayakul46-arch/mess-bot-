@@ -6040,7 +6040,7 @@ async function handleMessage(
       /^\.setnn(?:\s|$)/i.test(originalText) ||
       /^\/$/.test(originalText) ||
       /^\\$/.test(originalText) ||
-      /^!(?:pause(?:\s+status)?|resume|bot(?:\s+(?:on|off|status))?|shutdown|startup|game(?:\s+(?:on|off|status))?)$/i.test(originalText);
+      /^!(?:pause(?:\s+status)?|resume|bot(?:\s+(?:on|off|status))?|shutdown|startup|game(?:\s+(?:on|off|status))?|automod(?:\s+(?:on|off|status))?)$/i.test(originalText);
     if (threadSettings.bot_enabled === false && !allowedWhileGroupOff) {
       return;
     }
