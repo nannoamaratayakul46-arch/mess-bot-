@@ -14,44 +14,49 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function reportTypingError(action, error) {
+  if (error) {
+    console.warn("[HUMAN-TYPING] " + action + " failed:", error?.message || error);
+  }
+}
+
 function stopTyping(api, threadID) {
   if (!api || !threadID || !ENABLED) return false;
   try {
+    // ws3-fca uses (threadID, isTyping, callback); false explicitly clears
+    // the indicator. Prefer the same API used to start it.
+    if (typeof api.sendTypingIndicator === "function") {
+      api.sendTypingIndicator(String(threadID), false, (error) => {
+        reportTypingError("Stop", error);
+      });
+      return true;
+    }
     if (typeof api.sendTyping === "function") {
       api.sendTyping(String(threadID), false);
       return true;
     }
   } catch (error) {
-    console.warn("[HUMAN-TYPING] Stop failed:", error?.message || error);
+    reportTypingError("Stop", error);
   }
   return false;
 }
 
-// Returns a cleanup function, including when the API itself supplies one.
 function startTyping(api, threadID) {
   if (!api || !threadID || !ENABLED) return () => {};
   try {
+    // ws3-fca signature: sendTypingIndicator(threadID, isTyping, callback).
     if (typeof api.sendTypingIndicator === "function") {
-      const end = api.sendTypingIndicator(String(threadID), (error) => {
-        if (error) {
-          console.warn("[HUMAN-TYPING] Start failed:", error?.message || error);
-        }
+      api.sendTypingIndicator(String(threadID), true, (error) => {
+        reportTypingError("Start", error);
       });
-      return () => {
-        try {
-          if (typeof end === "function") end();
-          else stopTyping(api, threadID);
-        } catch (error) {
-          console.warn("[HUMAN-TYPING] Stop failed:", error?.message || error);
-        }
-      };
+      return () => stopTyping(api, threadID);
     }
     if (typeof api.sendTyping === "function") {
       api.sendTyping(String(threadID), true);
       return () => stopTyping(api, threadID);
     }
   } catch (error) {
-    console.warn("[HUMAN-TYPING] Start failed:", error?.message || error);
+    reportTypingError("Start", error);
   }
   return () => {};
 }
