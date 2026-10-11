@@ -17,7 +17,7 @@ const {
   calculateHumanDelay,
   humanizationProfile,
 } = require("./human-mimic/index");
-const { typeBeforeSend } = require("./typingIndicator");
+const { typeBeforeSend, startTyping } = require("./typingIndicator");
 
 const BANAT_REPLY_DELAY_MS = Math.max(
   0,
