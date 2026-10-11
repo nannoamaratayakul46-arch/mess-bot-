@@ -4,6 +4,7 @@ const { rememberBanatReply, pickBanatReply, isRecent } = require("./banat-memory
 const { pickFromBag, pickTriggerVariant } = require("./banat-randomizer");
 const { chooseSocialResponse } = require("./banat-social");
 const { isAdmin } = require("./permissions");
+const { pickJaidenTargetReply } = require("./jaiden-target-pool");
 
 // ============================================================
 // TRIGGERS / BANAT SYSTEM
@@ -2194,18 +2195,13 @@ async function getTriggerReply(
   // ordinary / and \ Banat pools. It does not require the incoming message
   // to contain the word "Jaiden"; the selected member's messages use this pool.
   if (options?.forceJaidenTarget === true) {
-    const jaidenGroup = groups.find((group) => group.name === "jaiden");
-    if (!jaidenGroup) return null;
-
-    let reply = getNextReply(jaidenGroup);
-    if (!reply) return null;
-
-    const targetName = String(options?.targetName || "").trim();
-    if (targetName) {
-      reply = reply.replace(/\bjaiden\b/gi, targetName);
-    }
-
-    return reply;
+    // Dashboard-selected targeting uses its own template pool. Every entry
+    // contains {{target}}, so replies don't depend on the word "Jaiden"
+    // appearing in the template before substitution.
+    return pickJaidenTargetReply(
+      threadId,
+      String(options?.targetName || "").trim() || "you"
+    );
   }
 
   // ----------------------------------------------------------

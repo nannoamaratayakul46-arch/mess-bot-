@@ -16,9 +16,8 @@ const {
   createHumanContext,
   calculateHumanDelay,
   humanizationProfile,
-  startTyping,
-  stopTyping,
 } = require("./human-mimic/index");
+const { typeBeforeSend } = require("./typingIndicator");
 
 const BANAT_REPLY_DELAY_MS = Math.max(
   0,
@@ -255,15 +254,12 @@ function sendBanatReplyWithTyping(
       : prepared.reactionMs;
 
     setTimeout(() => {
-      startTyping(api, threadID);
-
-      setTimeout(() => {
-        let settled = false;
+      const sendNow = () => new Promise((sendResolve) => {
+        let sendSettled = false;
         const finish = (value) => {
-          if (settled) return;
-          settled = true;
-          stopTyping(api, threadID);
-          resolve(value);
+          if (sendSettled) return;
+          sendSettled = true;
+          sendResolve(value);
         };
 
         try {
@@ -295,9 +291,7 @@ function sendBanatReplyWithTyping(
                 return;
               }
 
-              // Explicitly connect every successful Banat send (including the
-              // backslash pool) to the self-laugh reaction. ws3-fca versions
-              // differ in the shape of messageInfo, so accept common ID keys.
+              // Accept common message ID shapes across ws3-fca versions.
               const sentMessageID = typeof messageInfo === "string"
                 ? messageInfo
                 : messageInfo?.messageID ||
@@ -308,10 +302,6 @@ function sendBanatReplyWithTyping(
                   null;
 
               if (sentMessageID) {
-                // A human does not normally react to their own freshly sent
-                // message in the same millisecond. Keep the reaction outside
-                // the message send path, but give it a small context-sensitive
-                // delay so it cannot make the reply look mechanically chained.
                 const reactionDelayMs = Math.max(
                   350,
                   Math.min(
@@ -359,10 +349,7 @@ function sendBanatReplyWithTyping(
                       );
                     }
                   } catch (reactionError) {
-                    console.error(
-                      "[BANAT] Self-laugh reaction error:",
-                      reactionError
-                    );
+                    console.error("[BANAT] Self-laugh reaction error:", reactionError);
                   }
                 }, reactionDelayMs);
               } else {
@@ -372,8 +359,6 @@ function sendBanatReplyWithTyping(
                 );
               }
 
-              // No follow-up meme send: the current turn already carries the meme/link.
-
               finish(true);
             },
             replyToMessageID || null
@@ -382,7 +367,23 @@ function sendBanatReplyWithTyping(
           console.error("[BANAT] Reply error:", sendError);
           finish(false);
         }
-      }, prepared.typingMs);
+      });
+
+      // Use the exact typing duration calculated by human-delay.js above.
+      // The send timeout/traffic governor starts only after this wait ends.
+      typeBeforeSend(
+        api,
+        threadID,
+        prepared.text,
+        {
+          ms: prepared.typingMs,
+          skip: Boolean(dependencies.skipTyping),
+        },
+        sendNow
+      ).then(resolve).catch((error) => {
+        console.error("[BANAT] Typing/send wrapper failed:", error?.message || error);
+        resolve(false);
+      });
     }, reactionMs);
 
     if (humanState.size > 500) cleanupHumanState();

@@ -46,9 +46,9 @@ test("forced dashboard mode chooses Jaiden replies and substitutes target name",
   const normalTriggers = source.indexOf("// EXPLICIT WORD / PHRASE TRIGGERS", force);
   assert.ok(force >= 0 && normalTriggers > force);
   const body = source.slice(force, normalTriggers);
-  assert.match(body, /groups\.find\(\(group\) => group\.name === "jaiden"\)/);
-  assert.match(body, /getNextReply\(jaidenGroup\)/);
-  assert.match(body, /reply\.replace\(\/\\bjaiden\\b\/gi, targetName\)/);
+  assert.match(body, /pickJaidenTargetReply\(/);
+  assert.match(body, /threadId/);
+  assert.match(body, /targetName/);
 });
 
 test("dashboard Jaiden reply does not hang when target-name lookup stalls", () => {

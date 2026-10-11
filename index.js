@@ -5933,6 +5933,140 @@ async function handleMessage(
   // block does not make the next .setnn restart from member #1.
   // ==========================================================
 
+  // SINGLE-MEMBER SETNN — does not create or alter the mass SetNN job.
+  // Usage: reply to a member's message with ".setnn one nickname".
+  // Or mention them: ".setnn one @member -- nickname".
+  const setSingleNicknameMatch =
+    originalText.match(/^\.setnn\s+one(?:\s+([\s\S]+))?$/i);
+
+  if (setSingleNicknameMatch) {
+    if (!isOwner(senderId)) {
+      sendReplyWithTyping(api, "🔒 .setnn is owner-only.", threadID);
+      return;
+    }
+
+    const rawSingleNickname = String(setSingleNicknameMatch[1] || "").trim();
+    const repliedMemberID = String(
+      event?.messageReply?.senderID ||
+      event?.messageReply?.senderId ||
+      event?.messageReply?.sender_id ||
+      ""
+    ).trim();
+    const mentionedIDs = event?.mentions && typeof event.mentions === "object"
+      ? Object.keys(event.mentions).map((id) => String(id).trim()).filter(Boolean)
+      : [];
+    const participantID = repliedMemberID || mentionedIDs[0] || "";
+
+    let requestedSingleNickname = rawSingleNickname;
+    if (!repliedMemberID && mentionedIDs.length) {
+      const delimiterMatch = rawSingleNickname.match(/--\s*([\s\S]+)$/);
+      requestedSingleNickname = delimiterMatch ? delimiterMatch[1].trim() : "";
+    }
+
+    if (!participantID) {
+      sendReplyWithTyping(
+        api,
+        "🎀 Reply to the member's message with .setnn one nickname, or use .setnn one @member -- nickname.",
+        threadID
+      );
+      return;
+    }
+
+    if (
+      !requestedSingleNickname ||
+      requestedSingleNickname.length > 80 ||
+      /[\u0000-\u001f\u007f]/.test(requestedSingleNickname) ||
+      /^off$/i.test(requestedSingleNickname)
+    ) {
+      sendReplyWithTyping(
+        api,
+        "⏱️ Nickname must be 1–80 characters. Reply to a member with .setnn one nickname.",
+        threadID
+      );
+      return;
+    }
+
+    try {
+      if (typeof api?.getThreadInfo !== "function") {
+        throw new Error("This ws3-fca build does not expose api.getThreadInfo().");
+      }
+
+      const threadInfo = await new Promise((resolve, reject) => {
+        let settled = false;
+        const timeout = setTimeout(() => done(new Error("getThreadInfo timed out after 5000ms")), 5000);
+        const done = (error, info) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeout);
+          if (error) reject(error);
+          else resolve(info || {});
+        };
+
+        try {
+          const result = api.getThreadInfo(String(threadID), done);
+          if (result && typeof result.then === "function") {
+            result.then((info) => done(null, info)).catch(done);
+          }
+        } catch (error) {
+          done(error);
+        }
+      });
+
+      const participantIDs = Array.isArray(threadInfo?.participantIDs)
+        ? threadInfo.participantIDs.map((id) => String(id || "").trim())
+        : [];
+
+      if (!participantIDs.includes(participantID)) {
+        sendReplyWithTyping(api, "🔎 That account is not listed as a member of this group.", threadID);
+        return;
+      }
+
+      const botID = String(
+        typeof api.getCurrentUserID === "function" ? api.getCurrentUserID() : eclipseUserID || ""
+      ).trim();
+      if (botID && participantID === botID) {
+        sendReplyWithTyping(api, "⛔ I can't set a nickname for the bot account.", threadID);
+        return;
+      }
+
+      await changeNicknameAsync(api, requestedSingleNickname, threadID, participantID);
+
+      const protectedNicknames = await getProtectedNicknames(threadID);
+      protectedNicknames[participantID] = requestedSingleNickname;
+      await setProtectedNicknames(threadID, senderId, protectedNicknames);
+
+      console.log(
+        "[NICK GUARD] Single-member SetNN in " + threadID +
+        " for " + participantID + " -> " + JSON.stringify(requestedSingleNickname)
+      );
+      sendReplyWithTyping(
+        api,
+        "🎀 Nickname updated for that member only: " + requestedSingleNickname,
+        threadID
+      );
+    } catch (error) {
+      const errorText = [
+        error?.error,
+        error?.errorSummary,
+        error?.errorDescription?.__html,
+        error?.errorDescription,
+        error?.message
+      ].filter(Boolean).join(" ");
+      const priorMessageRequired =
+        /thread that doesn't exist[\s\S]*at least one message in the thread/i.test(errorText);
+      console.error("[NICK GUARD] Single-member .setnn failed:", error);
+      sendReplyWithTyping(
+        api,
+        priorMessageRequired
+          ? "⚠️ Messenger won't allow that nickname yet. That member may need to send at least one message in this group first."
+          : "🔴 Could not update that member's nickname: " + errorText.slice(0, 180),
+        threadID
+      );
+    }
+
+    return;
+  }
+
   const setNicknameMatch =
     originalText.match(/^\.setnn(?:\s+(?:(\d+)\s+)?(.+))?$/i);
 
@@ -10647,6 +10781,53 @@ async function handleAutomaticBanatMessage({
           );
         }
       }
+
+      // Fallback to this group's nickname for the selected member when the
+      // profile lookup is unavailable. Keep this lookup bounded as well.
+      if (!dashboardTargetName && typeof api.getThreadInfo === "function") {
+        try {
+          const info = await new Promise((resolve, reject) => {
+            let settled = false;
+            const timeout = setTimeout(() => done(new Error("getThreadInfo timed out after 2500ms")), 2500);
+            const done = (error, value) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timeout);
+              if (error) reject(error);
+              else resolve(value || {});
+            };
+            try {
+              const result = api.getThreadInfo(String(threadID), done);
+              if (result && typeof result.then === "function") {
+                result.then((value) => done(null, value)).catch(done);
+              }
+            } catch (error) {
+              done(error);
+            }
+          });
+          const threadMember = Array.isArray(info?.userInfo)
+            ? info.userInfo.find((member) =>
+                String(member?.id || member?.userID || member?.uid || "") === dashboardTargetId
+              )
+            : null;
+          dashboardTargetName = String(
+            info?.nicknames?.[dashboardTargetId] ||
+            info?.nicknames?.[String(dashboardTargetId)] ||
+            threadMember?.name ||
+            threadMember?.fullName ||
+            event?.mentions?.[dashboardTargetId] ||
+            ""
+          ).trim();
+        } catch (error) {
+          console.warn("[TRIGGERS] Could not resolve target group nickname:", error?.message || error);
+        }
+      }
+
+      console.log(
+        "[BANAT] Jaiden target pool connected for group " + threadID +
+        "; target=" + dashboardTargetId +
+        "; nameResolved=" + Boolean(dashboardTargetName)
+      );
 
       triggerReply = await getTriggerReply(
         body,
