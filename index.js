@@ -4237,7 +4237,7 @@ app.put(
         targetMember?.name ||
         targetMember?.fullName ||
         ""
-      ).replace(/\\s+/g, " ").trim().slice(0, 120);
+      ).replace(/\s+/g, " ").trim().slice(0, 120);
       const saved = await db.setBanatThreadTarget(
         threadID, targetID, "dashboard-admin", requestedBangEnabled, targetName
       );
