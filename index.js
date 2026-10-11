@@ -10776,6 +10776,46 @@ async function handleAutomaticBanatMessage({
         }
       }
 
+      // Fallback to this group's nickname for the selected member when the
+      // profile lookup is unavailable. Keep this lookup bounded as well.
+      if (!dashboardTargetName && typeof api.getThreadInfo === "function") {
+        try {
+          const info = await new Promise((resolve, reject) => {
+            let settled = false;
+            const timeout = setTimeout(() => done(new Error("getThreadInfo timed out after 2500ms")), 2500);
+            const done = (error, value) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timeout);
+              if (error) reject(error);
+              else resolve(value || {});
+            };
+            try {
+              const result = api.getThreadInfo(String(threadID), done);
+              if (result && typeof result.then === "function") {
+                result.then((value) => done(null, value)).catch(done);
+              }
+            } catch (error) {
+              done(error);
+            }
+          });
+          dashboardTargetName = String(
+            info?.nicknames?.[dashboardTargetId] ||
+            info?.nicknames?.[String(dashboardTargetId)] ||
+            event?.mentions?.[dashboardTargetId] ||
+            ""
+          ).trim();
+        } catch (error) {
+          console.warn("[TRIGGERS] Could not resolve target group nickname:", error?.message || error);
+        }
+      }
+
+      console.log(
+        "[BANAT] Jaiden target pool connected for group " + threadID +
+        "; target=" + dashboardTargetId +
+        "; nameResolved=" + Boolean(dashboardTargetName)
+      );
+
       triggerReply = await getTriggerReply(
         body,
         senderId,
