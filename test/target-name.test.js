@@ -42,4 +42,8 @@ test("renderer replaces all placeholders and leftover Jaiden text", () => {
     renderTargetReply("Jaiden, {{target}}! jaiden saw {{ target }}.", "Ray"),
     "Ray, Ray! Ray saw Ray."
   );
+  assert.equal(
+    renderTargetReply("Jaiden, {{target}}!", "Jaiden Smith"),
+    "Jaiden Smith, Jaiden Smith!"
+  );
 });
