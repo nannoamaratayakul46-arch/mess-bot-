@@ -23,6 +23,7 @@ const { login } = require("ws3-fca");
 
 const db = require("./db");
 const { resolveTargetName } = require("./targetName");
+const { registerGroupProfileRoutes } = require("./groupProfileRoutes");
 
 const {
   ensureNicknameGuardTable,
@@ -3366,7 +3367,13 @@ async function checkDatabaseHealth() {
 
 const app = express();
 
-app.use(express.json({ limit: "32kb" }));
+app.use(express.json({
+  limit: "32kb",
+  // Let the profile endpoint use its own bounded parser for image data URLs.
+  type: req =>
+    !/^\/api\/dashboard\/groups\/[^/]+\/profile$/.test(req.path) &&
+    Boolean(req.is("application/json")),
+}));
 
 const DASHBOARD_API_KEY =
   String(process.env.ECLIPSE_DASHBOARD_API_KEY || "").trim();
@@ -3421,6 +3428,17 @@ function requireDashboardAccess(req, res, next) {
 }
 
 app.use(dashboardCors);
+
+// Group profile uploads use a route-scoped JSON parser with a larger bounded limit.
+registerGroupProfileRoutes(app, {
+  auth: requireDashboardAccess,
+  getApi: () =>
+    activeMessengerApi && activeListenerGeneration > 0
+      ? activeMessengerApi
+      : null,
+  isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
+  audit: message => console.log(message),
+});
 
 // ============================================================
 // ECLIPSE LAB / BANAT SIMULATOR API
