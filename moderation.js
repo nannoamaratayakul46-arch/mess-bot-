@@ -3082,49 +3082,95 @@ async function removeBan(
 |--------------------------------------------------------------------------
 */
 
-function serializeFacebookError(
-  error
-) {
-  if (!error) {
+function serializeFacebookError(error) {
+  if (error === undefined || error === null) {
     return null;
   }
 
-  const details = {};
+  // FCA callbacks may pass a string or an object with Facebook's fields.
+  // Preserve useful diagnostics without serializing request/session objects.
+  if (typeof error === "string") {
+    return error.slice(0, 1000);
+  }
 
+  if (typeof error !== "object") {
+    return String(error).slice(0, 1000);
+  }
+
+  const details = {};
   const possibleFields = [
+    "name",
     "code",
-    "message",
-    "error",
     "errorCode",
+    "message",
     "errorSummary",
     "errorDescription",
+    "error",
+    "errorType",
+    "type",
     "statusCode",
     "status",
+    "subcode",
+    "error_subcode",
+    "error_user_title",
+    "error_user_msg",
+    "fbtrace_id",
+    "requestId",
+    "errno",
   ];
 
-  for (
-    const field of possibleFields
-  ) {
-    if (
-      error[field] !== undefined &&
-      error[field] !== null
-    ) {
-      details[field] =
-        String(error[field]);
+  for (const field of possibleFields) {
+    const value = error[field];
+    if (value === undefined || value === null) continue;
+
+    if (typeof value === "string") {
+      details[field] = value.slice(0, 500);
+    } else if (typeof value === "number" || typeof value === "boolean") {
+      details[field] = value;
+    } else {
+      try {
+        details[field] = JSON.stringify(value).slice(0, 500);
+      } catch {
+        details[field] = String(value).slice(0, 500);
+      }
     }
   }
 
-  if (
-    !Object.keys(details).length
-  ) {
+  if (!Object.keys(details).length) {
     try {
-      return JSON.stringify(error);
+      return JSON.stringify(error).slice(0, 1000);
     } catch {
-      return String(error);
+      return String(error).slice(0, 1000);
     }
   }
 
-  return JSON.stringify(details);
+  return JSON.stringify(details).slice(0, 1500);
+}
+
+function getFacebookErrorMessage(error) {
+  if (typeof error === "string" && error.trim()) {
+    return error.trim().slice(0, 500);
+  }
+
+  if (!error || typeof error !== "object") {
+    return "";
+  }
+
+  const candidates = [
+    error.message,
+    error.errorDescription,
+    error.errorSummary,
+    error.error_user_msg,
+    error.error,
+  ];
+
+  for (const value of candidates) {
+    if (typeof value === "string" && value.trim()) {
+      return value.trim().slice(0, 500);
+    }
+  }
+
+  return "";
 }
 
 async function removeFromGroup(
@@ -3258,26 +3304,24 @@ async function removeFromGroup(
     }, 15_000);
 
     const handleError = (error) => {
+      const diagnostic = serializeFacebookError(error);
+      const message = getFacebookErrorMessage(error);
+
       console.error(
         "[moderation] removeUserFromGroup:",
-        error
+        diagnostic || error
       );
 
       finish({
         ok: false,
         errorCode:
-          error?.code ||
-          error?.errorCode ||
+          (error && typeof error === "object" &&
+            (error.code || error.errorCode || error.error_subcode)) ||
           "FACEBOOK_ERROR",
         errorMessage:
-          error?.message ||
-          error?.errorDescription ||
-          error?.errorSummary ||
-          "Facebook rejected the group-removal request.",
-        rawError:
-          serializeFacebookError(
-            error
-          ),
+          message ||
+          "Facebook/FCA returned an error without a readable message. Check the diagnostic details below.",
+        rawError: diagnostic,
       });
     };
 
@@ -3323,49 +3367,74 @@ async function removeFromGroup(
         error
       );
 
+      const diagnostic = serializeFacebookError(error);
       finish({
         ok: false,
         errorCode:
-          error?.code ||
-          error?.errorCode ||
+          (error && typeof error === "object" &&
+            (error.code || error.errorCode || error.error_subcode)) ||
           "EXCEPTION",
         errorMessage:
-          error?.message ||
+          getFacebookErrorMessage(error) ||
           "An exception occurred while attempting to remove the user.",
-        rawError:
-          serializeFacebookError(
-            error
-          ),
+        rawError: diagnostic,
       });
     }
   });
 }
 
-function formatRemovalFailure(
-  removal
-) {
+function formatRemovalFailure(removal) {
   if (!removal) {
     return "Unknown Facebook removal error.";
   }
 
-  const code =
-    removal.errorCode
-      ? String(
-          removal.errorCode
-        )
-      : "UNKNOWN";
+  const code = removal.errorCode
+    ? String(removal.errorCode).slice(0, 100)
+    : "UNKNOWN";
+  const message = removal.errorMessage
+    ? String(removal.errorMessage).slice(0, 500)
+    : "Facebook rejected the request.";
 
-  const message =
-    removal.errorMessage
-      ? String(
-          removal.errorMessage
-        )
-      : "Facebook rejected the request.";
-
-  return [
+  const lines = [
     `Code: ${code}`,
     `Reason: ${message}`,
-  ].join("\n");
+  ];
+
+  if (removal.rawError) {
+    let diagnostic = String(removal.rawError).trim();
+
+    // Keep only relevant API error fields; never print arbitrary request/session data.
+    try {
+      const parsed = JSON.parse(diagnostic);
+      if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+        const useful = {};
+        for (const [key, value] of Object.entries(parsed)) {
+          if (value === undefined || value === null || value === "") continue;
+          const normalized = String(value);
+          if (
+            ["code", "errorCode", "message", "errorDescription", "errorSummary"].includes(key) &&
+            normalized === String(
+              key === "code" || key === "errorCode" ? code : message
+            )
+          ) {
+            continue;
+          }
+          useful[key] = normalized.slice(0, 250);
+        }
+        diagnostic = Object.keys(useful).length
+          ? JSON.stringify(useful)
+          : "";
+      }
+    } catch {
+      // Plain-string errors are still useful diagnostic output.
+    }
+
+    if (diagnostic && diagnostic !== message) {
+      lines.push(`Facebook details: ${diagnostic.slice(0, 500)}`);
+    }
+  }
+
+  return lines.join("\n");
 }
 
 /*
