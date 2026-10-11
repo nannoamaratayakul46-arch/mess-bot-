@@ -47,11 +47,13 @@ const TEMPLATES = [
   "{{target}}, ang bilis mag-send, ang bagal dumating ng point."
 ];
 
+const { renderTargetReply } = require("./targetName");
+
 const bags = new Map();
 
 function renderTargetTemplate(template, targetName) {
   const name = String(targetName || "").trim().slice(0, 80) || "you";
-  return String(template || "").replace(/\{\{target\}\}/g, name);
+  return renderTargetReply(template, name);
 }
 
 function pickJaidenTargetReply(threadID, targetName, options = {}) {
