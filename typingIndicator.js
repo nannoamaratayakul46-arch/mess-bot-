@@ -13,30 +13,41 @@ function getThreadStates(api) {
   return states;
 }
 
-function requestTyping(api, key, state) {
-  if (state.stopped) return false;
+function requestTyping(api, active, key) {
   try {
     if (typeof api.sendTypingIndicator === "function") {
-      console.log("[BANAT-TYPING] Requesting Messenger indicator for thread " + key);
-      const end = api.sendTypingIndicator(key, (error) => {
+      console.log("[BANAT-TYPING] Requesting Messenger indicator " + (active ? "ON" : "OFF") + " for thread " + key);
+      let callbackReported = false;
+      const callback = (error) => {
+        callbackReported = true;
         if (error) {
           console.warn("[BANAT-TYPING] API callback error for thread " + key + ":", error?.message || error);
         } else {
           console.log("[BANAT-TYPING] API callback completed without error for thread " + key);
         }
-      });
-      state.end = typeof end === "function" ? end : null;
-      if (typeof end !== "function") {
-        console.warn("[BANAT-TYPING] API returned no end function for thread " + key + "; indicator may expire automatically.");
+      };
+
+      // ws3-fca v2+ uses (sendTyping: boolean, threadID, callback).
+      // It returns a Promise; it does not return an end() function.
+      const result = api.sendTypingIndicator(Boolean(active), key, callback);
+      if (result && typeof result.then === "function") {
+        result.then(() => {
+          if (!callbackReported) {
+            console.log("[BANAT-TYPING] API Promise resolved for thread " + key + " (" + (active ? "ON" : "OFF") + ")");
+          }
+        }).catch((error) => {
+          console.warn("[BANAT-TYPING] API Promise rejected for thread " + key + ":", error?.message || error);
+        });
       }
       return true;
     }
+
     if (typeof api.sendTyping === "function") {
-      console.log("[BANAT-TYPING] Requesting fallback typing indicator for thread " + key);
-      api.sendTyping(key, true);
-      state.end = null;
+      console.log("[BANAT-TYPING] Requesting fallback typing indicator " + (active ? "ON" : "OFF") + " for thread " + key);
+      api.sendTyping(key, Boolean(active));
       return true;
     }
+
     console.warn("[BANAT-TYPING] No supported typing-indicator API for thread " + key);
   } catch (error) {
     console.warn("[BANAT-TYPING] Request threw for thread " + key + ":", error?.message || error);
@@ -52,22 +63,16 @@ function startTyping(api, threadID) {
     const existing = states.get(key);
     if (existing && !existing.stopped) return true;
 
-    const state = { end: null, timer: null, stopped: false };
+    const state = { timer: null, stopped: false };
     states.set(key, state);
-    if (!requestTyping(api, key, state)) {
+    if (!requestTyping(api, true, key)) {
       states.delete(key);
       return false;
     }
 
     const refresh = () => {
       if (state.stopped || states.get(key) !== state) return;
-      try {
-        if (typeof state.end === "function") state.end();
-      } catch (error) {
-        console.warn("[BANAT-TYPING] Refresh stop failed for thread " + key + ":", error?.message || error);
-      }
-      state.end = null;
-      requestTyping(api, key, state);
+      requestTyping(api, true, key);
       state.timer = setTimeout(refresh, REFRESH_MS);
       if (state.timer && typeof state.timer.unref === "function") state.timer.unref();
     };
@@ -90,18 +95,13 @@ function stopTyping(api, threadID) {
       state.stopped = true;
       if (state.timer) clearTimeout(state.timer);
       states.delete(key);
-      if (typeof state.end === "function") {
-        state.end();
-      } else if (typeof api.sendTyping === "function" && typeof api.sendTypingIndicator !== "function") {
-        api.sendTyping(key, false);
-      }
-      state.end = null;
-      console.log("[BANAT-TYPING] Indicator stopped for thread " + key);
-      return true;
+      const stopped = requestTyping(api, false, key);
+      console.log("[BANAT-TYPING] Indicator stop requested for thread " + key);
+      return stopped;
     }
+
     if (typeof api.sendTyping === "function" && typeof api.sendTypingIndicator !== "function") {
-      api.sendTyping(key, false);
-      return true;
+      return requestTyping(api, false, key);
     }
     return false;
   } catch (error) {
