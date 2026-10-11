@@ -176,12 +176,14 @@ async function connect() {
     CREATE TABLE IF NOT EXISTS banat_thread_targets (
       thread_id TEXT PRIMARY KEY,
       target_user_id TEXT NOT NULL,
+      target_name TEXT,
       set_by TEXT NOT NULL,
       bang_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       updated_at BIGINT NOT NULL
     );
 
     ALTER TABLE banat_thread_targets
+      ADD COLUMN IF NOT EXISTS target_name TEXT,
       ADD COLUMN IF NOT EXISTS bang_enabled BOOLEAN NOT NULL DEFAULT FALSE;
   `);
 
@@ -3410,28 +3412,30 @@ async function getThreadSettings(threadId) {
 async function getBanatThreadTarget(threadId) {
   const conn = requireConn();
   const { rows } = await conn.query(
-    `SELECT thread_id, target_user_id, set_by, bang_enabled, updated_at
+    `SELECT thread_id, target_user_id, target_name, set_by, bang_enabled, updated_at
      FROM banat_thread_targets WHERE thread_id = $1`,
     [String(threadId || "").trim()]
   );
   return rows[0] || null;
 }
 
-async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled = null) {
+async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled = null, targetName = null) {
   const conn = requireConn();
   const id = String(threadId || "").trim();
   const target = String(targetUserId || "").trim();
   const setter = String(setBy || "").trim();
+  const name = String(targetName || "").replace(/\\s+/g, " ").trim().slice(0, 120) || null;
   if (!id || !target || !setter) throw new Error("thread_id, target_user_id, and set_by are required");
   await conn.query(
-    `INSERT INTO banat_thread_targets(thread_id, target_user_id, set_by, bang_enabled, updated_at)
-     VALUES($1, $2, $3, COALESCE($4::boolean, FALSE), $5)
+    `INSERT INTO banat_thread_targets(thread_id, target_user_id, target_name, set_by, bang_enabled, updated_at)
+     VALUES($1, $2, $3, $4, COALESCE($5::boolean, FALSE), $6)
      ON CONFLICT(thread_id) DO UPDATE SET
        target_user_id = EXCLUDED.target_user_id,
+       target_name = COALESCE(EXCLUDED.target_name, banat_thread_targets.target_name),
        set_by = EXCLUDED.set_by,
-       bang_enabled = COALESCE($4::boolean, banat_thread_targets.bang_enabled),
+       bang_enabled = COALESCE($5::boolean, banat_thread_targets.bang_enabled),
        updated_at = EXCLUDED.updated_at`,
-    [id, target, setter, typeof bangEnabled === "boolean" ? bangEnabled : null, Date.now()]
+    [id, target, name, setter, typeof bangEnabled === "boolean" ? bangEnabled : null, Date.now()]
   );
   return getBanatThreadTarget(id);
 }
