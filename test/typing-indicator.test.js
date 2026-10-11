@@ -6,13 +6,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { typeBeforeSend, startTyping, stopTyping } = require("../typingIndicator");
 
-test("ws3-fca typing indicator uses callback signature and returned end function", async () => {
+test("ws3-fca typing indicator uses boolean, thread ID, callback signature", async () => {
   const calls = [];
   const api = {
-    sendTypingIndicator(threadID, callback) {
-      calls.push(["start", threadID, typeof callback]);
+    sendTypingIndicator(active, threadID, callback) {
+      calls.push([active, threadID, typeof callback]);
       if (typeof callback === "function") callback(null);
-      return () => calls.push(["stop", threadID]);
+      return Promise.resolve();
     }
   };
 
@@ -29,9 +29,9 @@ test("ws3-fca typing indicator uses callback signature and returned end function
 
   assert.equal(result, true);
   assert.deepEqual(calls, [
-    ["start", "typing-test-thread", "function"],
+    [true, "typing-test-thread", "function"],
     ["send"],
-    ["stop", "typing-test-thread"]
+    [false, "typing-test-thread", "function"]
   ]);
 });
 
@@ -66,24 +66,26 @@ test("typing API errors never prevent the message send", async () => {
     );
     assert.equal(result, "sent");
     assert.equal(sent, true);
+    assert.equal(stopTyping(api, "typing-error-thread"), false);
   } finally {
     console.warn = originalWarn;
   }
 });
 
-test("public start/stop helpers call ws3-fca's returned end function", () => {
+test("public start/stop helpers send true then false to ws3-fca", () => {
   const calls = [];
   const api = {
-    sendTypingIndicator(threadID, callback) {
-      calls.push(["start", threadID, typeof callback]);
-      return () => calls.push(["stop", threadID]);
+    sendTypingIndicator(active, threadID, callback) {
+      calls.push([active, threadID, typeof callback]);
+      if (callback) callback(null);
+      return Promise.resolve();
     }
   };
 
   assert.equal(startTyping(api, "manual-thread"), true);
   assert.equal(stopTyping(api, "manual-thread"), true);
   assert.deepEqual(calls, [
-    ["start", "manual-thread", "function"],
-    ["stop", "manual-thread"]
+    [true, "manual-thread", "function"],
+    [false, "manual-thread", "function"]
   ]);
 });
