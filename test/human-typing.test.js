@@ -4,13 +4,13 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { startTyping, stopTyping, withTyping } = require("../human-typing");
 
-test("shared human typing helpers use ws3-fca callback and end-function API", async () => {
+test("shared human typing helpers use ws3-fca boolean, thread ID, callback API", async () => {
   const calls = [];
   const api = {
-    sendTypingIndicator(threadID, callback) {
-      calls.push(["start", threadID, typeof callback]);
+    sendTypingIndicator(active, threadID, callback) {
+      calls.push([active, threadID, typeof callback]);
       if (callback) callback(null);
-      return () => calls.push(["stop", threadID]);
+      return Promise.resolve();
     }
   };
 
@@ -23,11 +23,11 @@ test("shared human typing helpers use ws3-fca callback and end-function API", as
 
   assert.equal(result, "ok");
   assert.deepEqual(calls, [
-    ["start", "shared-thread", "function"],
-    ["stop", "shared-thread"],
-    ["start", "shared-thread", "function"],
+    [true, "shared-thread", "function"],
+    [false, "shared-thread", "function"],
+    [true, "shared-thread", "function"],
     ["send"],
-    ["stop", "shared-thread"]
+    [false, "shared-thread", "function"]
   ]);
 });
 
@@ -48,7 +48,7 @@ test("shared typing helpers keep fallback and non-fatal behavior", () => {
   console.warn = () => {};
   try {
     assert.equal(startTyping(brokenApi, "broken-thread"), false);
-    assert.equal(stopTyping(brokenApi, "broken-thread"), true);
+    assert.equal(stopTyping(brokenApi, "broken-thread"), false);
   } finally {
     console.warn = originalWarn;
   }
