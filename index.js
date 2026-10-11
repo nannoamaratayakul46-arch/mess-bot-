@@ -6045,7 +6045,13 @@ async function handleMessage(
         threadID
       );
     } catch (error) {
-      const errorText = String(error?.message || error || "");
+      const errorText = [
+        error?.error,
+        error?.errorSummary,
+        error?.errorDescription?.__html,
+        error?.errorDescription,
+        error?.message
+      ].filter(Boolean).join(" ");
       const priorMessageRequired =
         /thread that doesn't exist[\s\S]*at least one message in the thread/i.test(errorText);
       console.error("[NICK GUARD] Single-member .setnn failed:", error);
@@ -10799,9 +10805,16 @@ async function handleAutomaticBanatMessage({
               done(error);
             }
           });
+          const threadMember = Array.isArray(info?.userInfo)
+            ? info.userInfo.find((member) =>
+                String(member?.id || member?.userID || member?.uid || "") === dashboardTargetId
+              )
+            : null;
           dashboardTargetName = String(
             info?.nicknames?.[dashboardTargetId] ||
             info?.nicknames?.[String(dashboardTargetId)] ||
+            threadMember?.name ||
+            threadMember?.fullName ||
             event?.mentions?.[dashboardTargetId] ||
             ""
           ).trim();
