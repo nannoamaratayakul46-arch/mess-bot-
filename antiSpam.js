@@ -1,7 +1,7 @@
 "use strict";
 
 const express = require("express");
-const { getAutoModSettings, setAutoModEnabled } = require("./moderation");
+const { getAutoModSettings, setAutoModEnabled, removeFromGroup } = require("./moderation");
 
 const DEFAULTS = Object.freeze({
   max_messages: 6,

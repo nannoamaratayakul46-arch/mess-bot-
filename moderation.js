@@ -3146,71 +3146,91 @@ async function removeFromGroup(
     };
   }
 
-  // Check the actual Messenger group roles before attempting the kick.
-  // A bot account must be a group admin; global bot-owner permission alone
-  // does not grant Messenger's remove-participant privilege.
-  if (typeof api.getThreadInfo === "function") {
-    try {
-      const info = await new Promise((resolve, reject) => {
-        let settled = false;
-        const timer = setTimeout(() => {
-          if (settled) return;
-          settled = true;
-          reject(new Error("getThreadInfo timed out"));
-        }, 8000);
-        try {
-          const result = api.getThreadInfo(threadID, (error, data) => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            error ? reject(error) : resolve(data);
-          });
-          if (result && typeof result.then === "function") {
-            result.then(data => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(timer);
-              resolve(data);
-            }, error => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(timer);
-              reject(error);
-            });
-          }
-        } catch (error) {
+  // Use the same fail-closed permission check for manual !ban/!kick and automod.
+  // Never attempt a removal when the bot's group-admin status cannot be verified.
+  if (typeof api.getThreadInfo !== "function") {
+    return {
+      ok: false,
+      errorCode: "ROLE_CHECK_UNAVAILABLE",
+      errorMessage: "This API client cannot verify group roles, so removal was not attempted.",
+      rawError: null,
+    };
+  }
+
+  try {
+    const info = await new Promise((resolve, reject) => {
+      let settled = false;
+      const timer = setTimeout(() => {
+        if (settled) return;
+        settled = true;
+        reject(new Error("getThreadInfo timed out"));
+      }, 8000);
+      try {
+        const result = api.getThreadInfo(threadID, (error, data) => {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          reject(error);
+          error ? reject(error) : resolve(data);
+        });
+        if (result && typeof result.then === "function") {
+          result.then(data => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            resolve(data);
+          }, error => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            reject(error);
+          });
         }
-      });
-      const admins = Array.isArray(info?.adminIDs)
-        ? info.adminIDs.map(item => String(item?.id ?? item?.userID ?? item))
-        : [];
-      const botID = typeof api.getCurrentUserID === "function"
-        ? String(api.getCurrentUserID())
-        : "";
-      if (admins.length && botID && !admins.includes(botID)) {
-        return {
-          ok: false,
-          errorCode: "BOT_NOT_GROUP_ADMIN",
-          errorMessage: "The bot account is not a group admin. Promote the bot account to a group admin, then retry !ban.",
-          rawError: null,
-        };
+      } catch (error) {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        reject(error);
       }
-      if (admins.includes(String(targetId))) {
-        return {
-          ok: false,
-          errorCode: "TARGET_IS_GROUP_ADMIN",
-          errorMessage: "The target is a group admin and was not removed.",
-          rawError: null,
-        };
-      }
-    } catch (error) {
-      console.warn("[moderation] Could not preflight group roles before !ban:", error?.message || error);
-      // Do not mask the API's actual result if role lookup is temporarily unavailable.
+    });
+
+    const admins = Array.isArray(info?.adminIDs)
+      ? info.adminIDs.map(item => String(item?.id ?? item?.userID ?? item))
+      : [];
+    const botID = typeof api.getCurrentUserID === "function"
+      ? String(api.getCurrentUserID())
+      : "";
+
+    if (!admins.length || !botID) {
+      return {
+        ok: false,
+        errorCode: "ROLE_CHECK_INCOMPLETE",
+        errorMessage: "Messenger did not return enough group-role information to verify the removal safely.",
+        rawError: null,
+      };
     }
+    if (!admins.includes(botID)) {
+      return {
+        ok: false,
+        errorCode: "BOT_NOT_GROUP_ADMIN",
+        errorMessage: "The bot account is not a group admin. Promote the bot account to a group admin, then retry.",
+        rawError: null,
+      };
+    }
+    if (admins.includes(String(targetId))) {
+      return {
+        ok: false,
+        errorCode: "TARGET_IS_GROUP_ADMIN",
+        errorMessage: "The target is a group admin and was not removed.",
+        rawError: null,
+      };
+    }
+  } catch (error) {
+    return {
+      ok: false,
+      errorCode: "ROLE_CHECK_FAILED",
+      errorMessage: `Could not verify group roles: ${String(error?.message || error).slice(0, 140)}`,
+      rawError: null,
+    };
   }
 
   return new Promise((resolve) => {
@@ -4779,6 +4799,7 @@ async function handleModerationMessage(
 
 module.exports = {
   handleModerationMessage,
+  removeFromGroup,
 
   isBotOwner,
   isTrustedAdmin,
