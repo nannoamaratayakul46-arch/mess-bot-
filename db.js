@@ -3431,7 +3431,7 @@ async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled =
      VALUES($1, $2, $3, $4, COALESCE($5::boolean, FALSE), $6)
      ON CONFLICT(thread_id) DO UPDATE SET
        target_user_id = EXCLUDED.target_user_id,
-       target_name = COALESCE(EXCLUDED.target_name, banat_thread_targets.target_name),
+       target_name = CASE WHEN EXCLUDED.target_user_id <> banat_thread_targets.target_user_id THEN EXCLUDED.target_name ELSE COALESCE(EXCLUDED.target_name, banat_thread_targets.target_name) END,
        set_by = EXCLUDED.set_by,
        bang_enabled = COALESCE($5::boolean, banat_thread_targets.bang_enabled),
        updated_at = EXCLUDED.updated_at`,
