@@ -98,46 +98,44 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const lastFailure = removalFailures.get(failureKey) || 0;
     if (Date.now() - lastFailure < 30000) return false;
 
-    if (!api || typeof api.removeUserFromGroup !== "function") {
-      log("[AUTOMOD-SPAM] removeUserFromGroup is unavailable");
+    if (typeof removeFromGroup !== "function") {
+      log("[AUTOMOD-SPAM] shared moderation removal helper is unavailable");
       removalFailures.set(failureKey, Date.now());
       return false;
     }
 
-    let info;
+    let removal;
     try {
-      info = await callbackCall(cb => api.getThreadInfo(threadID, cb), 8000);
+      // Use moderation.js as the single source of truth for role checks,
+      // protected-admin handling, API timeouts, and Messenger error details.
+      removal = await removeFromGroup(api, String(threadID), String(userID));
     } catch (error) {
-      log(`[AUTOMOD-SPAM] refused removal in ${threadID}: could not verify group admins (${String(error?.message || error).slice(0, 120)})`);
       removalFailures.set(failureKey, Date.now());
+      log(`[AUTOMOD-SPAM] shared removal helper failed for ${userID} in ${threadID}: ${String(error?.message || error).slice(0, 180)}`);
       return false;
     }
 
-    const adminIDs = Array.isArray(info?.adminIDs)
-      ? info.adminIDs.map(item => String(item?.id ?? item?.userID ?? item))
-      : [];
-    const botID = typeof api.getCurrentUserID === "function" ? String(api.getCurrentUserID()) : "";
-
-    if (!adminIDs.length || !botID || !adminIDs.includes(botID)) {
-      log(`[AUTOMOD-SPAM] cannot remove ${userID} in ${threadID}: bot admin status is missing or could not be verified`);
+    if (!removal?.ok) {
       removalFailures.set(failureKey, Date.now());
-      return false;
-    }
-    if (adminIDs.includes(String(userID)) || String(userID) === botID) {
-      log(`[AUTOMOD-SPAM] protected admin/bot account ${userID} in ${threadID}`);
+      const detail = String(removal?.errorMessage || removal?.errorCode || "Unknown removal failure").slice(0, 180);
+      log(`[AUTOMOD-SPAM] removal failed for ${userID} in ${threadID}: ${detail}`);
       return false;
     }
 
     try {
-      await callbackCall(cb => api.removeUserFromGroup(String(userID), String(threadID), cb), 15000);
-      await db.query("DELETE FROM automod_spam_warnings WHERE thread_id = $1 AND user_id = $2", [String(threadID), String(userID)]);
+      await db.query(
+        "DELETE FROM automod_spam_warnings WHERE thread_id = $1 AND user_id = $2",
+        [String(threadID), String(userID)],
+      );
       hits.delete(threadID + ":" + userID);
+      removalFailures.delete(failureKey);
       log(`[AUTOMOD-SPAM] removed ${userID} (${name}) from ${threadID} after repeated spam`);
       return true;
     } catch (error) {
-      removalFailures.set(failureKey, Date.now());
-      log(`[AUTOMOD-SPAM] removal failed for ${userID} in ${threadID}: ${String(error?.message || error).slice(0, 180)}`);
-      return false;
+      // The Messenger removal already succeeded. Log cleanup failure separately
+      // rather than reporting that the kick itself failed.
+      log(`[AUTOMOD-SPAM] removed ${userID} from ${threadID}, but warning cleanup failed: ${String(error?.message || error).slice(0, 160)}`);
+      return true;
     }
   }
 
