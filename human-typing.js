@@ -7,23 +7,28 @@
  * no text-generation or delay-calculation logic.
  */
 
+function reportTypingError(action, error) {
+  if (error) {
+    console.warn("[HUMAN-TYPING] " + action + " failed:", error?.message || error);
+  }
+}
+
 function startTyping(api, threadID) {
   if (!api || !threadID) return false;
   try {
     if (typeof api.sendTypingIndicator === "function") {
-      api.sendTypingIndicator(threadID, (error) => {
-        if (error) {
-          console.warn("[HUMAN-TYPING] Typing indicator failed:", error?.message || error);
-        }
+      // ws3-fca signature: (threadID, isTyping, callback).
+      api.sendTypingIndicator(String(threadID), true, (error) => {
+        reportTypingError("Start", error);
       });
       return true;
     }
     if (typeof api.sendTyping === "function") {
-      api.sendTyping(threadID, true);
+      api.sendTyping(String(threadID), true);
       return true;
     }
   } catch (error) {
-    console.warn("[HUMAN-TYPING] Unable to start typing indicator:", error?.message || error);
+    reportTypingError("Start", error);
   }
   return false;
 }
@@ -31,12 +36,18 @@ function startTyping(api, threadID) {
 function stopTyping(api, threadID) {
   if (!api || !threadID) return false;
   try {
+    if (typeof api.sendTypingIndicator === "function") {
+      api.sendTypingIndicator(String(threadID), false, (error) => {
+        reportTypingError("Stop", error);
+      });
+      return true;
+    }
     if (typeof api.sendTyping === "function") {
-      api.sendTyping(threadID, false);
+      api.sendTyping(String(threadID), false);
       return true;
     }
   } catch (error) {
-    console.warn("[HUMAN-TYPING] Unable to stop typing indicator:", error?.message || error);
+    reportTypingError("Stop", error);
   }
   return false;
 }
