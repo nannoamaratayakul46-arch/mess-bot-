@@ -210,7 +210,7 @@ test("dashboard ! mode routes bang-prefixed messages to the selected Jaiden targ
   const source = read("index.js");
   const db = read("db.js");
   assert.match(db, /ADD COLUMN IF NOT EXISTS bang_enabled BOOLEAN NOT NULL DEFAULT FALSE/);
-  assert.match(db, /bang_enabled = COALESCE\\\(\\\$5::boolean, banat_thread_targets\\\.bang_enabled\\\)/);
+  assert.match(db, /bang_enabled = COALESCE\(\$5::boolean, banat_thread_targets\.bang_enabled\)/);
   assert.match(source, /dashboardBangJaidenEnabled = target\?\.bang_enabled === true/);
   assert.match(source, /const bangJaidenCommand =/);
   assert.match(source, /bangJaidenCommand \|\| \(senderIsDashboardTarget && savedBanatTarget\?\.bang_enabled !== true\)/);

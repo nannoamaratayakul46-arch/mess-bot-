@@ -41,8 +41,8 @@ test("forced Jaiden routing is connected to the dedicated target pool", () => {
   assert.match(source, /if \(options\?\.forceJaidenTarget === true\)/);
   assert.match(source, /pickJaidenTargetReply\(\s*threadId/);
   const index = read("index.js");
-  assert.match(index, /forceJaidenTarget:\s*true/);
   assert.match(index, /resolveTargetName\(api, threadID, dashboardTargetId/);
+  assert.match(index, /savedName: savedBanatTarget\?\.target_name/);
   assert.match(index, /Jaiden target resolved:/);
   assert.match(index, /forceJaidenTarget:\s*true/);
 });
