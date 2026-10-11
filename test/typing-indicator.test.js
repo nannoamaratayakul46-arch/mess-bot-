@@ -4,14 +4,15 @@ process.env.TYPING_ENABLED = "true";
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { typeBeforeSend, startTyping } = require("../typingIndicator");
+const { typeBeforeSend, startTyping, stopTyping } = require("../typingIndicator");
 
-test("ws3-fca typing indicator receives true before send and false after send", async () => {
+test("ws3-fca typing indicator uses callback signature and returned end function", async () => {
   const calls = [];
   const api = {
-    sendTypingIndicator(threadID, isTyping, callback) {
-      calls.push([threadID, isTyping, typeof callback]);
+    sendTypingIndicator(threadID, callback) {
+      calls.push(["start", threadID, typeof callback]);
       if (typeof callback === "function") callback(null);
+      return () => calls.push(["stop", threadID]);
     }
   };
 
@@ -28,18 +29,16 @@ test("ws3-fca typing indicator receives true before send and false after send", 
 
   assert.equal(result, true);
   assert.deepEqual(calls, [
-    ["typing-test-thread", true, "function"],
+    ["start", "typing-test-thread", "function"],
     ["send"],
-    ["typing-test-thread", false, "function"]
+    ["stop", "typing-test-thread"]
   ]);
 });
 
 test("legacy sendTyping API is supported as a fallback", async () => {
   const calls = [];
   const api = {
-    sendTyping(threadID, active) {
-      calls.push([threadID, active]);
-    }
+    sendTyping(threadID, active) { calls.push([threadID, active]); }
   };
 
   await typeBeforeSend(api, "legacy-thread", "reply", { ms: 1 }, async () => "sent");
@@ -49,9 +48,7 @@ test("legacy sendTyping API is supported as a fallback", async () => {
 test("typing API errors never prevent the message send", async () => {
   let sent = false;
   const api = {
-    sendTypingIndicator() {
-      throw new Error("typing unsupported");
-    }
+    sendTypingIndicator() { throw new Error("typing unsupported"); }
   };
 
   const originalWarn = console.warn;
@@ -67,7 +64,6 @@ test("typing API errors never prevent the message send", async () => {
         return "sent";
       }
     );
-
     assert.equal(result, "sent");
     assert.equal(sent, true);
   } finally {
@@ -75,19 +71,19 @@ test("typing API errors never prevent the message send", async () => {
   }
 });
 
-test("public start/stop helpers use the same API signature", () => {
+test("public start/stop helpers call ws3-fca's returned end function", () => {
   const calls = [];
   const api = {
-    sendTypingIndicator(threadID, isTyping, callback) {
-      calls.push([threadID, isTyping]);
-      if (callback) callback(null);
+    sendTypingIndicator(threadID, callback) {
+      calls.push(["start", threadID, typeof callback]);
+      return () => calls.push(["stop", threadID]);
     }
   };
 
-  const stop = startTyping(api, "manual-thread");
-  stop();
+  assert.equal(startTyping(api, "manual-thread"), true);
+  assert.equal(stopTyping(api, "manual-thread"), true);
   assert.deepEqual(calls, [
-    ["manual-thread", true],
-    ["manual-thread", false]
+    ["start", "manual-thread", "function"],
+    ["stop", "manual-thread"]
   ]);
 });
