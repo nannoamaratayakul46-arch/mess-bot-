@@ -56,9 +56,10 @@ test("dashboard Jaiden reply does not hang when target-name lookup stalls", () =
   const start = source.indexOf("async function handleAutomaticBanatMessage");
   const end = source.indexOf("// ============================================================\n// HUMAN / BANAT WIRING", start);
   const body = source.slice(start, end);
-  assert.match(body, /getUserInfo timed out after 2500ms/);
-  assert.match(body, /clearTimeout\(timeout\)/);
-  assert.match(body, /Could not resolve dashboard target name/);
+  assert.match(body, /resolveTargetName\(api, threadID, dashboardTargetId/);
+  assert.match(body, /savedName: savedBanatTarget\?\.target_name/);
+  assert.match(body, /Jaiden target resolved:/);
+  assert.match(body, /Name lookup failed for target/);
 });
 
 test("Banat turn timeout is cleared when the send settles first", () => {
@@ -99,7 +100,7 @@ test("dashboard target API validates group membership and persists the target", 
   assert.match(body, /dashboardKnownGroups\.has\(threadID\)/);
   assert.match(body, /dashboardGetThreadInfo\(activeMessengerApi, threadID\)/);
   assert.match(body, /ids\.includes\(targetID\)/);
-  assert.match(body, /db\.setBanatThreadTarget\(threadID, targetID, "dashboard-admin", requestedBangEnabled\)/);
+  assert.match(body, /db\.setBanatThreadTarget\(\s*threadID,\s*targetID,\s*"dashboard-admin",\s*requestedBangEnabled,\s*targetName\s*\)/);
   assert.match(body, /setBanatDirectedTarget\(threadID, targetID/);
 });
 
