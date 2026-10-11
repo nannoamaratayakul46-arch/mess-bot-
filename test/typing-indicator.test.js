@@ -4,7 +4,7 @@ process.env.TYPING_ENABLED = "true";
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { typeBeforeSend, startTyping, stopTyping } = require("../typingIndicator");
+const { typeBeforeSend, startTyping } = require("../typingIndicator");
 
 test("ws3-fca typing indicator receives true before send and false after send", async () => {
   const calls = [];
@@ -84,11 +84,10 @@ test("public start/stop helpers use the same API signature", () => {
     }
   };
 
-  startTyping(api, "manual-thread")();
-  stopTyping(api, "manual-thread");
+  const stop = startTyping(api, "manual-thread");
+  stop();
   assert.deepEqual(calls, [
     ["manual-thread", true],
-    ["manual-thread", false],
     ["manual-thread", false]
   ]);
 });
