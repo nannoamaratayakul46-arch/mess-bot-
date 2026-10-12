@@ -4235,16 +4235,31 @@ app.post(
 function dashboardGetThreadInfo(api, threadID) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const done = (error, info) => {
+    const done = (...args) => {
       if (settled) return;
       settled = true;
-      if (error) reject(error);
-      else resolve(info || {});
+      // ws3-fca is normally error-first, but compatible wrappers sometimes
+      // invoke callbacks with just the payload. Accept both forms.
+      if (args.length > 1) {
+        const [error, info] = args;
+        if (error) reject(error);
+        else resolve(info || {});
+        return;
+      }
+      const [value] = args;
+      if (value instanceof Error) reject(value);
+      else resolve(value || {});
     };
     try {
       const result = api.getThreadInfo(String(threadID), done);
       if (result && typeof result.then === "function") {
         result.then((info) => done(null, info)).catch(done);
+      } else if (result && typeof result === "object" && !Array.isArray(result)) {
+        // Only accept an immediate object when it looks like thread data;
+        // request handles must not win the race against the real callback.
+        if (result.participantIDs || result.userInfo || result.threadName || result.threadID) {
+          done(null, result);
+        }
       }
     } catch (error) {
       done(error);
@@ -4253,33 +4268,60 @@ function dashboardGetThreadInfo(api, threadID) {
 }
 
 
-function dashboardGetUserInfo(api, userIDs) {
+function dashboardGetUserInfo(api, userIDs, timeoutMs = 4000) {
   return new Promise((resolve, reject) => {
     if (!api || typeof api.getUserInfo !== "function") return resolve({});
     let settled = false;
     let timeout = null;
-    const done = (error, users) => {
+    const expectedIDs = new Set((Array.isArray(userIDs) ? userIDs : [userIDs]).map(String));
+    const looksLikeUserPayload = (users) => {
+      if (!users || typeof users !== "object") return false;
+      if (Array.isArray(users)) return users.some(row => dashboardNormalizeMemberId(row));
+      return Object.keys(users).some(key => expectedIDs.has(key)) ||
+        Object.values(users).some(value => value && typeof value === "object" &&
+          (value.name || value.firstName || value.first_name || value.fullName || value.full_name ||
+           value.displayName || value.display_name || value.userID || value.userId || value.uid || value.id));
+    };
+    const done = (...args) => {
+      if (settled) return;
+      // Error-first callback is the ws3-fca contract; also tolerate
+      // single-argument data callbacks used by API-compatible wrappers.
+      let error = null;
+      let users;
+      if (args.length > 1) {
+        [error, users] = args;
+      } else {
+        [users] = args;
+        if (users instanceof Error) {
+          error = users;
+          users = null;
+        }
+      }
+      if (error) {
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        reject(error);
+        return;
+      }
+      if (users !== undefined && users !== null && looksLikeUserPayload(users)) {
+        settled = true;
+        if (timeout) clearTimeout(timeout);
+        resolve(users);
+      }
+    };
+    // A callback-style request may return a request handle immediately.
+    // Ignore that handle and wait for actual user records.
+    timeout = setTimeout(() => {
       if (settled) return;
       settled = true;
-      if (timeout) clearTimeout(timeout);
-      if (error) reject(error);
-      else resolve(users || {});
-    };
-    // Do not mistake a callback API's request handle for the user records.
-    // Some wrappers also hide the callback in a rest-argument function, so
-    // function.length alone is not enough to identify a synchronous API.
-    timeout = setTimeout(() => done(null, {}), 8000);
+      resolve({});
+    }, timeoutMs);
     try {
       const result = api.getUserInfo(userIDs, done);
       if (result && typeof result.then === "function") {
         result.then(users => done(null, users)).catch(done);
-      } else if (result && typeof result === "object") {
-        const expectedIDs = new Set((Array.isArray(userIDs) ? userIDs : [userIDs]).map(String));
-        const isUserPayload = Array.isArray(result) ||
-          Object.keys(result).some(key => expectedIDs.has(key)) ||
-          Object.values(result).some(value => value && typeof value === "object" &&
-            (value.name || value.firstName || value.first_name || value.fullName || value.full_name));
-        if (isUserPayload) done(null, result);
+      } else if (looksLikeUserPayload(result)) {
+        done(null, result);
       }
     } catch (error) {
       done(error);
@@ -4387,7 +4429,11 @@ app.get(
         }
       }
 
-      // Resolve missing names through Messenger rather than showing synthetic ID labels.
+      // First try the efficient multi-ID lookup. Some ws3-fca 2.0.x builds
+      // only resolve a single ID correctly, even though the method accepts an
+      // array without throwing. If the batch omitted names, retry those IDs
+      // individually (with bounded concurrency) so both dashboard pickers get
+      // real display names instead of permanently rendering "Name unavailable".
       const missingNames = [...ids].filter(id => !names.has(id));
       for (let offset = 0; offset < missingNames.length; offset += 50) {
         const batch = missingNames.slice(offset, offset + 50);
@@ -4399,7 +4445,29 @@ app.get(
             if (name) names.set(id, name);
           }
         } catch (error) {
-          console.warn("[DASHBOARD] Member display-name lookup failed:", error?.message || error);
+          console.warn("[DASHBOARD] Member batch display-name lookup failed:", error?.message || error);
+        }
+      }
+
+      const stillMissing = [...ids].filter(id => !names.has(id));
+      for (let offset = 0; offset < stillMissing.length; offset += 8) {
+        const batch = stillMissing.slice(offset, offset + 8);
+        const rows = await Promise.all(batch.map(async id => {
+          try {
+            const result = await dashboardGetUserInfo(activeMessengerApi, id, 3500);
+            const row = dashboardGetUserInfoRow(result, id) ||
+              (result && typeof result === "object" && !Array.isArray(result) &&
+                (result.name || result.firstName || result.first_name || result.fullName || result.full_name ||
+                 result.displayName || result.display_name || result.userID || result.userId || result.uid || result.id)
+                ? result : null);
+            return { id, name: dashboardMemberDisplayName(row) };
+          } catch (error) {
+            console.warn("[DASHBOARD] Individual member name lookup failed:", error?.message || error);
+            return { id, name: "" };
+          }
+        }));
+        for (const row of rows) {
+          if (row.name) names.set(row.id, row.name);
         }
       }
 
