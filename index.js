@@ -4281,7 +4281,7 @@ app.get(
       const ids = [...new Set([
         ...participantIDs,
         ...infoRows.map(user => String(user.id || user.userID || user.userId || "")),
-      ].filter(id => /^\\d{6,32}$/.test(id)))];
+      ].filter(id => /^\d{6,32}$/.test(id)))];
       const botID = String(activeMessengerApi.getCurrentUserID?.() || "");
       const members = ids
         .filter(id => id && id !== botID)
@@ -4615,7 +4615,7 @@ app.post(
       return res.status(501).json({ ok: false, error: "This Messenger API client cannot leave group conversations." });
     }
     const currentUserID = String(activeMessengerApi.getCurrentUserID?.() || "").trim();
-    if (!/^\\d{6,20}$/.test(currentUserID)) {
+    if (!/^\d{6,20}$/.test(currentUserID)) {
       return res.status(409).json({ ok: false, error: "Could not verify the bot's Messenger user ID; no leave action was sent." });
     }
     try {
