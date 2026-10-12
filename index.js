@@ -4252,6 +4252,46 @@ function dashboardGetThreadInfo(api, threadID) {
   });
 }
 
+function dashboardNormalizeMemberId(value) {
+  const candidate = value && typeof value === "object"
+    ? (value.userID ?? value.userId ?? value.id ?? value.uid ?? value.participantID ?? value.participantId)
+    : value;
+  const id = String(candidate ?? "").trim();
+  return /^\d{6,32}$/.test(id) ? id : "";
+}
+
+function dashboardMemberRows(value) {
+  if (Array.isArray(value)) return value.filter(item => item && typeof item === "object");
+  if (value && typeof value === "object") {
+    return Object.entries(value).map(([id, item]) => ({
+      ...(item && typeof item === "object" ? item : {}),
+      id: item?.id ?? item?.userID ?? item?.userId ?? item?.uid ?? id,
+    }));
+  }
+  return [];
+}
+
+async function dashboardGetThreadList(api) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const done = (error, threads) => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve(Array.isArray(threads) ? threads : []);
+    };
+    try {
+      if (typeof api.getThreadList !== "function") return resolve([]);
+      const result = api.getThreadList(1000, null, [], done);
+      if (result && typeof result.then === "function") {
+        result.then(threads => done(null, threads)).catch(done);
+      }
+    } catch (error) {
+      done(error);
+    }
+  });
+}
+
 app.get(
   "/api/dashboard/groups/:thread_id/members",
   requireDashboardAccess,
@@ -4265,28 +4305,60 @@ app.get(
     }
     try {
       const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
-      const rawInfo = info.userInfo || info.participants || {};
-      const infoRows = Array.isArray(rawInfo)
-        ? rawInfo
-        : Object.entries(rawInfo).map(([id, value]) => ({ id, ...(value && typeof value === "object" ? value : {}) }));
-      const names = new Map(infoRows.map(user => [
-        String(user.id || user.userID || user.userId || ""),
-        String(user.name || user.fullName || user.firstName || "").trim(),
-      ]).filter(([id]) => id));
-      // Some FCA builds omit participantIDs but still return userInfo/participants.
-      // Recover IDs from those records rather than silently showing an empty picker.
-      const participantIDs = Array.isArray(info.participantIDs)
-        ? info.participantIDs.map(value => String(value?.userID || value?.userId || value?.id || value))
-        : [];
-      const ids = [...new Set([
-        ...participantIDs,
-        ...infoRows.map(user => String(user.id || user.userID || user.userId || "")),
-      ].filter(id => /^\d{6,32}$/.test(id)))];
+      const rawRows = dashboardMemberRows(info.userInfo || info.participants || info.participantList || info.participant_list);
+      const names = new Map();
+      const ids = new Set();
+
+      for (const value of (Array.isArray(info.participantIDs) ? info.participantIDs : [])) {
+        const id = dashboardNormalizeMemberId(value);
+        if (id) ids.add(id);
+      }
+      // ws3-fca can return participant data as arrays, keyed objects, or user
+      // records whose identifier field is uid/userID instead of id.
+      for (const row of rawRows) {
+        const id = dashboardNormalizeMemberId(row);
+        if (!id) continue;
+        ids.add(id);
+        const name = String(row.name || row.fullName || row.full_name || row.firstName || row.first_name || "").trim();
+        if (name) names.set(id, name);
+      }
+
+      // getThreadInfo sometimes omits participant data. Fall back to the thread
+      // list that also supplies the dashboard's known group list.
+      if (!ids.size) {
+        const threads = await dashboardGetThreadList(activeMessengerApi);
+        const thread = threads.find(item =>
+          String(item.threadID || item.threadId || item.thread_id || "") === threadID
+        );
+        if (thread) {
+          const participants = Array.isArray(thread.participantIDs)
+            ? thread.participantIDs
+            : Array.isArray(thread.participants) ? thread.participants : [];
+          for (const value of participants) {
+            const id = dashboardNormalizeMemberId(value);
+            if (id) ids.add(id);
+            if (value && typeof value === "object" && id) {
+              const name = String(value.name || value.fullName || value.firstName || "").trim();
+              if (name) names.set(id, name);
+            }
+          }
+        }
+      }
+
       const botID = String(activeMessengerApi.getCurrentUserID?.() || "");
-      const members = ids
+      const members = [...ids]
         .filter(id => id && id !== botID)
         .map(id => ({ user_id: id, name: names.get(id) || ("Messenger user " + id) }))
         .sort((a, b) => a.name.localeCompare(b.name));
+      if (!members.length) {
+        console.warn("[DASHBOARD] Member lookup returned no IDs", JSON.stringify({
+          threadID,
+          infoKeys: Object.keys(info || {}),
+          participantIDsType: Array.isArray(info.participantIDs) ? "array" : typeof info.participantIDs,
+          userInfoType: Array.isArray(info.userInfo) ? "array" : typeof info.userInfo,
+          participantsType: Array.isArray(info.participants) ? "array" : typeof info.participants,
+        }));
+      }
       return res.json({ ok: true, thread_id: threadID, members, count: members.length });
     } catch (error) {
       console.error("[DASHBOARD] Could not load group members:", error);
