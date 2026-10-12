@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { decodeProfileImage } = require("../groupProfileRoutes");
+const { decodeProfileImage, runGuardCheck } = require("../groupProfileRoutes");
 
 test("accepts a JPEG data URL and identifies its extension", () => {
   const bytes = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01]);
@@ -26,4 +26,30 @@ test("rejects malformed or mismatched image data", () => {
 test("rejects images over the one-megabyte limit", () => {
   const bytes = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(1024 * 1024)]);
   assert.throws(() => decodeProfileImage("data:image/jpeg;base64," + bytes.toString("base64")), /too large/);
+});
+
+
+test("photo guard skips restoration when Messenger does not return a current photo URL", async () => {
+  let uploads = 0;
+  const db = {
+    async query(sql) {
+      if (sql.includes("SELECT thread_id, image_data")) {
+        return { rows: [{
+          thread_id: "test-null-photo-url",
+          image_data: Buffer.from([0xff, 0xd8, 0xff]),
+          image_mime: "image/jpeg",
+          expected_image_url: "cdn.example.com/saved-photo",
+          last_restore_at: null,
+        }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const api = {
+    getThreadInfo(_threadId, callback) { callback(null, {}); },
+    changeGroupImage() { uploads += 1; },
+  };
+
+  await runGuardCheck({ db, getApi: () => api });
+  assert.equal(uploads, 0, "an unavailable URL must not trigger a photo upload");
 });
