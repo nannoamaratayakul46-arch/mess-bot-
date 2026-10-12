@@ -14,6 +14,7 @@ const GUARD_INTERVAL_MS = 2 * 60 * 1000;
 const RESTORE_RETRY_MS = 5 * 60 * 1000;
 const lastChange = new Map();
 const lastRestoreAttempt = new Map();
+const mismatchObservations = new Map();
 let guardTimer = null;
 let guardRunning = false;
 
@@ -159,18 +160,38 @@ async function runGuardCheck({ db, getApi, audit = () => {} }) {
         const info = await withTimeout(callApi(api, "getThreadInfo", [threadId]), 10_000);
         const current = getImageUrl(info);
         const expected = normalizePhotoUrl(row.expected_image_url);
-        if (!expected) {
-          if (current) {
-            await db.query("UPDATE group_photo_guard SET expected_image_url = $2 WHERE thread_id = $1", [threadId, current]);
-          } else {
-            lastRestoreAttempt.set(threadId, Date.now());
-            await restoreSavedPhoto(api, db, row);
-          }
+
+        // A missing Messenger photo URL is an unavailable observation, not proof
+        // that the group photo changed. Never upload a backup on a null URL.
+        if (!current) {
+          mismatchObservations.delete(threadId);
+          console.warn("[PHOTO-GUARD] Current photo URL unavailable for " + threadId + "; skipping this check.");
           continue;
         }
-        if (current === expected) continue;
+
+        if (!expected) {
+          await db.query("UPDATE group_photo_guard SET expected_image_url = $2 WHERE thread_id = $1", [threadId, current]);
+          mismatchObservations.delete(threadId);
+          continue;
+        }
+
+        if (current === expected) {
+          mismatchObservations.delete(threadId);
+          continue;
+        }
+
+        // Confirm the same differing URL in two checks before restoring. This
+        // avoids treating transient/rotating Messenger CDN URLs as a real change.
+        const previousMismatch = mismatchObservations.get(threadId);
+        if (!previousMismatch || previousMismatch.url !== current) {
+          mismatchObservations.set(threadId, { url: current, at: Date.now() });
+          console.warn("[PHOTO-GUARD] Photo URL differs for " + threadId + "; waiting for confirmation before restoring.");
+          continue;
+        }
+
+        mismatchObservations.delete(threadId);
         lastRestoreAttempt.set(threadId, Date.now());
-        audit("[PHOTO-GUARD] Photo changed; restoring saved image in " + threadId);
+        audit("[PHOTO-GUARD] Photo change confirmed; restoring saved image in " + threadId);
         await restoreSavedPhoto(api, db, row);
       } catch (error) {
         console.warn("[PHOTO-GUARD] Check failed for " + threadId + ": " + String(error?.message || error).replace(/[\r\n]+/g, " ").slice(0, 150));
