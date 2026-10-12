@@ -4271,26 +4271,6 @@ function dashboardMemberRows(value) {
   return [];
 }
 
-async function dashboardGetThreadList(api) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const done = (error, threads) => {
-      if (settled) return;
-      settled = true;
-      if (error) reject(error);
-      else resolve(Array.isArray(threads) ? threads : []);
-    };
-    try {
-      if (typeof api.getThreadList !== "function") return resolve([]);
-      const result = api.getThreadList(1000, null, [], done);
-      if (result && typeof result.then === "function") {
-        result.then(threads => done(null, threads)).catch(done);
-      }
-    } catch (error) {
-      done(error);
-    }
-  });
-}
 
 app.get(
   "/api/dashboard/groups/:thread_id/members",
@@ -4457,7 +4437,7 @@ function dashboardGetThreadList(api) {
       if (typeof api.getThreadList !== "function") {
         return reject(new Error("Messenger thread list is unavailable."));
       }
-      const result = api.getThreadList(100, null, [], done);
+      const result = api.getThreadList(1000, null, [], done);
       if (result && typeof result.then === "function") {
         result.then((threads) => done(null, threads)).catch(done);
       }
