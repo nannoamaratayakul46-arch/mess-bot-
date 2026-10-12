@@ -2294,32 +2294,37 @@ async function getTriggerReply(
             }
           );
   
+          const selectedFallback = reply;
           const aiReply = await generateTriggerReply({
             trigger: matchedTrigger,
             groupName: group.name,
             incomingText: rawText,
-            fallback: reply,
+            fallback: selectedFallback,
             replyTargetName,
             conversationContext: banatContextPrompt(threadId),
           });
-  
+
           if (typeof aiReply === "string" && aiReply.trim()) {
-            reply = aiReply.trim().slice(0, 1200);
-  
+            let generatedReply = aiReply.trim().slice(0, 1200);
+
             if (isFlirtyBanatGroup) {
-              reply = enforceBanatAddressStyle(reply, senderId);
+              generatedReply = enforceBanatAddressStyle(generatedReply, senderId);
             }
-  
+
             if (replyTargetName) {
-              reply = reply.replace(/\bjaiden\b/gi, replyTargetName);
+              generatedReply = generatedReply.replace(/\bjaiden\b/gi, replyTargetName);
             }
-  
-            // The generated reply is the actual reply the thread sees, so
-            // remember it too; this prevents AI variation from bypassing
-            // the Banat repetition guard.
-            if (isFlirtyBanatGroup) {
-              rememberBanatReply(threadId, reply, senderId);
-            }
+
+            // AI text must pass the same recent-reply guard as pool phrases.
+            // If it repeats a recent line or opening, keep the already-selected
+            // pool fallback instead of returning the repeated generation.
+            reply = isRecent(threadId, generatedReply)
+              ? selectedFallback
+              : generatedReply;
+
+            // Persist every generated trigger reply, not only flirty-group
+            // replies, so AI variation cannot bypass the shared recent history.
+            rememberBanatReply(threadId, reply, senderId);
           }
         } catch (aiError) {
           console.warn(

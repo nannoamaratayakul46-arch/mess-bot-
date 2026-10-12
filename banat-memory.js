@@ -4,7 +4,8 @@
  * Small per-thread Banat memory.
  *
  * Keeps recent replies out of immediate rotation and delegates pool rotation
- * to the shared no-repeat randomizer. Memory is intentionally in-process.
+ * to the shared no-repeat randomizer. State is restored from the shared Banat
+ * state file so recent-reply guards survive process restarts on persistent disks.
  */
 
 const { pickFromBag } = require("./banat-randomizer");
@@ -19,7 +20,17 @@ const TTL_MS = Math.max(
   Number(process.env.ECLIPSE_BANAT_MEMORY_TTL_MS || 20 * 60 * 1000)
 );
 
-const state = new Map();
+const { readSection, writeSection } = require("./banat-state-store");
+const restoredMemory = readSection("memory", {});
+const state = new Map(
+  Object.entries(restoredMemory).filter(([, value]) =>
+    value && Array.isArray(value.replies) && Array.isArray(value.signatures)
+  )
+);
+
+function persistMemory() {
+  writeSection("memory", Object.fromEntries(state.entries()));
+}
 
 function keyFor(threadId) {
   return String(threadId || "unknown");
@@ -87,6 +98,7 @@ function rememberBanatReply(threadId, reply, senderId = null) {
       if (Date.now() - value.at > TTL_MS) state.delete(key);
     }
   }
+  persistMemory();
 }
 
 function isRecent(threadId, reply, fallbackRecent = []) {
