@@ -25,6 +25,7 @@ const db = require("./db");
 const { resolveTargetName } = require("./targetName");
 const { registerGroupProfileRoutes } = require("./groupProfileRoutes");
 const { createLiveChat } = require("./liveChat");
+const { registerModerationRoutes } = require("./dashboardModeration");
 
 const {
   ensureNicknameGuardTable,
@@ -139,6 +140,9 @@ const { isPrimaryUser } = require("./ai/access");
 const {
   handleModerationMessage,
   isLocallyBanned,
+  removeFromGroup,
+  createBan,
+  logModeration,
 } = require("./moderation");
 
 const { createAntiSpam } = require("./antiSpam");
@@ -3489,6 +3493,21 @@ const antiSpam = createAntiSpam({
   log: message => console.log(message),
 });
 antiSpam.registerRoutes(app, requireDashboardAccess);
+
+// Dashboard Kick / Ban uses the same fail-closed Messenger role verification
+// as command moderation. It shares the existing API key and local ban store.
+registerModerationRoutes(app, {
+  auth: requireDashboardAccess,
+  getApi: () =>
+    activeMessengerApi && activeListenerGeneration > 0
+      ? activeMessengerApi
+      : null,
+  isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
+  removeFromGroup,
+  createBan,
+  logModeration,
+  audit: message => console.log(message),
+});
 
 // ============================================================
 // ECLIPSE LAB / BANAT SIMULATOR API
