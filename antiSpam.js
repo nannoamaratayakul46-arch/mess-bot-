@@ -39,7 +39,7 @@ function callbackCall(invoke, timeoutMs = 10000) {
   });
 }
 
-function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, log = () => {}, getSettings = getAutoModSettings, setEnabled = setAutoModEnabled }) {
+function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, log = () => {}, getSettings = getAutoModSettings, setEnabled = setAutoModEnabled, isBotOwnerId = isBotOwner }) {
   if (!db || typeof db.query !== "function") throw new TypeError("antiSpam requires the persistent db query interface");
 
   const hits = new Map();
@@ -227,8 +227,8 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     ).trim();
 
     // Only respond to a confirmed removal of the configured bot owner from admin.
-    if (!threadID || adminEvent !== "remove_admin" || !targetID || !actorID || !isBotOwner(targetID)) return;
-    if (actorID === targetID || isBotOwner(actorID)) return;
+    if (!threadID || adminEvent !== "remove_admin" || !targetID || !actorID || !isBotOwnerId(targetID)) return;
+    if (actorID === targetID || isBotOwnerId(actorID)) return;
 
     const settings = await getSettings(threadID);
     if (settings?.enabled !== true) return;
