@@ -38,6 +38,9 @@ function createLiveChat({ getApi, log = console.log, maxPerThread = 100, idlePol
     if (!text && !attachments.length) return;
     const state = threadState(threadID);
     const senderID = cleanId(event.senderID);
+    const api = typeof getApi === 'function' ? getApi() : null;
+    let ownId = '';
+    try { ownId = api && typeof api.getCurrentUserID === 'function' ? cleanId(api.getCurrentUserID()) : ''; } catch (_) {}
     const messageID = cleanId(event.messageID);
     const replyTo = cleanId(event.messageReply && (event.messageReply.messageID || event.messageReply.messageId));
     state.messages.push({
@@ -47,7 +50,7 @@ function createLiveChat({ getApi, log = console.log, maxPerThread = 100, idlePol
       text,
       attachments,
       reply_to: replyTo || null,
-      own: Boolean(event.isGroup || event.senderID === event.userID),
+      own: Boolean(ownId && senderID === ownId),
       at: Number(event.timestamp) > 0 ? Number(event.timestamp) : Date.now()
     });
     if (state.messages.length > maxPerThread) state.messages.splice(0, state.messages.length - maxPerThread);
