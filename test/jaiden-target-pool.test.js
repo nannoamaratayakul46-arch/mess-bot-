@@ -47,6 +47,33 @@ test("forced Jaiden routing is connected to the dedicated target pool", () => {
   assert.match(index, /forceJaidenTarget:\s*true/);
 });
 
+test("Jaiden rotation survives a process-module reload", () => {
+  const modulePath = require.resolve("../jaiden-target-pool");
+  const threadID = "jaiden-reload-test-" + process.pid;
+  let currentPool = require(modulePath);
+  currentPool.clearJaidenTargetPool(threadID);
+
+  const first = currentPool.pickJaidenTargetReply(threadID, "Reload Target", { random: () => 0.37 });
+  delete require.cache[modulePath];
+  currentPool = require(modulePath);
+  const second = currentPool.pickJaidenTargetReply(threadID, "Reload Target", { random: () => 0.37 });
+
+  assert.notEqual(first, second);
+  assert.match(first, /^Reload Target,/);
+  assert.match(second, /^Reload Target,/);
+  currentPool.clearJaidenTargetPool(threadID);
+  delete require.cache[modulePath];
+});
+
+test("Jaiden trigger mode preserves recognized bot commands", () => {
+  const source = read("index.js");
+  assert.ok(source.includes("function isRecognizedBangCommand(body)"));
+  assert.ok(source.includes("if (isRecognizedBangCommand(body)) return false;"));
+  assert.match(source, /!help/);
+  assert.match(source, /!trivia/);
+  assert.match(source, /!rpg/);
+});
+
 test("single-member SetNN validates group membership and only updates one protected nickname", () => {
   const source = read("index.js");
   const start = source.indexOf("const setSingleNicknameMatch");
