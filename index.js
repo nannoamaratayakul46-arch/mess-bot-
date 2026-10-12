@@ -4342,6 +4342,10 @@ app.get(
           userInfoType: Array.isArray(info.userInfo) ? "array" : typeof info.userInfo,
           participantsType: Array.isArray(info.participants) ? "array" : typeof info.participants,
         }));
+        return res.status(503).json({
+          ok: false,
+          error: "Messenger returned no participant IDs for this group. Check the bot service logs for [DASHBOARD] Member lookup returned no IDs.",
+        });
       }
       return res.json({ ok: true, thread_id: threadID, members, count: members.length });
     } catch (error) {
