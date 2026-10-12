@@ -11067,6 +11067,10 @@ async function handleAutomaticBanatMessage({
     threadId,
     event,
     botId: eclipseUserID,
+    // The normal slash pool is meant to participate in group chat, not
+    // stay locked to whoever last owned a conversation turn. Keep dashboard
+    // targeting exclusive and leave the backslash pool behavior independent.
+    allowAnySpeaker: roastEnabled && !savedBanatTarget?.target_user_id,
   });
 
   // Manual dashboard target takes precedence over the short-lived
