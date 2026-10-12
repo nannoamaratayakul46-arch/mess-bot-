@@ -4310,9 +4310,14 @@ app.get(
           String(item.threadID || item.threadId || item.thread_id || "") === threadID
         );
         if (thread) {
-          const participants = Array.isArray(thread.participantIDs)
-            ? thread.participantIDs
-            : Array.isArray(thread.participants) ? thread.participants : [];
+          const participantSource = thread.participantIDs || thread.participants || thread.participantList || [];
+          const participants = Array.isArray(participantSource)
+            ? participantSource
+            : participantSource && typeof participantSource === "object"
+              ? Object.entries(participantSource).map(([id, value]) =>
+                  value && typeof value === "object" ? { id, ...value } : id
+                )
+              : [];
           for (const value of participants) {
             const id = dashboardNormalizeMemberId(value);
             if (id) ids.add(id);
