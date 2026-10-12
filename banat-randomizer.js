@@ -15,8 +15,19 @@
  * state. Those remain in their existing modules.
  */
 
-const bags = new Map();
+const { readSection, writeSection } = require("./banat-state-store");
+
+const restoredBags = readSection("randomizer", {});
+const bags = new Map(
+  Object.entries(restoredBags).filter(([, state]) =>
+    state && Array.isArray(state.pool) && Array.isArray(state.remaining)
+  )
+);
 const MAX_BAGS = 1000;
+
+function persistBags() {
+  writeSection("randomizer", Object.fromEntries(bags.entries()));
+}
 
 function keyFor(scope, pool) {
   return `${String(scope || "global")}::${String(pool || "default")}`;
@@ -172,6 +183,7 @@ function pickFromBag(scope, poolName, pool, options = {}) {
     }
   }
 
+  persistBags();
   return selected;
 }
 
@@ -239,6 +251,7 @@ function pickUnusedWeighted(scope, poolName, entries, options = {}) {
   state.last = selected || state.last;
   state.updatedAt = Date.now();
   bags.set(key, state);
+  persistBags();
   return selected || null;
 }
 
@@ -249,6 +262,7 @@ function pickTriggerVariant(scope, triggerName, variants, options = {}) {
 function clear(scope = null) {
   if (scope == null) {
     bags.clear();
+    persistBags();
     return;
   }
 
@@ -256,6 +270,7 @@ function clear(scope = null) {
   for (const key of bags.keys()) {
     if (key.startsWith(prefix)) bags.delete(key);
   }
+  persistBags();
 }
 
 module.exports = {
