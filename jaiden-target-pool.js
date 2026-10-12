@@ -1,5 +1,8 @@
 "use strict";
 
+const banatStateStore = require("./banat-state-store");
+const STATE_SECTION = "jaidenTargetBags";
+
 // Dedicated templates for dashboard-selected Jaiden targeting.
 // Every template uses {{target}} so the selected member's name is always
 // substituted instead of relying on a literal "Jaiden" appearing in a line.
@@ -49,7 +52,29 @@ const TEMPLATES = [
 
 const { renderTargetReply } = require("./targetName");
 
-const bags = new Map();
+const savedBags = banatStateStore.readSection(STATE_SECTION, {});
+const bags = new Map(
+  Object.entries(savedBags).map(([threadID, bag]) => [
+    String(threadID),
+    Array.isArray(bag)
+      ? bag.filter((index, position, values) =>
+          Number.isInteger(index) &&
+          index >= 0 &&
+          index < TEMPLATES.length &&
+          values.indexOf(index) === position
+        )
+      : [],
+  ])
+);
+
+function persistBags() {
+  banatStateStore.writeSection(
+    STATE_SECTION,
+    Object.fromEntries(
+      Array.from(bags.entries()).filter(([, bag]) => Array.isArray(bag) && bag.length > 0)
+    )
+  );
+}
 
 function renderTargetTemplate(template, targetName) {
   const name = String(targetName || "").trim().slice(0, 80) || "you";
@@ -71,12 +96,16 @@ function pickJaidenTargetReply(threadID, targetName, options = {}) {
   }
 
   const index = bag.pop();
+  // Persist immediately after consuming an entry so a process restart cannot
+  // replay a previously used reply from the current shuffle cycle.
+  persistBags();
   return renderTargetTemplate(TEMPLATES[index], targetName);
 }
 
 function clearJaidenTargetPool(threadID) {
   if (threadID == null) bags.clear();
   else bags.delete(String(threadID || "default"));
+  persistBags();
 }
 
 module.exports = {
