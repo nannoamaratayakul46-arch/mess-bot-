@@ -4381,8 +4381,8 @@ app.put(
       const jaidenSettings = {};
       if (req.body?.jaiden_interval_seconds !== undefined) {
         const interval = Number(req.body.jaiden_interval_seconds);
-        if (!Number.isInteger(interval) || interval < 15 || interval > 120) {
-          return res.status(400).json({ ok: false, error: "Jaiden interval must be a whole number from 15 to 120 seconds." });
+        if (!Number.isInteger(interval) || interval < 3 || interval > 120) {
+          return res.status(400).json({ ok: false, error: "Jaiden interval must be a whole number from 3 to 120 seconds." });
         }
         jaidenSettings.interval_seconds = interval;
       }
@@ -4432,7 +4432,7 @@ app.put(
       return res.json({
         ok: true, thread_id: threadID, target_user_id: saved.target_user_id,
         target_name: saved.target_name || null, bang_enabled: saved.bang_enabled === true,
-        jaiden_interval_seconds: Number(saved.jaiden_interval_seconds) || 15,
+        jaiden_interval_seconds: Number(saved.jaiden_interval_seconds) || 3,
         jaiden_cooldown_mode: saved.jaiden_cooldown_mode || "extend",
         jaiden_reply_mode: saved.jaiden_reply_mode || "always",
         jaiden_typing_enabled: saved.jaiden_typing_enabled !== false,
@@ -4628,7 +4628,7 @@ app.get(
           target_user_id: target?.target_user_id || null,
           target_name: target?.target_name || null,
           bang_enabled: target?.bang_enabled === true,
-          jaiden_interval_seconds: Number(target?.jaiden_interval_seconds) || 15,
+          jaiden_interval_seconds: Number(target?.jaiden_interval_seconds) || 3,
           jaiden_cooldown_mode: target?.jaiden_cooldown_mode || "extend",
           jaiden_reply_mode: target?.jaiden_reply_mode || "always",
           jaiden_typing_enabled: target?.jaiden_typing_enabled !== false,
@@ -10692,7 +10692,7 @@ function scheduleJaidenReply(threadID, targetID, job, settings = {}) {
   const targetKey = String(targetID || "").trim();
   if (!threadKey || !targetKey || !job) return false;
   const key = threadKey + ":" + targetKey;
-  const interval = Math.max(15, Math.min(120, Number(settings.interval_seconds) || 15)) * 1000;
+  const interval = Math.max(3, Math.min(120, Number(settings.interval_seconds) || 3)) * 1000;
   const mode = ["extend", "queue", "ignore"].includes(settings.cooldown_mode) ? settings.cooldown_mode : "extend";
   let state = jaidenCooldownState.get(key);
   if (!state) {
