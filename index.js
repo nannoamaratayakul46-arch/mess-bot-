@@ -4257,20 +4257,29 @@ function dashboardGetUserInfo(api, userIDs) {
   return new Promise((resolve, reject) => {
     if (!api || typeof api.getUserInfo !== "function") return resolve({});
     let settled = false;
+    let timeout = null;
     const done = (error, users) => {
       if (settled) return;
       settled = true;
+      if (timeout) clearTimeout(timeout);
       if (error) reject(error);
       else resolve(users || {});
     };
+    // Do not mistake a callback API's request handle for the user records.
+    // Some wrappers also hide the callback in a rest-argument function, so
+    // function.length alone is not enough to identify a synchronous API.
+    timeout = setTimeout(() => done(null, {}), 8000);
     try {
       const result = api.getUserInfo(userIDs, done);
       if (result && typeof result.then === "function") {
         result.then(users => done(null, users)).catch(done);
-      } else if (api.getUserInfo.length <= 1) {
-        // Only treat a return value as the result for a synchronous API.
-        // Callback APIs may return a request handle before their callback fires.
-        done(null, result);
+      } else if (result && typeof result === "object") {
+        const expectedIDs = new Set((Array.isArray(userIDs) ? userIDs : [userIDs]).map(String));
+        const isUserPayload = Array.isArray(result) ||
+          Object.keys(result).some(key => expectedIDs.has(key)) ||
+          Object.values(result).some(value => value && typeof value === "object" &&
+            (value.name || value.firstName || value.first_name || value.fullName || value.full_name));
+        if (isUserPayload) done(null, result);
       }
     } catch (error) {
       done(error);
