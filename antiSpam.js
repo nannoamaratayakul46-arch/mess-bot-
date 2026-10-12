@@ -10,6 +10,7 @@ const DEFAULTS = Object.freeze({
   warn_first: true,
   warn_grace_seconds: 120,
   warn_text: "{{name}}, slow down. Spamming again within 2 minutes will get you removed.",
+  sensitive_admin_enabled: true,
 });
 
 const clamp = (value, min, max, fallback) => {
@@ -59,9 +60,11 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
             warn_first BOOLEAN NOT NULL DEFAULT TRUE,
             warn_grace_seconds INTEGER NOT NULL DEFAULT 120,
             warn_text TEXT NOT NULL DEFAULT '{{name}}, slow down. Spamming again within 2 minutes will get you removed.',
+            sensitive_admin_enabled BOOLEAN NOT NULL DEFAULT TRUE,
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
           )
         `);
+        await db.query("ALTER TABLE automod_spam_settings ADD COLUMN IF NOT EXISTS sensitive_admin_enabled BOOLEAN NOT NULL DEFAULT TRUE");
         await db.query(`
           CREATE TABLE IF NOT EXISTS automod_spam_warnings (
             thread_id TEXT NOT NULL,
@@ -94,7 +97,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
   async function getConfig(threadID) {
     await ensureTables();
     const result = await db.query(
-      "SELECT max_messages, window_seconds, repeat_max, warn_first, warn_grace_seconds, warn_text FROM automod_spam_settings WHERE thread_id = $1",
+      "SELECT max_messages, window_seconds, repeat_max, warn_first, warn_grace_seconds, warn_text, sensitive_admin_enabled FROM automod_spam_settings WHERE thread_id = $1",
       [String(threadID)],
     );
     return { ...DEFAULTS, ...(result.rows[0] || {}) };
@@ -232,6 +235,8 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
 
     const settings = await getSettings(threadID);
     if (settings?.enabled !== true) return;
+    const config = await getConfig(threadID);
+    if (config.sensitive_admin_enabled !== true) return;
 
     if (!api || typeof api.getThreadInfo !== "function" || typeof api.changeAdminStatus !== "function") {
       log("[AUTOMOD-SENSITIVE] Cannot safely demote the actor: required Messenger role/status methods are unavailable.");
@@ -389,6 +394,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       warn_first: body.warn_first !== false,
       warn_grace_seconds: DEFAULTS.warn_grace_seconds,
       warn_text: DEFAULTS.warn_text,
+      sensitive_admin_enabled: body.sensitive_admin_enabled !== false,
     };
   }
 
@@ -414,12 +420,12 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         const cfg = normalizeConfig(body);
         await ensureTables();
         await db.query(
-          `INSERT INTO automod_spam_settings(thread_id, max_messages, window_seconds, repeat_max, warn_first, warn_grace_seconds, warn_text, updated_at)
-           VALUES($1, $2, $3, $4, $5, $6, $7, NOW())
+          `INSERT INTO automod_spam_settings(thread_id, max_messages, window_seconds, repeat_max, warn_first, warn_grace_seconds, warn_text, sensitive_admin_enabled, updated_at)
+           VALUES($1, $2, $3, $4, $5, $6, $7, $8, NOW())
            ON CONFLICT(thread_id) DO UPDATE SET max_messages = EXCLUDED.max_messages, window_seconds = EXCLUDED.window_seconds,
              repeat_max = EXCLUDED.repeat_max, warn_first = EXCLUDED.warn_first, warn_grace_seconds = EXCLUDED.warn_grace_seconds,
-             warn_text = EXCLUDED.warn_text, updated_at = NOW()`,
-          [threadID, cfg.max_messages, cfg.window_seconds, cfg.repeat_max, cfg.warn_first, cfg.warn_grace_seconds, cfg.warn_text],
+             warn_text = EXCLUDED.warn_text, sensitive_admin_enabled = EXCLUDED.sensitive_admin_enabled, updated_at = NOW()`,
+          [threadID, cfg.max_messages, cfg.window_seconds, cfg.repeat_max, cfg.warn_first, cfg.warn_grace_seconds, cfg.warn_text, cfg.sensitive_admin_enabled],
         );
         const settings = await setEnabled(threadID, body.enabled === true);
         log(`[AUTOMOD-SPAM] ${settings.enabled ? "enabled" : "disabled"} for all members in ${threadID}`);
