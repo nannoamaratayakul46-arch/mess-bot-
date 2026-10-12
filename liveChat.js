@@ -6,6 +6,8 @@ function createLiveChat({ getApi, log = console.log, maxPerThread = 100, idlePol
   const threads = new Map();
   const clientCounts = new Map();
   const lastSendAt = new Map();
+  const subscriptionExpiry = new Map();
+  const SUBSCRIPTION_LEASE_MS = 30000;
   const MAX_TEXT = 2000;
   const SEND_GAP_MS = 1200;
   const MAX_THREADS = 30;
@@ -24,7 +26,19 @@ function createLiveChat({ getApi, log = console.log, maxPerThread = 100, idlePol
   }
 
   function isOpen(threadID) {
+    const expiresAt = subscriptionExpiry.get(threadID) || 0;
+    if (expiresAt <= Date.now()) {
+      clientCounts.delete(threadID);
+      subscriptionExpiry.delete(threadID);
+      threads.delete(threadID);
+      lastSendAt.delete(threadID);
+      return false;
+    }
     return (clientCounts.get(threadID) || 0) > 0;
+  }
+
+  function renewLease(threadID) {
+    if ((clientCounts.get(threadID) || 0) > 0) subscriptionExpiry.set(threadID, Date.now() + SUBSCRIPTION_LEASE_MS);
   }
 
   function record(event) {
@@ -69,7 +83,9 @@ function createLiveChat({ getApi, log = console.log, maxPerThread = 100, idlePol
     app.post('/api/dashboard/groups/:threadId/chat/open', auth, (req, res) => {
       const id = cleanId(req.params.threadId);
       if (!id) return res.status(400).json({ ok: false, error: 'Invalid group ID.' });
+      if (!isOpen(id)) clientCounts.set(id, 0);
       clientCounts.set(id, (clientCounts.get(id) || 0) + 1);
+      subscriptionExpiry.set(id, Date.now() + SUBSCRIPTION_LEASE_MS);
       threadState(id);
       return res.json({ ok: true, idle_poll_ms: idlePollMs, active: true });
     });
@@ -77,10 +93,12 @@ function createLiveChat({ getApi, log = console.log, maxPerThread = 100, idlePol
     app.post('/api/dashboard/groups/:threadId/chat/close', auth, (req, res) => {
       const id = cleanId(req.params.threadId);
       if (!id) return res.status(400).json({ ok: false, error: 'Invalid group ID.' });
+      isOpen(id);
       const count = Math.max(0, (clientCounts.get(id) || 0) - 1);
       if (count) clientCounts.set(id, count);
       else {
         clientCounts.delete(id);
+        subscriptionExpiry.delete(id);
         threads.delete(id);
         lastSendAt.delete(id);
       }
@@ -90,6 +108,7 @@ function createLiveChat({ getApi, log = console.log, maxPerThread = 100, idlePol
     app.get('/api/dashboard/groups/:threadId/chat', auth, (req, res) => {
       const id = cleanId(req.params.threadId);
       if (!isOpen(id)) return res.status(409).json({ ok: false, error: 'Open the chat before polling.' });
+      renewLease(id);
       const after = Math.max(0, Number.parseInt(String(req.query.after || '0'), 10) || 0);
       const state = threadState(id);
       return res.json({ ok: true, active: true, idle_poll_ms: idlePollMs, latest_seq: state.seq, messages: state.messages.filter(m => m.seq > after) });
