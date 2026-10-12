@@ -11527,9 +11527,10 @@ function sendBanatReplyWithTyping(
   attachMeme = false,
   linkUrl = null,
   replyDelayMs = BANAT_REPLY_DELAY_MS,
-  incomingText = ""
+  incomingText = "",
+  options = {}
 ) {
-  startTyping(api, threadID);
+  if (options.skipTyping !== true) startTyping(api, threadID);
   return sendBanatReplyWithTypingModule(
     api,
     message,
@@ -11542,6 +11543,7 @@ function sendBanatReplyWithTyping(
     {
       trafficSendMessage,
       getRandomMemePath,
+      skipTyping: options.skipTyping === true,
     }
   );
 }
