@@ -179,7 +179,7 @@ async function connect() {
       target_name TEXT,
       set_by TEXT NOT NULL,
       bang_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      jaiden_interval_seconds INTEGER NOT NULL DEFAULT 15,
+      jaiden_interval_seconds INTEGER NOT NULL DEFAULT 3,
       jaiden_cooldown_mode TEXT NOT NULL DEFAULT 'extend',
       jaiden_reply_mode TEXT NOT NULL DEFAULT 'always',
       jaiden_typing_enabled BOOLEAN NOT NULL DEFAULT TRUE,
@@ -189,7 +189,7 @@ async function connect() {
     ALTER TABLE banat_thread_targets
       ADD COLUMN IF NOT EXISTS target_name TEXT,
       ADD COLUMN IF NOT EXISTS bang_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS jaiden_interval_seconds INTEGER NOT NULL DEFAULT 15,
+      ADD COLUMN IF NOT EXISTS jaiden_interval_seconds INTEGER NOT NULL DEFAULT 3,
       ADD COLUMN IF NOT EXISTS jaiden_cooldown_mode TEXT NOT NULL DEFAULT 'extend',
       ADD COLUMN IF NOT EXISTS jaiden_reply_mode TEXT NOT NULL DEFAULT 'always',
       ADD COLUMN IF NOT EXISTS jaiden_typing_enabled BOOLEAN NOT NULL DEFAULT TRUE;
@@ -3459,7 +3459,7 @@ async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled =
   if (!id || !target || !setter) throw new Error("thread_id, target_user_id, and set_by are required");
 
   const rawInterval = Number(jaidenSettings?.interval_seconds);
-  const interval = Number.isInteger(rawInterval) && rawInterval >= 15 && rawInterval <= 120 ? rawInterval : null;
+  const interval = Number.isInteger(rawInterval) && rawInterval >= 3 && rawInterval <= 120 ? rawInterval : null;
   const cooldown = ["extend", "queue", "ignore"].includes(jaidenSettings?.cooldown_mode) ? jaidenSettings.cooldown_mode : null;
   const replyMode = ["always", "random"].includes(jaidenSettings?.reply_mode) ? jaidenSettings.reply_mode : null;
   const typing = typeof jaidenSettings?.typing_enabled === "boolean" ? jaidenSettings.typing_enabled : null;
@@ -3472,7 +3472,7 @@ async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled =
      )
      VALUES(
        $1, $2, $3, $4, COALESCE($5::boolean, FALSE),
-       COALESCE($6::integer, 15), COALESCE($7::text, 'extend'),
+       COALESCE($6::integer, 3), COALESCE($7::text, 'extend'),
        COALESCE($8::text, 'always'), COALESCE($9::boolean, TRUE), $10
      )
      ON CONFLICT(thread_id) DO UPDATE SET
