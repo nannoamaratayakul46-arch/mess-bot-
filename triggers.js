@@ -2312,7 +2312,7 @@ async function getTriggerReply(
             }
 
             if (replyTargetName) {
-              generatedReply = generatedReply.replace(/\\bjaiden\\b/gi, replyTargetName);
+              generatedReply = generatedReply.replace(/\bjaiden\b/gi, replyTargetName);
             }
 
             // AI text must pass the same recent-reply guard as pool phrases.
