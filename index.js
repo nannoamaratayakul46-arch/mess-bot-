@@ -4265,7 +4265,6 @@ app.get(
     }
     try {
       const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
-      const ids = Array.isArray(info.participantIDs) ? info.participantIDs.map(String) : [];
       const rawInfo = info.userInfo || info.participants || {};
       const infoRows = Array.isArray(rawInfo)
         ? rawInfo
@@ -4273,11 +4272,22 @@ app.get(
       const names = new Map(infoRows.map(user => [
         String(user.id || user.userID || user.userId || ""),
         String(user.name || user.fullName || user.firstName || "").trim(),
-      ]));
+      ]).filter(([id]) => id));
+      // Some FCA builds omit participantIDs but still return userInfo/participants.
+      // Recover IDs from those records rather than silently showing an empty picker.
+      const participantIDs = Array.isArray(info.participantIDs)
+        ? info.participantIDs.map(value => String(value?.userID || value?.userId || value?.id || value))
+        : [];
+      const ids = [...new Set([
+        ...participantIDs,
+        ...infoRows.map(user => String(user.id || user.userID || user.userId || "")),
+      ].filter(id => /^\\d{6,32}$/.test(id)))];
+      const botID = String(activeMessengerApi.getCurrentUserID?.() || "");
       const members = ids
-        .filter(id => id && id !== String(activeMessengerApi.getCurrentUserID?.() || ""))
-        .map(id => ({ user_id: id, name: names.get(id) || ("Messenger user " + id) }));
-      return res.json({ ok: true, thread_id: threadID, members });
+        .filter(id => id && id !== botID)
+        .map(id => ({ user_id: id, name: names.get(id) || ("Messenger user " + id) }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+      return res.json({ ok: true, thread_id: threadID, members, count: members.length });
     } catch (error) {
       console.error("[DASHBOARD] Could not load group members:", error);
       return res.status(503).json({ ok: false, error: "Could not load this group's members from Messenger." });
