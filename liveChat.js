@@ -80,6 +80,28 @@ function createLiveChat({ getApi, log = console.log, maxPerThread = 100, idlePol
 
   function registerRoutes(app, requireDashboardAccess) {
     const auth = requireDashboardAccess;
+
+    // Authenticated, read-only runtime diagnostics. Never expose message contents.
+    app.get('/api/dashboard/livechat/stats', auth, (_req, res) => {
+      const memory = process.memoryUsage();
+      let activeThreads = 0;
+      let bufferedMessages = 0;
+      for (const [id, state] of threads) {
+        if (isOpen(id)) activeThreads += 1;
+        bufferedMessages += Array.isArray(state.messages) ? state.messages.length : 0;
+      }
+      return res.json({
+        ok: true,
+        active_threads: activeThreads,
+        buffered_messages: bufferedMessages,
+        max_threads: MAX_THREADS,
+        max_messages_per_thread: maxPerThread,
+        rss_mb: Number((memory.rss / 1048576).toFixed(2)),
+        heap_used_mb: Number((memory.heapUsed / 1048576).toFixed(2)),
+        heap_total_mb: Number((memory.heapTotal / 1048576).toFixed(2)),
+        checked_at: new Date().toISOString()
+      });
+    });
     app.post('/api/dashboard/groups/:threadId/chat/open', auth, (req, res) => {
       const id = cleanId(req.params.threadId);
       if (!id) return res.status(400).json({ ok: false, error: 'Invalid group ID.' });
