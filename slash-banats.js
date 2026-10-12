@@ -52,8 +52,24 @@ const UNAUTHORIZED_REPLIES = Object.freeze([
   "ang kulit mo, isang minuto ka munang manahimik",
 ]);
 
-const usedByModeAndSender = new Map();
+const { readSection, writeSection } = require("./banat-state-store");
+const restoredHistory = readSection("slashBanats", {});
+const usedByModeAndSender = new Map(
+  Object.entries(restoredHistory).map(([key, values]) => [
+    key,
+    new Set(Array.isArray(values) ? values : []),
+  ])
+);
 const SLASH_HISTORY_LIMIT = 500;
+
+function persistHistory() {
+  writeSection(
+    "slashBanats",
+    Object.fromEntries(
+      Array.from(usedByModeAndSender.entries(), ([key, values]) => [key, Array.from(values)])
+    )
+  );
+}
 
 function pickWithoutRepeating(list, key) {
   let used = usedByModeAndSender.get(key);
@@ -73,6 +89,7 @@ function pickWithoutRepeating(list, key) {
   while (usedByModeAndSender.size > SLASH_HISTORY_LIMIT) {
     usedByModeAndSender.delete(usedByModeAndSender.keys().next().value);
   }
+  persistHistory();
 
   return selected;
 }
@@ -80,21 +97,14 @@ function pickWithoutRepeating(list, key) {
 function pickSlashBanat(mode = "on", threadId = "global", senderId = "unknown") {
   const normalizedMode = String(mode).toLowerCase() === "off" ? "off" : "on";
   const pool = normalizedMode === "off" ? OFF_REPLIES : ON_REPLIES;
-  const key = [
-    String(threadId || "global"),
-    String(senderId || "unknown"),
-    normalizedMode
-  ].join(":");
+  // Keep one rotation per thread and mode so members share the same cycle.
+  const key = [String(threadId || "global"), normalizedMode].join(":");
 
   return pickWithoutRepeating(pool, key);
 }
 
 function pickUnauthorizedSlashBanat(threadId = "global", senderId = "unknown") {
-  const key = [
-    "unauthorized",
-    String(threadId || "global"),
-    String(senderId || "unknown")
-  ].join(":");
+  const key = ["unauthorized", String(threadId || "global")].join(":");
 
   return pickWithoutRepeating(UNAUTHORIZED_REPLIES, key);
 }
