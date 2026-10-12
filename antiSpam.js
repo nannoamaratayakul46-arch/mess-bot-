@@ -241,10 +241,10 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       data?.messageID || data?.messageId || ""
     ).trim();
     const timestamp = Number(event?.timestamp || event?.time || data?.timestamp || 0);
+    const now = Date.now();
     const fingerprint = messageID
       ? "message:" + messageID
-      : [eventType, userID, timestamp || "no-timestamp", JSON.stringify(data)].join(":").slice(0, 900);
-    const now = Date.now();
+      : [eventType, userID, timestamp || Math.floor(now / 3000), JSON.stringify(data)].join(":").slice(0, 900);
 
     const inserted = await db.query(
       `INSERT INTO automod_profile_abuse_events(thread_id, user_id, event_key, event_type, created_at)
