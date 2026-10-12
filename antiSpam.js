@@ -1,7 +1,7 @@
 "use strict";
 
 const express = require("express");
-const { getAutoModSettings, setAutoModEnabled, removeFromGroup, isAdmin } = require("./moderation");
+const { getAutoModSettings, setAutoModEnabled, removeFromGroup, isAdmin, isBotOwner } = require("./moderation");
 
 const DEFAULTS = Object.freeze({
   max_messages: 6,
@@ -210,6 +210,67 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
   const PROFILE_ABUSE_THRESHOLD = 3;
   const PROFILE_ABUSE_WINDOW_MS = 60 * 1000;
 
+  async function processSensitiveAdminEvent(api, event) {
+    if (event?.type !== "event" || String(event?.logMessageType || "") !== "log:thread-admins") return;
+
+    const threadID = String(event?.threadID || "").trim();
+    const data = event?.logMessageData && typeof event.logMessageData === "object"
+      ? event.logMessageData
+      : {};
+    const adminEvent = String(data.ADMIN_EVENT || data.admin_event || "").toLowerCase();
+    const targetID = String(data.TARGET_ID ?? data.target_id ?? "").trim();
+    const actorRaw = event?.author ?? event?.authorID ?? event?.senderID;
+    const actorID = String(
+      actorRaw && typeof actorRaw === "object"
+        ? actorRaw.id ?? actorRaw.userID ?? actorRaw.userId ?? ""
+        : actorRaw ?? ""
+    ).trim();
+
+    // Only respond to a confirmed removal of the configured bot owner from admin.
+    if (!threadID || adminEvent !== "remove_admin" || !targetID || !actorID || !isBotOwner(targetID)) return;
+    if (actorID === targetID || isBotOwner(actorID)) return;
+
+    const settings = await getSettings(threadID);
+    if (settings?.enabled !== true) return;
+
+    if (!api || typeof api.getThreadInfo !== "function" || typeof api.changeAdminStatus !== "function") {
+      log("[AUTOMOD-SENSITIVE] Cannot safely demote the actor: required Messenger role/status methods are unavailable.");
+      return;
+    }
+
+    let info;
+    try {
+      info = await callbackCall(cb => api.getThreadInfo(threadID, cb), 8000);
+    } catch (error) {
+      log(`[AUTOMOD-SENSITIVE] Role verification failed in ${threadID}; no admin status changed: ${String(error?.message || error).slice(0, 160)}`);
+      return;
+    }
+
+    const normalizeIds = value => (Array.isArray(value) ? value : []).map(item =>
+      String(item?.id ?? item?.userID ?? item?.userId ?? item ?? "").trim()
+    ).filter(Boolean);
+    const adminIDs = normalizeIds(info?.adminIDs);
+    const botID = String(typeof api.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
+
+    // Fail closed: the bot must still be an admin and the actor must still be an admin.
+    if (!botID || !adminIDs.includes(botID) || !adminIDs.includes(actorID)) {
+      log(`[AUTOMOD-SENSITIVE] Could not verify bot and actor admin roles in ${threadID}; no admin status changed.`);
+      return;
+    }
+
+    try {
+      await callbackCall(cb => api.changeAdminStatus(threadID, actorID, false, cb), 12000);
+      log(`[AUTOMOD-SENSITIVE] Demoted ${actorID} in ${threadID} after they removed bot-owner admin status.`);
+      try {
+        await sendMessage(api, threadID, "Sensitive AutoMod: an admin removed the bot owner's admin status. Their admin status has been revoked.");
+      } catch (error) {
+        log(`[AUTOMOD-SENSITIVE] Demotion succeeded but notice failed in ${threadID}: ${String(error?.message || error).slice(0, 140)}`);
+      }
+    } catch (error) {
+      log(`[AUTOMOD-SENSITIVE] Could not demote ${actorID} in ${threadID}: ${String(error?.message || error).slice(0, 180)}`);
+    }
+  }
+
   async function processGroupProfileEvent(api, event) {
     const eventType = String(event?.logMessageType || "");
     if (event?.type !== "event" || !["log:thread-image", "log:thread-name"].includes(eventType)) return;
@@ -294,7 +355,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     if (!threadID || !userID) return Promise.resolve();
     const key = threadID + ":" + userID;
     const previous = queues.get(key) || Promise.resolve();
-    const next = previous.then(() => processGroupProfileEvent(api, event)).catch(error => {
+    const next = previous.then(() => processSensitiveAdminEvent(api, event)).then(() => processGroupProfileEvent(api, event)).catch(error => {
       log(`[AUTOMOD-PROFILE] event check failed: ${String(error?.message || error).slice(0, 180)}`);
     });
     queues.set(key, next);
