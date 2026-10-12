@@ -1,7 +1,7 @@
 "use strict";
 
 const express = require("express");
-const { getAutoModSettings, setAutoModEnabled, removeFromGroup } = require("./moderation");
+const { getAutoModSettings, setAutoModEnabled, removeFromGroup, isAdmin } = require("./moderation");
 
 const DEFAULTS = Object.freeze({
   max_messages: 6,
@@ -71,6 +71,18 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
           )
         `);
         await db.query("CREATE INDEX IF NOT EXISTS idx_automod_spam_warnings_time ON automod_spam_warnings(warned_at)");
+        await db.query(`
+          CREATE TABLE IF NOT EXISTS automod_profile_abuse_events (
+            id BIGSERIAL PRIMARY KEY,
+            thread_id TEXT NOT NULL,
+            user_id TEXT NOT NULL,
+            event_key TEXT NOT NULL,
+            event_type TEXT NOT NULL,
+            created_at BIGINT NOT NULL,
+            UNIQUE(thread_id, event_key)
+          )
+        `);
+        await db.query("CREATE INDEX IF NOT EXISTS idx_automod_profile_abuse_recent ON automod_profile_abuse_events(thread_id, user_id, created_at)");
       })().catch(error => {
         schemaPromise = null;
         throw error;
@@ -195,6 +207,102 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     }
   }
 
+  const PROFILE_ABUSE_THRESHOLD = 3;
+  const PROFILE_ABUSE_WINDOW_MS = 60 * 1000;
+
+  async function processGroupProfileEvent(api, event) {
+    const eventType = String(event?.logMessageType || "");
+    if (event?.type !== "event" || !["log:thread-image", "log:thread-name"].includes(eventType)) return;
+
+    const threadID = String(event?.threadID || "").trim();
+    const rawAuthor = event?.author ?? event?.authorID ?? event?.senderID;
+    const userID = String(
+      rawAuthor && typeof rawAuthor === "object"
+        ? rawAuthor.id ?? rawAuthor.userID ?? rawAuthor.userId ?? ""
+        : rawAuthor ?? ""
+    ).trim();
+    if (!threadID || !userID) {
+      log("[AUTOMOD-PROFILE] Ignored profile change because the group or actor ID was missing.");
+      return;
+    }
+
+    const botID = String(typeof api?.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
+    if ((botID && userID === botID) || isAdmin(userID)) return;
+
+    const settings = await getSettings(threadID);
+    if (settings?.enabled !== true) return;
+
+    await ensureTables();
+    const data = event?.logMessageData && typeof event.logMessageData === "object"
+      ? event.logMessageData
+      : {};
+    const messageID = String(
+      event?.messageID || event?.messageId || event?.logMessageId ||
+      data?.messageID || data?.messageId || ""
+    ).trim();
+    const timestamp = Number(event?.timestamp || event?.time || data?.timestamp || 0);
+    const fingerprint = messageID
+      ? "message:" + messageID
+      : [eventType, userID, timestamp || "no-timestamp", JSON.stringify(data)].join(":").slice(0, 900);
+    const now = Date.now();
+
+    const inserted = await db.query(
+      `INSERT INTO automod_profile_abuse_events(thread_id, user_id, event_key, event_type, created_at)
+       VALUES($1, $2, $3, $4, $5)
+       ON CONFLICT(thread_id, event_key) DO NOTHING
+       RETURNING id`,
+      [threadID, userID, fingerprint, eventType, now],
+    );
+    if (!inserted.rows?.length) return;
+
+    // Keep the table bounded while retaining enough history to diagnose recent actions.
+    await db.query(
+      "DELETE FROM automod_profile_abuse_events WHERE thread_id = $1 AND created_at < $2",
+      [threadID, now - 24 * 60 * 60 * 1000],
+    );
+    const recent = await db.query(
+      "SELECT COUNT(*)::int AS count FROM automod_profile_abuse_events WHERE thread_id = $1 AND user_id = $2 AND created_at >= $3",
+      [threadID, userID, now - PROFILE_ABUSE_WINDOW_MS],
+    );
+    const count = Number(recent.rows?.[0]?.count || 0);
+    log(`[AUTOMOD-PROFILE] ${userID} made ${count}/${PROFILE_ABUSE_THRESHOLD} group photo/name changes in ${threadID} within 60 seconds.`);
+    if (count < PROFILE_ABUSE_THRESHOLD) return;
+
+    const removal = await removeFromGroup(api, threadID, userID);
+    if (!removal?.ok) {
+      log(`[AUTOMOD-PROFILE] kick not completed for ${userID} in ${threadID}: ${String(removal?.errorMessage || removal?.errorCode || "Unknown removal failure").slice(0, 180)}`);
+      return;
+    }
+
+    await db.query(
+      "DELETE FROM automod_profile_abuse_events WHERE thread_id = $1 AND user_id = $2",
+      [threadID, userID],
+    );
+    log(`[AUTOMOD-PROFILE] removed ${userID} from ${threadID} after repeated group photo/name changes.`);
+  }
+
+  function onGroupEvent(apiOrEvent, maybeEvent) {
+    const api = maybeEvent ? apiOrEvent : getApi();
+    const event = maybeEvent || apiOrEvent;
+    const threadID = String(event?.threadID || "").trim();
+    const rawAuthor = event?.author ?? event?.authorID ?? event?.senderID;
+    const userID = String(
+      rawAuthor && typeof rawAuthor === "object"
+        ? rawAuthor.id ?? rawAuthor.userID ?? rawAuthor.userId ?? ""
+        : rawAuthor ?? ""
+    ).trim();
+    if (!threadID || !userID) return Promise.resolve();
+    const key = threadID + ":" + userID;
+    const previous = queues.get(key) || Promise.resolve();
+    const next = previous.then(() => processGroupProfileEvent(api, event)).catch(error => {
+      log(`[AUTOMOD-PROFILE] event check failed: ${String(error?.message || error).slice(0, 180)}`);
+    });
+    queues.set(key, next);
+    return next.finally(() => {
+      if (queues.get(key) === next) queues.delete(key);
+    });
+  }
+
   function onMessage(apiOrEvent, maybeEvent) {
     const api = maybeEvent ? apiOrEvent : getApi();
     const event = maybeEvent || apiOrEvent;
@@ -279,7 +387,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     });
   }
 
-  return { onMessage, registerRoutes, ensureTables };
+  return { onMessage, onGroupEvent, registerRoutes, ensureTables };
 }
 
 module.exports = { createAntiSpam, DEFAULTS };
