@@ -4378,7 +4378,7 @@ app.get(
       const botID = String(activeMessengerApi.getCurrentUserID?.() || "");
       const members = [...ids]
         .filter(id => id && id !== botID)
-        .map(id => ({ user_id: id, name: names.get(id) || ("Messenger user " + id) }))
+        .map(id => ({ user_id: id, name: names.get(id) || "" }))
         .sort((a, b) => a.name.localeCompare(b.name));
       if (!members.length) {
         console.warn("[DASHBOARD] Member lookup returned no IDs", JSON.stringify({
