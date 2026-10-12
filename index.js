@@ -6065,9 +6065,13 @@ function attemptLogin() {
             return;
           }
 
-          // Nickname guard listens to Messenger thread events before the
-          // normal message router.
+          // AutoMod also watches group photo/name changes. It only acts when
+          // the existing per-group !automod setting is enabled.
+          // The handler fails closed if the event does not identify its actor.
           if (event.type === "event") {
+            void antiSpam.onGroupEvent(api, event).catch((error) => {
+              console.error("[AUTOMOD-PROFILE] Unhandled profile-event check:", error);
+            });
             void handleNicknameGuardEvent(api, event).catch((error) => {
               console.error("[NICK GUARD] Event handler failed:", error);
             });
