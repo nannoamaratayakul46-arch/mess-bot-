@@ -222,6 +222,33 @@ const dashboardKnownGroups = new Map();
 const dashboardSetNNJobs = new Map();
 let dashboardSharedLocation = null;
 const dashboardSetNNStopRequests = new Set();
+const archivedDashboardGroups = new Set();
+let archivedDashboardGroupsLoadedAt = 0;
+let archivedDashboardGroupsLoadPromise = null;
+
+async function isDashboardGroupArchived(threadID) {
+  const now = Date.now();
+  if (now - archivedDashboardGroupsLoadedAt > 30_000 && !archivedDashboardGroupsLoadPromise) {
+    archivedDashboardGroupsLoadPromise = db.query(
+      "SELECT thread_id FROM eclipse_dashboard_archived_groups"
+    ).then(result => {
+      archivedDashboardGroups.clear();
+      for (const row of result.rows || []) {
+        const id = String(row.thread_id || "").trim();
+        if (id) archivedDashboardGroups.add(id);
+      }
+      archivedDashboardGroupsLoadedAt = Date.now();
+    }).catch(() => {
+      // The archive table is created lazily by the dashboard endpoint. If it
+      // is not present yet, leave normal message routing unchanged.
+      archivedDashboardGroupsLoadedAt = Date.now();
+    }).finally(() => {
+      archivedDashboardGroupsLoadPromise = null;
+    });
+  }
+  if (archivedDashboardGroupsLoadPromise) await archivedDashboardGroupsLoadPromise;
+  return archivedDashboardGroups.has(String(threadID || "").trim());
+}
 
 // ============================================================
 // WATCHDOG
@@ -4406,15 +4433,62 @@ app.get(
       }
     }
 
+    // Archived groups stay available in the dashboard's Archived view even
+    // after they disappear from the Messenger inbox. Archiving never removes
+    // the bot from a conversation; leaving is a separate explicit action.
+    const archivedGroups = new Map();
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS eclipse_dashboard_archived_groups (
+          thread_id TEXT PRIMARY KEY,
+          group_name TEXT NOT NULL DEFAULT 'Archived group',
+          participant_count INTEGER NOT NULL DEFAULT 0,
+          archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          left_at TIMESTAMPTZ
+        )
+      `);
+      await db.query("ALTER TABLE eclipse_dashboard_archived_groups ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ");
+      const archivedResult = await db.query(
+        "SELECT thread_id, group_name, participant_count, archived_at, left_at FROM eclipse_dashboard_archived_groups ORDER BY archived_at DESC"
+      );
+      for (const row of archivedResult.rows || []) {
+        const threadID = String(row.thread_id || "").trim();
+        if (!threadID) continue;
+        archivedGroups.set(threadID, row);
+        const current = known.get(threadID);
+        if (current) {
+          current.archived = true;
+          current.left = Boolean(row.left_at);
+        } else {
+          known.set(threadID, {
+            thread_id: threadID,
+            name: String(row.group_name || "Archived group").slice(0, 160),
+            participant_count: Number(row.participant_count) || 0,
+            last_seen_at: null,
+            is_group: true,
+            archived: true,
+            left: Boolean(row.left_at),
+          });
+        }
+      }
+      archivedDashboardGroups.clear();
+      for (const archivedID of archivedGroups.keys()) archivedDashboardGroups.add(archivedID);
+      archivedDashboardGroupsLoadedAt = Date.now();
+    } catch (error) {
+      console.warn("[DASHBOARD] Could not load archived groups:", error?.message || error);
+    }
+
     dashboardKnownGroups.clear();
     const groups = [];
-    for (const group of Array.from(known.values()).slice(0, 100)) {
+    for (const group of Array.from(known.values()).slice(0, 200)) {
       dashboardKnownGroups.set(group.thread_id, group);
       try {
         const settings = await db.getThreadSettings(group.thread_id);
         const target = await db.getBanatThreadTarget(group.thread_id);
         groups.push({
           ...group,
+          archived: Boolean(group.archived || archivedGroups.has(group.thread_id)),
+          left: Boolean(group.left || archivedGroups.get(group.thread_id)?.left_at),
           bot_enabled: settings.bot_enabled !== false,
           roast_enabled: settings.roast_enabled === true,
           slash_pool_enabled: settings.slash_pool_enabled === true,
@@ -4428,6 +4502,8 @@ app.get(
         console.warn("[DASHBOARD] Could not read settings for group " + group.thread_id + ":", error?.message || error);
         groups.push({
           ...group,
+          archived: Boolean(group.archived || archivedGroups.has(group.thread_id)),
+          left: Boolean(group.left || archivedGroups.get(group.thread_id)?.left_at),
           bot_enabled: true,
           roast_enabled: true,
           slash_pool_enabled: false,
@@ -4437,6 +4513,121 @@ app.get(
     }
 
     return res.json({ ok: true, groups, generated_at: new Date().toISOString() });
+  }
+);
+
+app.post(
+  "/api/dashboard/groups/:thread_id/archive",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.params.thread_id || "").trim();
+    const group = dashboardKnownGroups.get(threadID);
+    if (!threadID || !group) {
+      return res.status(400).json({ ok: false, error: "Choose a group from the refreshed dashboard list." });
+    }
+    const archived = req.body?.archived !== false;
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS eclipse_dashboard_archived_groups (
+          thread_id TEXT PRIMARY KEY,
+          group_name TEXT NOT NULL DEFAULT 'Archived group',
+          participant_count INTEGER NOT NULL DEFAULT 0,
+          archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          left_at TIMESTAMPTZ
+        )
+      `);
+      if (archived) {
+        await db.query(
+          `INSERT INTO eclipse_dashboard_archived_groups (thread_id, group_name, participant_count, archived_at)
+           VALUES ($1, $2, $3, NOW())
+           ON CONFLICT (thread_id) DO UPDATE SET
+             group_name = EXCLUDED.group_name,
+             participant_count = EXCLUDED.participant_count,
+             archived_at = NOW()`,
+          [threadID, String(group.name || "Archived group").slice(0, 160), Number(group.participant_count) || 0]
+        );
+      } else {
+        await db.query("DELETE FROM eclipse_dashboard_archived_groups WHERE thread_id = $1", [threadID]);
+      }
+      group.archived = archived;
+      if (archived) archivedDashboardGroups.add(threadID);
+      else archivedDashboardGroups.delete(threadID);
+      archivedDashboardGroupsLoadedAt = Date.now();
+      dashboardKnownGroups.set(threadID, group);
+      pushDashboardEvent("group", (archived ? "Archived " : "Restored ") + String(group.name || threadID) + ".");
+      return res.json({ ok: true, thread_id: threadID, archived });
+    } catch (error) {
+      console.error("[DASHBOARD] Could not update archived group:", error);
+      return res.status(503).json({ ok: false, error: "Could not update this group's archive state." });
+    }
+  }
+);
+
+app.post(
+  "/api/dashboard/groups/:thread_id/leave",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.params.thread_id || "").trim();
+    const group = dashboardKnownGroups.get(threadID);
+    if (!threadID || !group) {
+      return res.status(400).json({ ok: false, error: "Choose a group from the refreshed dashboard list." });
+    }
+    if (!activeMessengerApi || activeListenerGeneration <= 0) {
+      return res.status(409).json({ ok: false, error: "Messenger is not connected." });
+    }
+    if (typeof activeMessengerApi.removeUserFromGroup !== "function") {
+      return res.status(501).json({ ok: false, error: "This Messenger API client cannot leave group conversations." });
+    }
+    const currentUserID = String(activeMessengerApi.getCurrentUserID?.() || "").trim();
+    if (!/^\\d{6,20}$/.test(currentUserID)) {
+      return res.status(409).json({ ok: false, error: "Could not verify the bot's Messenger user ID; no leave action was sent." });
+    }
+    try {
+      await new Promise((resolve, reject) => {
+        let settled = false;
+        const done = (error, result) => {
+          if (settled) return;
+          settled = true;
+          if (error) reject(error);
+          else resolve(result);
+        };
+        try {
+          const result = activeMessengerApi.removeUserFromGroup(currentUserID, threadID, done);
+          if (result && typeof result.then === "function") result.then(value => done(null, value)).catch(done);
+        } catch (error) {
+          done(error);
+        }
+      });
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS eclipse_dashboard_archived_groups (
+          thread_id TEXT PRIMARY KEY,
+          group_name TEXT NOT NULL DEFAULT 'Archived group',
+          participant_count INTEGER NOT NULL DEFAULT 0,
+          archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          left_at TIMESTAMPTZ
+        )
+      `);
+      await db.query(
+        `INSERT INTO eclipse_dashboard_archived_groups (thread_id, group_name, participant_count, archived_at, left_at)
+         VALUES ($1, $2, $3, NOW(), NOW())
+         ON CONFLICT (thread_id) DO UPDATE SET
+           group_name = EXCLUDED.group_name,
+           participant_count = EXCLUDED.participant_count,
+           archived_at = NOW(),
+           left_at = NOW()`,
+        [threadID, String(group.name || "Archived group").slice(0, 160), Number(group.participant_count) || 0]
+      );
+      group.archived = true;
+      group.left = true;
+      archivedDashboardGroups.add(threadID);
+      archivedDashboardGroupsLoadedAt = Date.now();
+      dashboardKnownGroups.set(threadID, group);
+      pushDashboardEvent("group", "Bot left and archived " + String(group.name || threadID) + ".");
+      return res.json({ ok: true, thread_id: threadID, archived: true, left: true });
+    } catch (error) {
+      console.error("[DASHBOARD] Could not leave Messenger group " + threadID + ":", error?.message || error);
+      return res.status(502).json({ ok: false, error: "Messenger could not remove the bot from this group. The group was not marked as left." });
+    }
   }
 );
 
@@ -6022,6 +6213,10 @@ async function handleMessage(
     String(
       senderID || ""
     ).trim();
+
+  // Archived GCs are intentionally ignored by all bot features until restored
+  // from the dashboard, including commands, Banat, games, and automod.
+  if (await isDashboardGroupArchived(threadId)) return;
 
   // Keep spam monitoring independent of owner presence and the normal bot toggle.
   // The detector serializes events per member and uses persistent group settings.
@@ -10727,6 +10922,37 @@ async function runBanatBurstQueue(threadID) {
   }
 }
 
+// A dashboard Jaiden trigger must not swallow commands that already belong
+// to ECLIPSE. Ordinary messages such as "!hello" still trigger Jaiden mode;
+// recognized command names continue into the normal command router.
+function isRecognizedBangCommand(body) {
+  const match = String(body || "").trim().match(/^!([a-z0-9_-]+)(?:\\s|$)/i);
+  if (!match) return false;
+
+  const command = match[1].toLowerCase();
+  if (gameRegistry && typeof gameRegistry.getGame === "function" && gameRegistry.getGame(command)) {
+    return true;
+  }
+
+  return new Set([
+    "help", "ping", "rpg", "games", "game", "debate", "exam",
+    "cleanup", "owner", "pause", "resume", "watchdog", "gcstatus",
+    "music", "broadcast", "answer", "play", "haunt", "heist",
+    "incident", "investigations", "investigator", "lost", "trial",
+    "hit", "stand", "double",
+    "trivia", "riddle", "math", "roll", "coinflip", "flip", "slots",
+    "guess", "rps", "blackjack", "bj", "8ball", "8-ball", "chamber",
+    "roulette", "lastchamber", "daily", "work", "rizz", "simp", "clown",
+    "aura", "npc", "delulu", "menace", "grass", "bro", "roast",
+    "compat", "compatibility", "ship", "battle", "vibes", "social",
+    "socialgames", "ban", "kick", "unban", "warn", "mute", "unmute",
+    "automod", "moderation", "profile", "stats", "inventory", "shop",
+    "buy", "sell", "balance", "bal", "leaderboard", "level", "rank",
+    "verse", "training", "debug", "simulation", "yt", "youtube", "queue",
+    "skip", "stop", "volume", "setnn"
+  ]).has(command);
+}
+
 async function handleAutomaticBanatMessage({
   api,
   event,
@@ -10739,6 +10965,9 @@ async function handleAutomaticBanatMessage({
   // ! commands are routed here only when the dashboard explicitly enables
   // the Jaiden trigger for this group's saved target.
   if (/^!/.test(String(body || ""))) {
+    // Existing commands (for example !help, !trivia, and !rpg) always retain
+    // their normal behavior even when Jaiden mode is enabled for this GC.
+    if (isRecognizedBangCommand(body)) return false;
     try {
       const target = await db.getBanatThreadTarget(threadId);
       if (target?.bang_enabled !== true || !target?.target_user_id) return false;
@@ -10872,7 +11101,9 @@ async function handleAutomaticBanatMessage({
     // When ! mode is enabled, any ! message invokes the Jaiden pool for the
     // saved target. Otherwise preserve the legacy selected-target behavior.
     const bangJaidenCommand =
-      savedBanatTarget?.bang_enabled === true && /^!/.test(String(body || ""));
+      savedBanatTarget?.bang_enabled === true &&
+      /^!/.test(String(body || "")) &&
+      !isRecognizedBangCommand(body);
     if (bangJaidenCommand || (senderIsDashboardTarget && savedBanatTarget?.bang_enabled !== true)) {
       const resolvedTarget = await resolveTargetName(api, threadID, dashboardTargetId, {
         savedName: savedBanatTarget?.target_name,
