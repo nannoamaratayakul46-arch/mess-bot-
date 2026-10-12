@@ -277,3 +277,27 @@ test("normal slash open-speaker routing is enabled only by the normal pool witho
   assert.match(body, /allowAnySpeaker:\s*roastEnabled && !savedBanatTarget\?\.target_user_id/);
   assert.match(read("triggers.js"), /allowAnySpeaker === true/);
 });
+
+
+test("Jaiden preferences persist per group and validate interval/modes", () => {
+  const db = read("db.js");
+  const source = read("index.js");
+  assert.match(db, /jaiden_interval_seconds INTEGER NOT NULL DEFAULT 15/);
+  assert.match(db, /jaiden_cooldown_mode TEXT NOT NULL DEFAULT 'extend'/);
+  assert.match(db, /jaiden_reply_mode TEXT NOT NULL DEFAULT 'always'/);
+  assert.match(db, /jaiden_typing_enabled BOOLEAN NOT NULL DEFAULT TRUE/);
+  assert.match(source, /interval < 15 \|\| interval > 120/);
+  assert.match(source, /\["extend", "queue", "ignore"\]/);
+  assert.match(source, /\["always", "random"\]/);
+});
+
+test("Jaiden extend cooldown resets its timer and scopes pending work to group and target", () => {
+  const source = read("index.js");
+  const start = source.indexOf("function scheduleJaidenReply");
+  const end = source.indexOf("function clearJaidenCooldownState", start);
+  const body = source.slice(start, end);
+  assert.match(body, /threadKey \+ ":" \+ targetKey/);
+  assert.match(body, /if \(state\.timer\) clearTimeout\(state\.timer\)/);
+  assert.match(body, /state\.latest = job/);
+  assert.match(source, /skipTyping: job\.typingEnabled === false/);
+});
