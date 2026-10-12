@@ -4,7 +4,8 @@
  * Small per-thread Banat memory.
  *
  * Keeps recent replies out of immediate rotation and delegates pool rotation
- * to the shared no-repeat randomizer. Memory is intentionally in-process.
+ * to the shared no-repeat randomizer. State is restored from the shared Banat
+ * state file so recent-reply guards survive process restarts on persistent disks.
  */
 
 const { pickFromBag } = require("./banat-randomizer");
