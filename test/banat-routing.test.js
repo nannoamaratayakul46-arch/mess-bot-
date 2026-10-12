@@ -236,3 +236,44 @@ test("dashboard archive and leave endpoints persist ignored groups", () => {
   assert.match(source, /archivedDashboardGroups\.add\(threadID\)/);
   assert.match(source, /archivedDashboardGroups\.delete\(threadID\)/);
 });
+
+
+test("normal slash Banat can respond to a different member despite stale conversation ownership", () => {
+  const triggers = require("../triggers");
+  const threadId = "test-normal-open-speaker-" + process.pid;
+  triggers.setBanatConversationTarget(threadId, "previous-speaker", {
+    reason: "conversation",
+    confidence: 0.9,
+    text: "previous turn",
+  });
+
+  const withoutOpenMode = triggers.scoreBanatAddressContext({
+    rawText: "hello there",
+    senderId: "another-member",
+    threadId,
+    event: {},
+    botId: "bot-id",
+  });
+  assert.equal(withoutOpenMode.shouldRespond, false);
+
+  const withNormalSlashMode = triggers.scoreBanatAddressContext({
+    rawText: "hello there",
+    senderId: "another-member",
+    threadId,
+    event: {},
+    botId: "bot-id",
+    allowAnySpeaker: true,
+  });
+  assert.equal(withNormalSlashMode.shouldRespond, true);
+
+  triggers.clearBanatConversationTarget(threadId);
+});
+
+test("normal slash open-speaker routing is enabled only by the normal pool without a saved target", () => {
+  const source = read("index.js");
+  const start = source.indexOf("async function handleAutomaticBanatMessage");
+  const end = source.indexOf("// ============================================================\\n// HUMAN / BANAT WIRING", start);
+  const body = source.slice(start, end);
+  assert.match(body, /allowAnySpeaker:\s*roastEnabled && !savedBanatTarget\?\.target_user_id/);
+  assert.match(read("triggers.js"), /allowAnySpeaker === true/);
+});
