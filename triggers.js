@@ -2540,6 +2540,7 @@ function scoreBanatAddressContext({
   threadId = "",
   event = null,
   botId = "",
+  allowAnySpeaker = false,
 } = {}) {
   const text = String(rawText || "").trim();
   const key = String(threadId || "unknown");
@@ -2868,6 +2869,11 @@ function scoreBanatAddressContext({
     // unrelated speakers must wait. A strong contextual signal can transfer
     // ownership to the new speaker.
     shouldRespond:
+      // Normal / Banat is an open-group pool: an old conversation owner
+      // must not prevent a different member from receiving a normal roast.
+      // Dashboard-selected targets are handled by index.js before this
+      // result is used, so targeted Jaiden mode remains exclusive.
+      allowAnySpeaker === true ||
       // The current conversation owner should not be filtered by the
       // address/relevance score. If they send one message or several,
       // Banat is allowed to engage. The queue handles batching/rate limits.
