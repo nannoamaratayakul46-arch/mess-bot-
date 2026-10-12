@@ -216,3 +216,23 @@ test("dashboard ! mode routes bang-prefixed messages to the selected Jaiden targ
   assert.match(source, /bangJaidenCommand \|\| \(senderIsDashboardTarget && savedBanatTarget\?\.bang_enabled !== true\)/);
   assert.match(source, /bang_enabled: saved\.bang_enabled === true/);
 });
+
+test("Jaiden mode does not intercept recognized bot commands", () => {
+  const source = read("index.js");
+  assert.ok(source.includes("function isRecognizedBangCommand(body)"));
+  assert.ok(source.includes("if (isRecognizedBangCommand(body)) return false;"));
+  assert.match(source, /!help/);
+  assert.match(source, /!trivia/);
+  assert.match(source, /!rpg/);
+});
+
+test("dashboard archive and leave endpoints persist ignored groups", () => {
+  const source = read("index.js");
+  assert.match(source, /eclipse_dashboard_archived_groups/);
+  assert.match(source, /app\.post\(\s*"\/api\/dashboard\/groups\/:thread_id\/archive"/);
+  assert.match(source, /app\.post\(\s*"\/api\/dashboard\/groups\/:thread_id\/leave"/);
+  assert.match(source, /removeUserFromGroup\(currentUserID, threadID, done\)/);
+  assert.match(source, /if \(await isDashboardGroupArchived\(threadId\)\) return/);
+  assert.match(source, /archivedDashboardGroups\.add\(threadID\)/);
+  assert.match(source, /archivedDashboardGroups\.delete\(threadID\)/);
+});
