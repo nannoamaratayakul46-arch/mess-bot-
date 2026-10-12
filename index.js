@@ -4252,6 +4252,34 @@ function dashboardGetThreadInfo(api, threadID) {
   });
 }
 
+
+function dashboardGetUserInfo(api, userIDs) {
+  return new Promise((resolve, reject) => {
+    if (!api || typeof api.getUserInfo !== "function") return resolve({});
+    let settled = false;
+    const done = (error, users) => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(error);
+      else resolve(users || {});
+    };
+    try {
+      const result = api.getUserInfo(userIDs, done);
+      if (result && typeof result.then === "function") result.then(users => done(null, users)).catch(done);
+      else if (result !== undefined || api.getUserInfo.length <= 1) done(null, result);
+    } catch (error) {
+      done(error);
+    }
+  });
+}
+
+function dashboardMemberDisplayName(row) {
+  if (!row || typeof row !== "object") return "";
+  const first = String(row.firstName || row.first_name || "").trim();
+  const last = String(row.lastName || row.last_name || "").trim();
+  return String(row.name || row.fullName || row.full_name || [first, last].filter(Boolean).join(" ") || "").replace(/\s+/g, " ").trim().slice(0, 120);
+}
+
 function dashboardNormalizeMemberId(value) {
   const candidate = value && typeof value === "object"
     ? (value.userID ?? value.userId ?? value.id ?? value.uid ?? value.participantID ?? value.participantId)
@@ -4297,7 +4325,7 @@ app.get(
         if (!id) continue;
         ids.add(id);
         if (row && typeof row === "object") {
-          const name = String(row.name || row.fullName || row.full_name || row.firstName || row.first_name || "").trim();
+          const name = dashboardMemberDisplayName(row) || String(info?.nicknames?.[id] || "").trim();
           if (name) names.set(id, name);
         }
       }
@@ -4322,10 +4350,28 @@ app.get(
             const id = dashboardNormalizeMemberId(value);
             if (id) ids.add(id);
             if (value && typeof value === "object" && id) {
-              const name = String(value.name || value.fullName || value.firstName || "").trim();
+              const name = dashboardMemberDisplayName(value);
               if (name) names.set(id, name);
             }
           }
+        }
+      }
+
+      // Resolve missing names through Messenger rather than showing synthetic ID labels.
+      const missingNames = [...ids].filter(id => !names.has(id));
+      for (let offset = 0; offset < missingNames.length; offset += 50) {
+        const batch = missingNames.slice(offset, offset + 50);
+        try {
+          const userRows = await dashboardGetUserInfo(activeMessengerApi, batch);
+          for (const id of batch) {
+            const row = Array.isArray(userRows)
+              ? userRows.find(value => dashboardNormalizeMemberId(value) === id)
+              : userRows?.[id];
+            const name = dashboardMemberDisplayName(row);
+            if (name) names.set(id, name);
+          }
+        } catch (error) {
+          console.warn("[DASHBOARD] Member display-name lookup failed:", error?.message || error);
         }
       }
 
@@ -4413,14 +4459,23 @@ app.put(
       const targetMember = infoRows.find(member =>
         String(member?.id || member?.userID || member?.userId || member?.uid || "") === targetID
       );
-      const targetName = String(
+      let targetName = String(
         req.body?.target_name ||
         info?.nicknames?.[targetID] ||
-        targetMember?.firstName ||
-        targetMember?.name ||
-        targetMember?.fullName ||
+        dashboardMemberDisplayName(targetMember) ||
         ""
       ).replace(/\s+/g, " ").trim().slice(0, 120);
+      if (!targetName) {
+        try {
+          const userRows = await dashboardGetUserInfo(activeMessengerApi, [targetID]);
+          const userRow = Array.isArray(userRows)
+            ? userRows.find(value => dashboardNormalizeMemberId(value) === targetID)
+            : userRows?.[targetID];
+          targetName = dashboardMemberDisplayName(userRow);
+        } catch (error) {
+          console.warn("[DASHBOARD] Target display-name lookup failed:", error?.message || error);
+        }
+      }
       const saved = await db.setBanatThreadTarget(
         threadID, targetID, "dashboard-admin", requestedBangEnabled, targetName, jaidenSettings
       );
