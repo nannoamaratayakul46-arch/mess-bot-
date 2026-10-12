@@ -272,7 +272,7 @@ test("normal slash Banat can respond to a different member despite stale convers
 test("normal slash open-speaker routing is enabled only by the normal pool without a saved target", () => {
   const source = read("index.js");
   const start = source.indexOf("async function handleAutomaticBanatMessage");
-  const end = source.indexOf("// ============================================================\\n// HUMAN / BANAT WIRING", start);
+  const end = source.indexOf("HUMAN / BANAT WIRING", start);
   const body = source.slice(start, end);
   assert.match(body, /allowAnySpeaker:\s*roastEnabled && !savedBanatTarget\?\.target_user_id/);
   assert.match(read("triggers.js"), /allowAnySpeaker === true/);
