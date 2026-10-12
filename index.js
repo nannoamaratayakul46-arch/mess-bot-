@@ -4285,22 +4285,32 @@ app.get(
     }
     try {
       const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
-      const rawRows = dashboardMemberRows(info.userInfo || info.participants || info.participantList || info.participant_list);
       const names = new Map();
       const ids = new Set();
+      const participantSources = [
+        info.participantIDs, info.userInfo, info.participants,
+        info.participantList, info.participant_list,
+      ];
+      const participantValues = participantSources.flatMap(value => {
+        if (Array.isArray(value)) return value;
+        if (value && typeof value === "object") {
+          return Object.entries(value).map(([id, row]) =>
+            row && typeof row === "object" ? { id, ...row } : id
+          );
+        }
+        return [];
+      });
 
-      for (const value of (Array.isArray(info.participantIDs) ? info.participantIDs : [])) {
-        const id = dashboardNormalizeMemberId(value);
-        if (id) ids.add(id);
-      }
-      // ws3-fca can return participant data as arrays, keyed objects, or user
-      // records whose identifier field is uid/userID instead of id.
-      for (const row of rawRows) {
+      // ws3-fca can return participant data as arrays, keyed objects, strings,
+      // or user records whose identifier field is uid/userID instead of id.
+      for (const row of participantValues) {
         const id = dashboardNormalizeMemberId(row);
         if (!id) continue;
         ids.add(id);
-        const name = String(row.name || row.fullName || row.full_name || row.firstName || row.first_name || "").trim();
-        if (name) names.set(id, name);
+        if (row && typeof row === "object") {
+          const name = String(row.name || row.fullName || row.full_name || row.firstName || row.first_name || "").trim();
+          if (name) names.set(id, name);
+        }
       }
 
       // getThreadInfo sometimes omits participant data. Fall back to the thread
