@@ -4378,6 +4378,32 @@ app.put(
         return res.status(400).json({ ok: false, error: "Target must be a member of this group, not the bot." });
       }
       const requestedBangEnabled = typeof req.body?.bang_enabled === "boolean" ? req.body.bang_enabled : null;
+      const jaidenSettings = {};
+      if (req.body?.jaiden_interval_seconds !== undefined) {
+        const interval = Number(req.body.jaiden_interval_seconds);
+        if (!Number.isInteger(interval) || interval < 15 || interval > 120) {
+          return res.status(400).json({ ok: false, error: "Jaiden interval must be a whole number from 15 to 120 seconds." });
+        }
+        jaidenSettings.interval_seconds = interval;
+      }
+      if (req.body?.jaiden_cooldown_mode !== undefined) {
+        if (!["extend", "queue", "ignore"].includes(req.body.jaiden_cooldown_mode)) {
+          return res.status(400).json({ ok: false, error: "Choose a valid Jaiden cooldown behavior." });
+        }
+        jaidenSettings.cooldown_mode = req.body.jaiden_cooldown_mode;
+      }
+      if (req.body?.jaiden_reply_mode !== undefined) {
+        if (!["always", "random"].includes(req.body.jaiden_reply_mode)) {
+          return res.status(400).json({ ok: false, error: "Choose a valid Jaiden reply mode." });
+        }
+        jaidenSettings.reply_mode = req.body.jaiden_reply_mode;
+      }
+      if (req.body?.jaiden_typing_enabled !== undefined) {
+        if (typeof req.body.jaiden_typing_enabled !== "boolean") {
+          return res.status(400).json({ ok: false, error: "Jaiden typing indicator setting must be true or false." });
+        }
+        jaidenSettings.typing_enabled = req.body.jaiden_typing_enabled;
+      }
       const infoRows = Array.isArray(info?.userInfo)
         ? info.userInfo
         : Object.entries(info?.userInfo || info?.participants || {}).map(([id, value]) => ({
@@ -4396,13 +4422,22 @@ app.put(
         ""
       ).replace(/\s+/g, " ").trim().slice(0, 120);
       const saved = await db.setBanatThreadTarget(
-        threadID, targetID, "dashboard-admin", requestedBangEnabled, targetName
+        threadID, targetID, "dashboard-admin", requestedBangEnabled, targetName, jaidenSettings
       );
+      clearJaidenCooldownState(threadID);
       setBanatDirectedTarget(threadID, targetID, "dashboard-admin", { persistent: true });
       clearBanatConversationTarget(threadID);
       clearBanatBurstState(threadID);
       pushDashboardEvent("banat-target", "Dashboard target updated for group " + threadID + ".");
-      return res.json({ ok: true, thread_id: threadID, target_user_id: saved.target_user_id, target_name: saved.target_name || null, bang_enabled: saved.bang_enabled === true, target_set_at: new Date(Number(saved.updated_at)).toISOString() });
+      return res.json({
+        ok: true, thread_id: threadID, target_user_id: saved.target_user_id,
+        target_name: saved.target_name || null, bang_enabled: saved.bang_enabled === true,
+        jaiden_interval_seconds: Number(saved.jaiden_interval_seconds) || 15,
+        jaiden_cooldown_mode: saved.jaiden_cooldown_mode || "extend",
+        jaiden_reply_mode: saved.jaiden_reply_mode || "always",
+        jaiden_typing_enabled: saved.jaiden_typing_enabled !== false,
+        target_set_at: new Date(Number(saved.updated_at)).toISOString()
+      });
     } catch (error) {
       console.error("[DASHBOARD] Could not save Banat target:", error);
       return res.status(503).json({ ok: false, error: "Could not save this group's Banat target." });
@@ -4420,6 +4455,7 @@ app.delete(
     }
     try {
       await db.clearBanatThreadTarget(threadID);
+      clearJaidenCooldownState(threadID);
       clearBanatDirectedTarget(threadID);
       clearBanatConversationTarget(threadID);
       clearBanatBurstState(threadID);
@@ -4592,6 +4628,10 @@ app.get(
           target_user_id: target?.target_user_id || null,
           target_name: target?.target_name || null,
           bang_enabled: target?.bang_enabled === true,
+          jaiden_interval_seconds: Number(target?.jaiden_interval_seconds) || 15,
+          jaiden_cooldown_mode: target?.jaiden_cooldown_mode || "extend",
+          jaiden_reply_mode: target?.jaiden_reply_mode || "always",
+          jaiden_typing_enabled: target?.jaiden_typing_enabled !== false,
           target_set_at: target?.updated_at ? new Date(Number(target.updated_at)).toISOString() : null,
         });
       } catch (error) {
@@ -10645,6 +10685,63 @@ const BANAT_DECISION_MIN_MS = Math.max(
 // for each turn. The queue survives the 5s inter-reply gap, so Banat does
 // not reset into an immediate reply every time someone talks.
 const banatBurstState = new Map();
+const jaidenCooldownState = new Map();
+
+function scheduleJaidenReply(threadID, targetID, job, settings = {}) {
+  const threadKey = String(threadID || "").trim();
+  const targetKey = String(targetID || "").trim();
+  if (!threadKey || !targetKey || !job) return false;
+  const key = threadKey + ":" + targetKey;
+  const interval = Math.max(15, Math.min(120, Number(settings.interval_seconds) || 15)) * 1000;
+  const mode = ["extend", "queue", "ignore"].includes(settings.cooldown_mode) ? settings.cooldown_mode : "extend";
+  let state = jaidenCooldownState.get(key);
+  if (!state) {
+    state = { timer: null, latest: null, queue: [] };
+    jaidenCooldownState.set(key, state);
+  }
+  if (mode === "ignore" && state.timer) return true;
+  if (mode === "queue") {
+    state.queue.push(job);
+    if (!state.timer) {
+      const drain = () => {
+        state.timer = setTimeout(() => {
+          state.timer = null;
+          const queued = state.queue.shift();
+          if (queued) acceptBanatBurstMessage(threadKey, queued);
+          if (state.queue.length) drain();
+          else jaidenCooldownState.delete(key);
+        }, interval);
+      };
+      drain();
+    }
+    return true;
+  }
+  state.latest = job;
+  if (state.timer) clearTimeout(state.timer);
+  state.timer = setTimeout(() => {
+    state.timer = null;
+    const latest = state.latest;
+    state.latest = null;
+    if (latest) acceptBanatBurstMessage(threadKey, latest);
+    if (!state.queue.length) jaidenCooldownState.delete(key);
+  }, interval);
+  return true;
+}
+
+function clearJaidenCooldownState(threadID) {
+  const prefix = String(threadID || "").trim() + ":";
+  let cleared = false;
+  for (const [key, state] of jaidenCooldownState) {
+    if (!key.startsWith(prefix)) continue;
+    if (state.timer) clearTimeout(state.timer);
+    state.timer = null;
+    state.latest = null;
+    state.queue.length = 0;
+    jaidenCooldownState.delete(key);
+    cleared = true;
+  }
+  return cleared;
+}
 
 function acceptBanatBurstMessage(threadID, job) {
   const key = String(threadID || "");
@@ -10698,7 +10795,7 @@ function acceptBanatBurstMessage(threadID, job) {
         senderId: incomingSenderId,
         queuedAt: now,
       });
-      startTyping(job.api, key);
+      if (job.typingEnabled !== false) startTyping(job.api, key);
       return true;
     }
 
@@ -10717,7 +10814,7 @@ function acceptBanatBurstMessage(threadID, job) {
         senderId: incomingSenderId,
         queuedAt: now,
       });
-      startTyping(job.api, key);
+      if (job.typingEnabled !== false) startTyping(job.api, key);
     }
 
     return false;
@@ -10740,7 +10837,7 @@ function acceptBanatBurstMessage(threadID, job) {
         senderId: incomingSenderId,
         queuedAt: now,
       });
-      startTyping(job.api, key);
+      if (job.typingEnabled !== false) startTyping(job.api, key);
       return true;
     }
 
@@ -10778,7 +10875,7 @@ function acceptBanatBurstMessage(threadID, job) {
     senderId: incomingSenderId,
     queuedAt: now,
   });
-  startTyping(job.api, key);
+  if (job.typingEnabled !== false) startTyping(job.api, key);
 
   const decisionMs = Math.max(
     BANAT_DECISION_MIN_MS,
@@ -10928,7 +11025,8 @@ async function runBanatBurstQueue(threadID) {
           job.attachMeme,
           job.linkUrl,
           0,
-          job.incomingText || ""
+          job.incomingText || "",
+          { skipTyping: job.typingEnabled === false }
         ),
         new Promise((resolve) => {
           turnTimeout = setTimeout(() => {
@@ -11212,6 +11310,10 @@ async function handleAutomaticBanatMessage({
       /^!/.test(String(body || "")) &&
       !isRecognizedBangCommand(body);
     if (bangJaidenCommand || (senderIsDashboardTarget && savedBanatTarget?.bang_enabled !== true)) {
+      if (savedBanatTarget?.bang_enabled === true && savedBanatTarget?.jaiden_reply_mode === "random" && Math.random() >= 0.5) {
+        console.log("[BANAT] Jaiden random reply mode skipped this turn in " + threadID);
+        return true;
+      }
       const resolvedTarget = await resolveTargetName(api, threadID, dashboardTargetId, {
         savedName: savedBanatTarget?.target_name,
         // Only trust a name observed on a message from the selected target;
@@ -11270,21 +11372,21 @@ async function handleAutomaticBanatMessage({
           Math.floor(Math.random() * banatLinkPool.length)
         ];
 
-      const accepted = acceptBanatBurstMessage(
-        threadID,
-        {
-          api,
-          message: triggerReply,
-          replyToMessageID: event.messageID,
-          attachMeme: banatMemeEnabled,
-          linkUrl: banatLinkEnabled
-            ? banatProfileUrl
-            : null,
-          incomingText: body,
-          senderId,
-          canSwitchTarget: true,
-        }
-      );
+      const jaidenModeActive = savedBanatTarget?.bang_enabled === true &&
+        (bangJaidenCommand || senderIsDashboardTarget);
+      const queueJob = {
+        api, message: triggerReply, replyToMessageID: event.messageID,
+        attachMeme: banatMemeEnabled,
+        linkUrl: banatLinkEnabled ? banatProfileUrl : null,
+        incomingText: body, senderId, canSwitchTarget: true,
+        typingEnabled: jaidenModeActive ? savedBanatTarget?.jaiden_typing_enabled !== false : true,
+      };
+      const accepted = jaidenModeActive
+        ? scheduleJaidenReply(threadID, dashboardTargetId, queueJob, {
+            interval_seconds: savedBanatTarget?.jaiden_interval_seconds,
+            cooldown_mode: savedBanatTarget?.jaiden_cooldown_mode,
+          })
+        : acceptBanatBurstMessage(threadID, queueJob);
 
       if (!accepted) {
         console.log(
