@@ -179,12 +179,20 @@ async function connect() {
       target_name TEXT,
       set_by TEXT NOT NULL,
       bang_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      jaiden_interval_seconds INTEGER NOT NULL DEFAULT 15,
+      jaiden_cooldown_mode TEXT NOT NULL DEFAULT 'extend',
+      jaiden_reply_mode TEXT NOT NULL DEFAULT 'always',
+      jaiden_typing_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       updated_at BIGINT NOT NULL
     );
 
     ALTER TABLE banat_thread_targets
       ADD COLUMN IF NOT EXISTS target_name TEXT,
-      ADD COLUMN IF NOT EXISTS bang_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+      ADD COLUMN IF NOT EXISTS bang_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS jaiden_interval_seconds INTEGER NOT NULL DEFAULT 15,
+      ADD COLUMN IF NOT EXISTS jaiden_cooldown_mode TEXT NOT NULL DEFAULT 'extend',
+      ADD COLUMN IF NOT EXISTS jaiden_reply_mode TEXT NOT NULL DEFAULT 'always',
+      ADD COLUMN IF NOT EXISTS jaiden_typing_enabled BOOLEAN NOT NULL DEFAULT TRUE;
   `);
 
   // Durable group photo backups and per-group auto-restore settings.
@@ -3433,30 +3441,52 @@ async function getThreadSettings(threadId) {
 async function getBanatThreadTarget(threadId) {
   const conn = requireConn();
   const { rows } = await conn.query(
-    `SELECT thread_id, target_user_id, target_name, set_by, bang_enabled, updated_at
+    `SELECT thread_id, target_user_id, target_name, set_by, bang_enabled,
+            jaiden_interval_seconds, jaiden_cooldown_mode, jaiden_reply_mode,
+            jaiden_typing_enabled, updated_at
      FROM banat_thread_targets WHERE thread_id = $1`,
     [String(threadId || "").trim()]
   );
   return rows[0] || null;
 }
 
-async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled = null, targetName = null) {
+async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled = null, targetName = null, jaidenSettings = {}) {
   const conn = requireConn();
   const id = String(threadId || "").trim();
   const target = String(targetUserId || "").trim();
   const setter = String(setBy || "").trim();
   const name = String(targetName || "").replace(/\s+/g, " ").trim().slice(0, 120) || null;
   if (!id || !target || !setter) throw new Error("thread_id, target_user_id, and set_by are required");
+
+  const rawInterval = Number(jaidenSettings?.interval_seconds);
+  const interval = Number.isInteger(rawInterval) && rawInterval >= 15 && rawInterval <= 120 ? rawInterval : null;
+  const cooldown = ["extend", "queue", "ignore"].includes(jaidenSettings?.cooldown_mode) ? jaidenSettings.cooldown_mode : null;
+  const replyMode = ["always", "random"].includes(jaidenSettings?.reply_mode) ? jaidenSettings.reply_mode : null;
+  const typing = typeof jaidenSettings?.typing_enabled === "boolean" ? jaidenSettings.typing_enabled : null;
+
   await conn.query(
-    `INSERT INTO banat_thread_targets(thread_id, target_user_id, target_name, set_by, bang_enabled, updated_at)
-     VALUES($1, $2, $3, $4, COALESCE($5::boolean, FALSE), $6)
+    `INSERT INTO banat_thread_targets(
+       thread_id, target_user_id, target_name, set_by, bang_enabled,
+       jaiden_interval_seconds, jaiden_cooldown_mode, jaiden_reply_mode,
+       jaiden_typing_enabled, updated_at
+     )
+     VALUES(
+       $1, $2, $3, $4, COALESCE($5::boolean, FALSE),
+       COALESCE($6::integer, 15), COALESCE($7::text, 'extend'),
+       COALESCE($8::text, 'always'), COALESCE($9::boolean, TRUE), $10
+     )
      ON CONFLICT(thread_id) DO UPDATE SET
        target_user_id = EXCLUDED.target_user_id,
        target_name = CASE WHEN EXCLUDED.target_user_id <> banat_thread_targets.target_user_id THEN EXCLUDED.target_name ELSE COALESCE(EXCLUDED.target_name, banat_thread_targets.target_name) END,
        set_by = EXCLUDED.set_by,
        bang_enabled = COALESCE($5::boolean, banat_thread_targets.bang_enabled),
+       jaiden_interval_seconds = COALESCE($6::integer, banat_thread_targets.jaiden_interval_seconds),
+       jaiden_cooldown_mode = COALESCE($7::text, banat_thread_targets.jaiden_cooldown_mode),
+       jaiden_reply_mode = COALESCE($8::text, banat_thread_targets.jaiden_reply_mode),
+       jaiden_typing_enabled = COALESCE($9::boolean, banat_thread_targets.jaiden_typing_enabled),
        updated_at = EXCLUDED.updated_at`,
-    [id, target, name, setter, typeof bangEnabled === "boolean" ? bangEnabled : null, Date.now()]
+    [id, target, name, setter, typeof bangEnabled === "boolean" ? bangEnabled : null,
+      interval, cooldown, replyMode, typing, Date.now()]
   );
   return getBanatThreadTarget(id);
 }
