@@ -4260,17 +4260,6 @@ function dashboardNormalizeMemberId(value) {
   return /^\d{6,32}$/.test(id) ? id : "";
 }
 
-function dashboardMemberRows(value) {
-  if (Array.isArray(value)) return value.filter(item => item && typeof item === "object");
-  if (value && typeof value === "object") {
-    return Object.entries(value).map(([id, item]) => ({
-      ...(item && typeof item === "object" ? item : {}),
-      id: item?.id ?? item?.userID ?? item?.userId ?? item?.uid ?? id,
-    }));
-  }
-  return [];
-}
-
 
 app.get(
   "/api/dashboard/groups/:thread_id/members",
