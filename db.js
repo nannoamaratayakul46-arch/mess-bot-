@@ -193,6 +193,8 @@ async function connect() {
       ADD COLUMN IF NOT EXISTS jaiden_cooldown_mode TEXT NOT NULL DEFAULT 'extend',
       ADD COLUMN IF NOT EXISTS jaiden_reply_mode TEXT NOT NULL DEFAULT 'always',
       ADD COLUMN IF NOT EXISTS jaiden_typing_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+    ALTER TABLE banat_thread_targets
+      ALTER COLUMN jaiden_interval_seconds SET DEFAULT 3;
   `);
 
   // Durable group photo backups and per-group auto-restore settings.
