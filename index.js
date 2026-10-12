@@ -4276,7 +4276,12 @@ function dashboardGetUserInfo(api, userIDs, timeoutMs = 4000) {
     const expectedIDs = new Set((Array.isArray(userIDs) ? userIDs : [userIDs]).map(String));
     const looksLikeUserPayload = (users) => {
       if (!users || typeof users !== "object") return false;
-      if (Array.isArray(users)) return users.some(row => dashboardNormalizeMemberId(row));
+      if (Array.isArray(users)) return users.some(row =>
+        dashboardNormalizeMemberId(row) || dashboardMemberDisplayName(row)
+      );
+      const directName = dashboardMemberDisplayName(users);
+      const directId = dashboardNormalizeMemberId(users);
+      if (directName && (directId && expectedIDs.has(directId) || expectedIDs.size === 1)) return true;
       return Object.keys(users).some(key => expectedIDs.has(key)) ||
         Object.values(users).some(value => value && typeof value === "object" &&
           (value.name || value.firstName || value.first_name || value.fullName || value.full_name ||
@@ -4563,8 +4568,10 @@ app.put(
       ).replace(/\s+/g, " ").trim().slice(0, 120);
       if (!targetName) {
         try {
-          const userRows = await dashboardGetUserInfo(activeMessengerApi, [targetID]);
-          const userRow = dashboardGetUserInfoRow(userRows, targetID);
+          const userRows = await dashboardGetUserInfo(activeMessengerApi, targetID, 3500);
+          const userRow = dashboardGetUserInfoRow(userRows, targetID) ||
+            (userRows && typeof userRows === "object" && !Array.isArray(userRows) &&
+              dashboardMemberDisplayName(userRows) ? userRows : null);
           targetName = dashboardMemberDisplayName(userRow);
         } catch (error) {
           console.warn("[DASHBOARD] Target display-name lookup failed:", error?.message || error);
