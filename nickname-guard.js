@@ -807,6 +807,30 @@ async function handleImageGuardEvent(api, event) {
     return true;
   }
 
+  // Dashboard photo protection is the authoritative guard for groups with
+  // a saved dashboard backup. Do not let this legacy event guard restore its
+  // separate (potentially stale) eclipse_nickname_guards backup over it.
+  // If the database check fails, fail closed and skip this legacy restore.
+  try {
+    const dashboardGuard = await db.query(
+      `SELECT enabled, image_data IS NOT NULL AS has_backup
+       FROM group_photo_guard
+       WHERE thread_id = $1
+       LIMIT 1`,
+      [threadID]
+    );
+    const dashboardRow = dashboardGuard.rows?.[0];
+    if (dashboardRow?.enabled === true && dashboardRow?.has_backup === true) {
+      return true;
+    }
+  } catch (error) {
+    console.error(
+      `[GC PIC GUARD] Could not verify dashboard guard for ${threadID}; skipping legacy image restore:`,
+      error?.message || error
+    );
+    return true;
+  }
+
   const imageData = event.logMessageData?.image || {};
   const imageUrl = String(
     imageData.src ||
