@@ -24,6 +24,7 @@ const { login } = require("ws3-fca");
 const db = require("./db");
 const { resolveTargetName } = require("./targetName");
 const { registerGroupProfileRoutes } = require("./groupProfileRoutes");
+const { createLiveChat } = require("./liveChat");
 
 const {
   ensureNicknameGuardTable,
@@ -3458,6 +3459,12 @@ function requireDashboardAccess(req, res, next) {
 
 app.use(dashboardCors);
 
+const liveChat = createLiveChat({
+  getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,
+  log: console.log,
+});
+liveChat.registerRoutes(app, requireDashboardAccess);
+
 // Group profile uploads use a route-scoped JSON parser with a larger bounded limit.
 registerGroupProfileRoutes(app, {
   auth: requireDashboardAccess,
@@ -6050,6 +6057,9 @@ function attemptLogin() {
           ) {
             return;
           }
+
+          // Record chat only for groups currently open in the dashboard; closed chats are not buffered.
+          liveChat.record(event);
 
           if (!shouldProcessIncomingEvent(event)) {
             return;
