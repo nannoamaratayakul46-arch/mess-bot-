@@ -252,9 +252,25 @@ const INSULTS = Object.freeze([
   "bukas mo na lang ituloy, baka may point ka na",
   "salamat sa opinion na walang humingi"
 ]);
-const usedBySender = new Map();
-const lastByThread = new Map();
+const { readSection, writeSection } = require("./banat-state-store");
+const restoredState = readSection("slashPool", {});
+const usedByThread = new Map(
+  Object.entries(restoredState.usedByThread || {}).map(([key, values]) => [
+    key,
+    new Set(Array.isArray(values) ? values : []),
+  ])
+);
+const lastByThread = new Map(Object.entries(restoredState.lastByThread || {}));
 const HISTORY_LIMIT = 500;
+
+function persistState() {
+  writeSection("slashPool", {
+    usedByThread: Object.fromEntries(
+      Array.from(usedByThread.entries(), ([key, values]) => [key, Array.from(values)])
+    ),
+    lastByThread: Object.fromEntries(lastByThread.entries()),
+  });
+}
 
 function rememberBounded(map, key, value) {
   map.delete(key);
@@ -264,9 +280,10 @@ function rememberBounded(map, key, value) {
 
 function pickSlashPoolInsult(threadId, senderId) {
   const thread = String(threadId || "global");
-  const sender = String(senderId || "unknown");
-  const key = thread + ":" + sender;
-  const used = usedBySender.get(key) || new Set();
+  // Rotation is thread-wide, not sender-specific: different members cannot
+  // cause the same phrase to re-enter the cycle early.
+  const key = thread;
+  const used = usedByThread.get(key) || new Set();
   let candidates = INSULTS.filter((line) => !used.has(line));
   if (!candidates.length) {
     used.clear();
@@ -279,8 +296,9 @@ function pickSlashPoolInsult(threadId, senderId) {
   }
   const selected = candidates[Math.floor(Math.random() * candidates.length)];
   used.add(selected);
-  rememberBounded(usedBySender, key, used);
+  rememberBounded(usedByThread, key, used);
   rememberBounded(lastByThread, thread, selected);
+  persistState();
   return selected;
 }
 
