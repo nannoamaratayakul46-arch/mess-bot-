@@ -2322,9 +2322,9 @@ async function getTriggerReply(
               ? selectedFallback
               : generatedReply;
 
-            if (isFlirtyBanatGroup) {
-              rememberBanatReply(threadId, reply, senderId);
-            }
+            // Persist every generated trigger reply, not only flirty-group
+            // replies, so AI variation cannot bypass the shared recent history.
+            rememberBanatReply(threadId, reply, senderId);
           }
         } catch (aiError) {
           console.warn(
