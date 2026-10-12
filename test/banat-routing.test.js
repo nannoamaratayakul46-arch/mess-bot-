@@ -302,6 +302,8 @@ test("Jaiden extend cooldown defaults to a 3-second quiet period and scopes pend
   assert.match(body, /if \(state\.timer\) clearTimeout\(state\.timer\)/);
   assert.match(body, /state\.latest = job/);
   assert.match(source, /skipTyping: job\.typingEnabled === false/);
-  const ordinary = source.slice(source.indexOf("// Ordinary Banat replies require"), source.indexOf("// ============================================================\\n// HUMAN / BANAT WIRING"));
+  const ordinaryStart = source.indexOf("// Ordinary Banat replies require");
+  const ordinaryEnd = source.indexOf("// HUMAN / BANAT WIRING", ordinaryStart);
+  const ordinary = source.slice(ordinaryStart, ordinaryEnd);
   assert.match(ordinary, /acceptBanatBurstMessage\(/);
 });
