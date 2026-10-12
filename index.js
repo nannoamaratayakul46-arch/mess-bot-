@@ -4265,12 +4265,33 @@ function dashboardGetUserInfo(api, userIDs) {
     };
     try {
       const result = api.getUserInfo(userIDs, done);
-      if (result && typeof result.then === "function") result.then(users => done(null, users)).catch(done);
-      else if (result !== undefined || api.getUserInfo.length <= 1) done(null, result);
+      if (result && typeof result.then === "function") {
+        result.then(users => done(null, users)).catch(done);
+      } else if (api.getUserInfo.length <= 1) {
+        // Only treat a return value as the result for a synchronous API.
+        // Callback APIs may return a request handle before their callback fires.
+        done(null, result);
+      }
     } catch (error) {
       done(error);
     }
   });
+}
+
+function dashboardGetUserInfoRow(userRows, userID) {
+  if (!userRows || typeof userRows !== "object") return null;
+  if (Array.isArray(userRows)) {
+    return userRows.find(value => dashboardNormalizeMemberId(value) === userID) || null;
+  }
+  const direct = userRows[userID];
+  if (direct && typeof direct === "object") return direct;
+  // Some wrappers return a list-like object rather than an ID-keyed map.
+  for (const [key, value] of Object.entries(userRows)) {
+    if (key === userID && value && typeof value === "object") return value;
+    if (dashboardNormalizeMemberId(value) === userID) return value;
+    if (value && typeof value === "object" && dashboardNormalizeMemberId({ id: key, ...value }) === userID) return value;
+  }
+  return null;
 }
 
 function dashboardMemberDisplayName(row) {
@@ -4364,9 +4385,7 @@ app.get(
         try {
           const userRows = await dashboardGetUserInfo(activeMessengerApi, batch);
           for (const id of batch) {
-            const row = Array.isArray(userRows)
-              ? userRows.find(value => dashboardNormalizeMemberId(value) === id)
-              : userRows?.[id];
+            const row = dashboardGetUserInfoRow(userRows, id);
             const name = dashboardMemberDisplayName(row);
             if (name) names.set(id, name);
           }
@@ -4468,9 +4487,7 @@ app.put(
       if (!targetName) {
         try {
           const userRows = await dashboardGetUserInfo(activeMessengerApi, [targetID]);
-          const userRow = Array.isArray(userRows)
-            ? userRows.find(value => dashboardNormalizeMemberId(value) === targetID)
-            : userRows?.[targetID];
+          const userRow = dashboardGetUserInfoRow(userRows, targetID);
           targetName = dashboardMemberDisplayName(userRow);
         } catch (error) {
           console.warn("[DASHBOARD] Target display-name lookup failed:", error?.message || error);
