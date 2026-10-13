@@ -4268,7 +4268,7 @@ function dashboardGetThreadInfo(api, threadID) {
 }
 
 
-function dashboardGetUserInfo(api, userIDs, timeoutMs = 4000) {
+function dashboardGetUserInfo(api, userIDs, timeoutMs = 4000, scalarLookup = false) {
   return new Promise((resolve, reject) => {
     if (!api || typeof api.getUserInfo !== "function") return resolve({});
     let settled = false;
@@ -4324,7 +4324,9 @@ function dashboardGetUserInfo(api, userIDs, timeoutMs = 4000) {
     try {
       // ws3-fca's user-info lookup is most reliable when IDs are an array,
       // including the single-member retry path.
-      const lookupIDs = Array.isArray(userIDs) ? userIDs : [userIDs];
+      const lookupIDs = scalarLookup
+        ? String(Array.isArray(userIDs) ? userIDs[0] || "" : userIDs || "")
+        : (Array.isArray(userIDs) ? userIDs : [userIDs]);
       const result = api.getUserInfo(lookupIDs, done);
       if (result && typeof result.then === "function") {
         result.then(users => done(null, users)).catch(done);
@@ -4534,7 +4536,7 @@ app.get(
         const batch = stillMissing.slice(offset, offset + 8);
         const rows = await Promise.all(batch.map(async id => {
           try {
-            const result = await dashboardGetUserInfo(activeMessengerApi, id, 3500);
+            const result = await dashboardGetUserInfo(activeMessengerApi, id, 3500, true);
             const row = dashboardGetUserInfoRow(result, id) ||
               (result && typeof result === "object" && !Array.isArray(result) &&
                 (result.name || result.firstName || result.first_name || result.fullName || result.full_name ||
