@@ -239,6 +239,8 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     if (settings?.enabled !== true) return;
     const config = await getConfig(threadID);
     if (config.sensitive_admin_enabled !== true) return;
+    const actorName = await resolveMemberName(api, threadID, actorID);
+    const actorLabel = actorName ? actorName + " (" + actorID + ")" : actorID;
 
     if (!api || typeof api.getThreadInfo !== "function" || typeof api.changeAdminStatus !== "function") {
       log("[AUTOMOD-SENSITIVE] Cannot safely demote the actor: required Messenger role/status methods are unavailable.");
@@ -293,9 +295,9 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         try {
           await callbackCall(cb => api.changeAdminStatus(candidateID, actorID, false, cb), 12000);
           demotedCount++;
-          log(`[AUTOMOD-SENSITIVE] Demoted ${actorID} in ${candidateID} after they removed bot-owner admin status in ${threadID}.`);
+          log(`[AUTOMOD-SENSITIVE] Demoted ${actorLabel} in ${candidateID} after they removed bot-owner admin status in ${threadID}.`);
         } catch (error) {
-          log(`[AUTOMOD-SENSITIVE] Could not demote ${actorID} in ${candidateID}: ${String(error?.message || error).slice(0, 160)}`);
+          log(`[AUTOMOD-SENSITIVE] Could not demote ${actorLabel} in ${candidateID}: ${String(error?.message || error).slice(0, 160)}`);
         }
       }
     };
