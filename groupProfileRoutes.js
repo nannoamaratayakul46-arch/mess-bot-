@@ -1,10 +1,5 @@
 "use strict";
 
-const fs = require("fs");
-const fsp = require("fs/promises");
-const os = require("os");
-const path = require("path");
-const crypto = require("crypto");
 const express = require("express");
 
 const COOLDOWN_MS = 10 * 60 * 1000;
@@ -120,11 +115,6 @@ function sleep(ms) {
   });
 }
 
-async function writeBufferToTemp(buffer, extension) {
-  const file = path.join(os.tmpdir(), "eclipse-group-profile-" + crypto.randomBytes(12).toString("hex") + extension);
-  await fsp.writeFile(file, buffer, { flag: "wx", mode: 0o600 });
-  return file;
-}
 
 async function changeImage(api, threadId, buffer, extension) {
   // Match the known-good ws3-fca call used by the bot's existing photo guard.
@@ -311,7 +301,6 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
     const kind = image ? "image" : "title";
     const wait = cooldownLeft(threadId, kind);
     if (wait) return res.status(429).json({ ok: false, error: "Cooldown active. Try again in " + Math.ceil(wait / 60) + " min.", retry_after_seconds: wait });
-    let tmpFile = "";
     try {
       if (title && typeof api.setTitle !== "function") return res.status(501).json({ ok: false, error: "This bot library has no setTitle method." });
       if (image && typeof api.changeGroupImage !== "function") return res.status(501).json({ ok: false, error: "This bot library has no changeGroupImage method." });
@@ -340,8 +329,6 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
       const detail = String(error?.message || error).replace(/[\r\n]+/g, " ").slice(0, 180);
       audit("[PROFILE] " + kind + " change failed in " + threadId + ": " + detail);
       return res.status(502).json({ ok: false, error: "Group profile update failed: " + detail });
-    } finally {
-      if (tmpFile) await fsp.rm(tmpFile, { force: true }).catch(() => {});
     }
   });
 
