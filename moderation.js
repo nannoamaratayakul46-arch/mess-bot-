@@ -3206,25 +3206,132 @@ async function removeFromGroup(
       }
     });
 
-    const normalizeAdminIDs = (value) => {
-      const rows = Array.isArray(value)
-        ? value
-        : value && typeof value === "object"
-          ? Object.values(value)
-          : [];
-      return [...new Set(rows.map(item =>
-        String(item?.id ?? item?.userID ?? item?.userId ?? item ?? "").trim()
-      ).filter(id => Boolean(id) && id !== "[object Object]"))];
+    const isValidRoleID = value => /^[A-Za-z0-9_-]{3,64}$/.test(String(value ?? "").trim());
+    const normalizeAdminIDs = (...values) => {
+      const ids = new Set();
+      const visit = value => {
+        if (value == null) return;
+        if (Array.isArray(value)) {
+          for (const item of value) visit(item);
+          return;
+        }
+        if (typeof value === "string" || typeof value === "number") {
+          const id = String(value).trim();
+          if (isValidRoleID(id)) ids.add(id);
+          return;
+        }
+        if (typeof value !== "object") return;
+
+        const directID = value.id ?? value.userID ?? value.userId ?? value.uid ??
+          value.participantID ?? value.participantId;
+        if (directID != null && isValidRoleID(directID)) {
+          ids.add(String(directID).trim());
+          return;
+        }
+
+        // A few FCA forks serialize admin IDs as { "123456": true } rather
+        // than an array. Only accept explicitly truthy role-map entries.
+        for (const [key, item] of Object.entries(value)) {
+          if (isValidRoleID(key) && (item === true || item === 1 || item === "true")) {
+            ids.add(key);
+          } else if (item && typeof item === "object") {
+            visit(item);
+          }
+        }
+      };
+      values.forEach(visit);
+      return [...ids];
+    };
+    const adminsFromInfo = value => {
+      if (!value || typeof value !== "object") return [];
+      const explicit = normalizeAdminIDs(
+        value.adminIDs, value.admin_ids, value.threadAdminIDs, value.thread_admin_ids,
+        value.threadAdmins, value.thread_admins, value.admins
+      );
+      if (explicit.length) return explicit;
+
+      // Some forks attach an explicit admin flag to participant records instead
+      // of returning adminIDs. Do not infer roles from names or list ordering.
+      const participants = [
+        value.userInfo, value.participants, value.participantList,
+        value.participant_list, value.all_participants,
+      ];
+      const flagged = [];
+      for (const source of participants) {
+        const rows = Array.isArray(source)
+          ? source
+          : source && typeof source === "object"
+            ? Object.entries(source).map(([key, row]) =>
+                row && typeof row === "object" && !(row.userID || row.userId || row.id || row.uid)
+                  ? { id: key, ...row }
+                  : row
+              )
+            : [];
+        for (const row of rows) {
+          const id = String(row?.id ?? row?.userID ?? row?.userId ?? row?.uid ?? "").trim();
+          const flag = row?.isAdmin ?? row?.is_admin ?? row?.isGroupAdmin ??
+            row?.is_group_admin ?? row?.admin;
+          if (isValidRoleID(id) && (flag === true || flag === 1 || flag === "true")) {
+            flagged.push(id);
+          }
+        }
+      }
+      return [...new Set(flagged)];
     };
 
-    let admins = normalizeAdminIDs(info?.adminIDs);
+    let admins = adminsFromInfo(info);
     const botID = typeof api.getCurrentUserID === "function"
       ? String(api.getCurrentUserID()).trim()
       : "";
 
-    // Some FCA builds omit adminIDs from getThreadInfo while the same
-    // thread-list GraphQL response still includes thread_admins. Check that
-    // alternate authoritative response before refusing the action.
+    // Older FCA builds may expose role data through the deprecated thread-info
+    // method even when getThreadInfo omits it. Treat it as another read-only
+    // source; removal still requires a verified bot-admin ID.
+    if (!admins.length && typeof api.getThreadInfoDeprecated === "function") {
+      try {
+        const legacyInfo = await new Promise((resolve, reject) => {
+          let settled = false;
+          const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            resolve(null);
+          }, 6000);
+          const finish = (...args) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            if (args.length > 1) {
+              const [error, data] = args;
+              if (error) reject(error);
+              else resolve(data || null);
+            } else {
+              const [data] = args;
+              if (data instanceof Error) reject(data);
+              else resolve(data || null);
+            }
+          };
+          try {
+            const result = api.getThreadInfoDeprecated(threadID, finish);
+            if (result && typeof result.then === "function") {
+              result.then(data => finish(null, data), finish);
+            } else if (result && typeof result === "object") {
+              finish(null, result);
+            }
+          } catch (error) {
+            finish(error);
+          }
+        });
+        admins = adminsFromInfo(legacyInfo);
+      } catch (legacyRoleError) {
+        console.warn(
+          "[moderation] Legacy group-role lookup failed:",
+          String(legacyRoleError?.message || legacyRoleError).slice(0, 160)
+        );
+      }
+    }
+
+    // ws3-fca's GraphQL thread-list formatter maps thread_admins into adminIDs.
+    // This is the next authoritative source when thread-info responses omit roles.
     if (!admins.length && typeof api.getThreadList === "function") {
       try {
         const threads = await new Promise((resolve, reject) => {
@@ -3234,15 +3341,22 @@ async function removeFromGroup(
             settled = true;
             resolve([]);
           }, 8000);
-          const finish = (error, rows) => {
+          const finish = (...args) => {
             if (settled) return;
             settled = true;
             clearTimeout(timer);
-            if (error) reject(error);
-            else resolve(Array.isArray(rows) ? rows : []);
+            if (args.length > 1) {
+              const [error, rows] = args;
+              if (error) reject(error);
+              else resolve(Array.isArray(rows) ? rows : []);
+            } else {
+              const [rows] = args;
+              if (rows instanceof Error) reject(rows);
+              else resolve(Array.isArray(rows) ? rows : []);
+            }
           };
           try {
-            const result = api.getThreadList(200, null, ["INBOX", "ARCHIVED", "PENDING", "OTHER"], finish);
+            const result = api.getThreadList(1000, null, [], finish);
             if (result && typeof result.then === "function") {
               result.then(rows => finish(null, rows), error => finish(error));
             } else if (Array.isArray(result)) {
@@ -3255,11 +3369,10 @@ async function removeFromGroup(
         const listedThread = threads.find(item =>
           String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? "") === String(threadID)
         );
-        const listedAdmins = normalizeAdminIDs(listedThread?.adminIDs);
-        if (listedAdmins.length) admins = listedAdmins;
+        admins = adminsFromInfo(listedThread);
       } catch (roleFallbackError) {
         console.warn(
-          "[moderation] Alternate group-role lookup failed:",
+          "[moderation] Thread-list role lookup failed:",
           String(roleFallbackError?.message || roleFallbackError).slice(0, 160)
         );
       }

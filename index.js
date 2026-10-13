@@ -4448,6 +4448,58 @@ app.get(
     try {
       let { members, diagnostics } = await resolveGroupMembers(activeMessengerApi, threadID);
 
+      // Some FCA builds expose real member names in getThreadList().userInfo
+      // even when getThreadInfo() and getUserInfo() return generic placeholders.
+      // Merge those official profile records before attempting further lookups.
+      const [profileThreadInfo, profileThreadList] = await Promise.all([
+        dashboardGetThreadInfo(activeMessengerApi, threadID).catch(() => ({})),
+        dashboardGetThreadList(activeMessengerApi).catch(() => []),
+      ]);
+      const profileListedThread = profileThreadList.find(item =>
+        String(item?.threadID || item?.threadId || item?.thread_id || "") === threadID
+      );
+      const profileRows = [
+        profileThreadInfo?.userInfo,
+        profileThreadInfo?.participants,
+        profileThreadInfo?.participantList,
+        profileThreadInfo?.participant_list,
+        profileListedThread?.userInfo,
+        profileListedThread?.participants,
+        profileListedThread?.participantList,
+        profileListedThread?.participant_list,
+      ];
+      const profileNames = new Map();
+      for (const source of profileRows) {
+        const rows = Array.isArray(source)
+          ? source
+          : source && typeof source === "object"
+            ? Object.entries(source).map(([key, value]) =>
+                value && typeof value === "object" && !dashboardNormalizeMemberId(value)
+                  ? { id: key, ...value }
+                  : value
+              )
+            : [];
+        for (const row of rows) {
+          const id = dashboardNormalizeMemberId(row);
+          const name = dashboardMemberDisplayName(row);
+          if (id && name && !profileNames.has(id)) profileNames.set(id, name);
+        }
+      }
+      const isPlaceholderName = value =>
+        /^(?:facebook(?:\\s+user)?|messenger(?:\\s+user)?|unknown|unnamed|user)(?:\\s+\\d+)?$/i
+          .test(String(value || "").trim());
+      for (const member of members) {
+        if (!member || !/^\\d{6,32}$/.test(String(member.user_id || ""))) continue;
+        if (!member.resolved || member.source === "nickname" || isPlaceholderName(member.name)) {
+          const profileName = profileNames.get(String(member.user_id));
+          if (profileName) {
+            member.name = profileName;
+            member.resolved = true;
+            member.source = "thread-list-userInfo";
+          }
+        }
+      }
+
       // Fallback to the bot's established participant parser when this FCA
       // variant exposes participants through the thread-list response shape.
       if (!members.length) {
