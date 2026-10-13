@@ -47,3 +47,30 @@ test("renderer replaces all placeholders and leftover Jaiden text", () => {
     "Jaiden Smith, Jaiden Smith!"
   );
 });
+
+test("numeric saved target IDs are ignored in favor of a real Messenger display name", async () => {
+  clearTargetNameCache();
+  const api = {
+    getThreadInfo(threadID, callback) { callback(null, { nicknames: {}, userInfo: [] }); },
+    getUserInfo(userIDs, callback) {
+      assert.deepEqual(userIDs, ["123456789012345"]);
+      callback(null, { "123456789012345": { id: "123456789012345", displayName: "Ray Cruz" } });
+    }
+  };
+  const result = await resolveTargetName(api, "thread-numeric-saved", "123456789012345", {
+    savedName: "123456789012345"
+  });
+  assert.deepEqual(result, { name: "Ray Cruz", source: "userInfo" });
+});
+
+test("generated Messenger user placeholders are not accepted as target names", async () => {
+  clearTargetNameCache();
+  const api = {
+    getThreadInfo(threadID, callback) { callback(null, { nicknames: {}, userInfo: [] }); },
+    getUserInfo(userIDs, callback) { callback(null, { "user-display": { id: "user-display", display_name: "R. Cruz" } }); }
+  };
+  const result = await resolveTargetName(api, "thread-placeholder", "user-display", {
+    savedName: "Messenger user 123456789"
+  });
+  assert.deepEqual(result, { name: "R. Cruz", source: "userInfo" });
+});

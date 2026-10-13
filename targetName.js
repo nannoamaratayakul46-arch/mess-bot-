@@ -5,7 +5,10 @@ const TTL_MS = 30 * 60 * 1000;
 const LOOKUP_TIMEOUT_MS = 4000;
 
 function cleanName(value) {
-  return String(value || "").replace(/\s+/g, " ").trim().slice(0, 120);
+  const name = String(value || "").replace(/\s+/g, " ").trim().slice(0, 120);
+  // A numeric Messenger ID or a generated placeholder is not a display name.
+  if (!name || /^\d{6,32}$/.test(name) || /^Messenger user \d+$/i.test(name)) return "";
+  return name;
 }
 
 function withTimeout(promise, ms) {
@@ -44,10 +47,33 @@ function callApi(api, method, args, timeout = LOOKUP_TIMEOUT_MS) {
 }
 
 function getUserRow(users, userID) {
+  const wanted = String(userID);
   if (Array.isArray(users)) {
-    return users.find(user => String(user?.id || user?.userID || user?.uid || "") === String(userID)) || null;
+    return users.find(user => String(user?.id || user?.userID || user?.userId || user?.uid || "") === wanted) || null;
   }
-  return users?.[String(userID)] || null;
+  if (!users || typeof users !== "object") return null;
+  const direct = users[wanted];
+  if (direct && typeof direct === "object") return direct;
+  for (const [key, value] of Object.entries(users)) {
+    if (!value || typeof value !== "object") continue;
+    const id = String(value.id || value.userID || value.userId || value.uid || key);
+    if (id === wanted) return value;
+  }
+  return null;
+}
+function memberDisplayName(member) {
+  if (!member || typeof member !== "object") return "";
+  const first = member.firstName || member.first_name || "";
+  const last = member.lastName || member.last_name || "";
+  for (const value of [
+    first, member.name, member.displayName, member.display_name,
+    member.fullName, member.full_name, member.profileName, member.profile_name,
+    [first, last].filter(Boolean).join(" "),
+  ]) {
+    const name = cleanName(value);
+    if (name) return name;
+  }
+  return "";
 }
 
 async function resolveTargetName(api, threadID, userID, opts = {}) {
@@ -73,9 +99,11 @@ async function resolveTargetName(api, threadID, userID, opts = {}) {
       const info = await callApi(api, "getThreadInfo", [thread]);
       const byNickname = save(info?.nicknames?.[user], "nickname");
       if (byNickname) return byNickname;
-      const member = getUserRow(info?.userInfo || info?.participants, user);
-      const byThread = save(member?.firstName || member?.name || member?.fullName, "threadInfo");
-      if (byThread) return byThread;
+      for (const source of [info?.userInfo, info?.participants, info?.participantList, info?.participant_list]) {
+        const member = getUserRow(source, user);
+        const byThread = save(memberDisplayName(member), "threadInfo");
+        if (byThread) return byThread;
+      }
     } catch (error) {
       console.warn("[BANAT] Thread name lookup failed:", error?.message || error);
     }
@@ -85,8 +113,12 @@ async function resolveTargetName(api, threadID, userID, opts = {}) {
     try {
       const users = await callApi(api, "getUserInfo", [[user]]);
       const member = getUserRow(users, user);
-      const byUser = save(member?.firstName || member?.name || member?.fullName, "userInfo");
+      const byUser = save(memberDisplayName(member), "userInfo");
       if (byUser) return byUser;
+      // Some API-compatible wrappers return the single record directly rather
+      // than an ID-keyed map.
+      const directName = save(memberDisplayName(users), "userInfo");
+      if (directName) return directName;
     } catch (error) {
       console.warn("[BANAT] User name lookup failed:", error?.message || error);
     }

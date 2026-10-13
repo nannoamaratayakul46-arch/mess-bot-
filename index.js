@@ -4322,7 +4322,10 @@ function dashboardGetUserInfo(api, userIDs, timeoutMs = 4000) {
       resolve({});
     }, timeoutMs);
     try {
-      const result = api.getUserInfo(userIDs, done);
+      // ws3-fca's user-info lookup is most reliable when IDs are an array,
+      // including the single-member retry path.
+      const lookupIDs = Array.isArray(userIDs) ? userIDs : [userIDs];
+      const result = api.getUserInfo(lookupIDs, done);
       if (result && typeof result.then === "function") {
         result.then(users => done(null, users)).catch(done);
       } else if (looksLikeUserPayload(result)) {
@@ -4354,7 +4357,16 @@ function dashboardMemberDisplayName(row) {
   if (!row || typeof row !== "object") return "";
   const first = String(row.firstName || row.first_name || "").trim();
   const last = String(row.lastName || row.last_name || "").trim();
-  return String(row.name || row.fullName || row.full_name || [first, last].filter(Boolean).join(" ") || "").replace(/\s+/g, " ").trim().slice(0, 120);
+  const candidates = [
+    row.name, row.displayName, row.display_name, row.fullName, row.full_name,
+    row.profileName, row.profile_name, [first, last].filter(Boolean).join(" "),
+  ];
+  for (const candidate of candidates) {
+    const name = String(candidate || "").replace(/\s+/g, " ").trim().slice(0, 120);
+    if (!name || /^\d{6,32}$/.test(name) || /^Messenger user \d+$/i.test(name)) continue;
+    return name;
+  }
+  return "";
 }
 
 function dashboardNormalizeMemberId(value) {
@@ -4453,7 +4465,7 @@ app.get(
         if (!id) continue;
         ids.add(id);
         if (row && typeof row === "object") {
-          const name = dashboardMemberDisplayName(row) || String(info?.nicknames?.[id] || "").trim();
+          const name = dashboardMemberDisplayName(row) || dashboardMemberDisplayName({ name: info?.nicknames?.[id] });
           if (name) names.set(id, name);
         }
       }
