@@ -4621,10 +4621,96 @@ app.get(
     if (!threadID || !dashboardKnownGroups.has(threadID)) return res.status(400).json({ ok: false, error: "Choose a group in the refreshed group list." });
     if (!activeMessengerApi || activeListenerGeneration <= 0) return res.status(409).json({ ok: false, error: "Messenger is not connected." });
     try {
-      const { diagnostics } = await resolveGroupMembers(activeMessengerApi, threadID);
+      const { members = [], diagnostics = {} } = await resolveGroupMembers(activeMessengerApi, threadID);
+      const isRealName = value => {
+        const name = String(value || "").trim();
+        return Boolean(name) &&
+          !/^\\d{6,32}$/.test(name) &&
+          !/^(?:facebook(?:\\s+user)?|messenger(?:\\s+user)?|unknown|unnamed|user)(?:\\s+\\d+)?$/i.test(name);
+      };
+      const [threadInfoResult, threadListResult] = await Promise.all([
+        dashboardGetThreadInfo(activeMessengerApi, threadID).then(value => ({ ok: true, value })).catch(() => ({ ok: false, value: {} })),
+        dashboardGetThreadList(activeMessengerApi).then(value => ({ ok: true, value })).catch(() => ({ ok: false, value: [] })),
+      ]);
+      const threadInfo = threadInfoResult.value || {};
+      const threadList = Array.isArray(threadListResult.value) ? threadListResult.value : [];
+      const listedThread = threadList.find(item =>
+        String(item?.threadID || item?.threadId || item?.thread_id || "") === threadID
+      ) || {};
+      const countProfileRows = source => {
+        const rows = Array.isArray(source)
+          ? source
+          : source && typeof source === "object"
+            ? Object.entries(source).map(([key, value]) =>
+                value && typeof value === "object" && !dashboardNormalizeMemberId(value)
+                  ? { id: key, ...value }
+                  : value
+              )
+            : [];
+        return {
+          rows: rows.length,
+          ids: rows.filter(row => Boolean(dashboardNormalizeMemberId(row))).length,
+          named: rows.filter(row => isRealName(dashboardMemberDisplayName(row))).length,
+        };
+      };
+      const profileSources = {
+        threadInfoUserInfo: countProfileRows(threadInfo?.userInfo),
+        threadInfoParticipants: countProfileRows(threadInfo?.participants || threadInfo?.participantList || threadInfo?.participant_list),
+        threadListUserInfo: countProfileRows(listedThread?.userInfo),
+        threadListParticipants: countProfileRows(listedThread?.participants || listedThread?.participantList || listedThread?.participant_list),
+      };
+      const unresolved = members.filter(member =>
+        /^\\d{6,32}$/.test(String(member?.user_id || "")) &&
+        (!member.resolved || !isRealName(member.name))
+      );
+      const probeMembers = unresolved.slice(0, 3);
+      const probeIDs = probeMembers.map(member => String(member.user_id));
+      const probeLookup = async usePayload => {
+        if (!probeIDs.length) return { attempted: 0, returnedRecords: 0, realNames: 0, errors: 0 };
+        let rows = {};
+        let errors = 0;
+        try {
+          rows = await dashboardGetUserInfo(activeMessengerApi, probeIDs, usePayload ? 3500 : 4500, false, usePayload);
+        } catch (_) {
+          errors += 1;
+        }
+        const records = probeIDs.map(userID => dashboardGetUserInfoRow(rows, userID)).filter(Boolean);
+        return {
+          attempted: probeIDs.length,
+          returnedRecords: records.length,
+          realNames: records.filter(row => isRealName(dashboardMemberDisplayName(row))).length,
+          errors,
+        };
+      };
+      const [normalLookup, profilePageLookup] = await Promise.all([
+        probeLookup(true),
+        probeLookup(false),
+      ]);
+      let packageVersion = null;
+      try { packageVersion = require("ws3-fca/package.json").version || null; } catch (_) {}
       res.set("Cache-Control", "no-store");
-      return res.json({ ok: true, diagnostics });
+      return res.json({
+        ok: true,
+        diagnostics: {
+          ...diagnostics,
+          pipeline: {
+            returnedMembers: members.length,
+            resolvedMembers: members.filter(member => member.resolved && isRealName(member.name)).length,
+            unresolvedMembers: unresolved.length,
+            threadInfoCallSucceeded: threadInfoResult.ok,
+            threadListCallSucceeded: threadListResult.ok,
+            profileSources,
+            lookupProbe: { sampleSize: probeIDs.length, normalLookup, profilePageLookup },
+            runtime: {
+              node: process.version,
+              ws3FcaVersion: packageVersion,
+              getUserInfoFunctionArity: typeof activeMessengerApi.getUserInfo === "function" ? activeMessengerApi.getUserInfo.length : null,
+            },
+          },
+        },
+      });
     } catch (error) {
+      console.warn("[MEMBERS] Diagnostic probe failed:", String(error?.message || error).slice(0, 160));
       return res.status(503).json({ ok: false, error: "Member diagnostics failed." });
     }
   }
