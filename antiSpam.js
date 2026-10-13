@@ -328,14 +328,50 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         log("[AUTOMOD-SENSITIVE] Cannot restore owner admin status: required Messenger role/status methods are unavailable.");
       } else {
         const info = await callbackCall(cb => api.getThreadInfo(threadID, cb), 8000);
-        const normalizeIds = value => (Array.isArray(value) ? value : []).map(item =>
-          String(item?.id ?? item?.userID ?? item?.userId ?? item ?? "").trim()
-        ).filter(Boolean);
+        const normalizeIds = value => {
+          const ids = new Set();
+          const visit = item => {
+            if (item == null) return;
+            if (Array.isArray(item)) { for (const entry of item) visit(entry); return; }
+            if (typeof item === "string" || typeof item === "number") {
+              const id = String(item).trim();
+              if (id) ids.add(id);
+              return;
+            }
+            if (typeof item !== "object") return;
+            const direct = item.id ?? item.userID ?? item.userId ?? item.uid ??
+              item.participantID ?? item.participantId;
+            if (direct != null) { ids.add(String(direct).trim()); return; }
+            for (const [key, value] of Object.entries(item)) {
+              if (value === true || value === 1 || value === "true") ids.add(String(key).trim());
+              else if (value && typeof value === "object") visit(value);
+            }
+          };
+          visit(value);
+          return [...ids].filter(Boolean);
+        };
         const botID = String(typeof api.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
-        const adminIDs = normalizeIds(info?.adminIDs);
+        const getAdminIDs = value => normalizeIds([
+          value?.adminIDs, value?.admin_ids, value?.threadAdminIDs, value?.thread_admin_ids,
+          value?.threadAdmins, value?.thread_admins, value?.admins
+        ]);
+        let adminIDs = getAdminIDs(info);
+        // Some FCA builds omit adminIDs from getThreadInfo but expose them in the
+        // legacy single-thread response. This is a targeted lookup, not a group scan.
+        if (!adminIDs.length && typeof api.getThreadInfoDeprecated === "function") {
+          try {
+            const legacyInfo = await callbackCall(cb => api.getThreadInfoDeprecated(threadID, cb), 6000);
+            adminIDs = getAdminIDs(legacyInfo);
+          } catch (_) {}
+        }
         const participantIDs = normalizeIds(info?.participantIDs ?? info?.participants);
         if (!botID || !adminIDs.includes(botID)) {
-          log(`[AUTOMOD-SENSITIVE] Cannot restore owner in ${threadID}: bot is not confirmed as a group admin.`);
+          log(`[AUTOMOD-SENSITIVE] Cannot verify bot admin in ${threadID}: ${JSON.stringify({
+            botIdAvailable: Boolean(botID),
+            adminFieldPresent: Boolean(info?.adminIDs || info?.admin_ids || info?.threadAdmins || info?.thread_admins || info?.admins),
+            adminCount: adminIDs.length,
+            legacyMethodAvailable: typeof api.getThreadInfoDeprecated === "function"
+          })}`);
         } else if (!participantIDs.includes(targetID)) {
           // The owner may have been kicked immediately after demotion. Try the
           // supported re-add method before giving up, then re-read group info.
