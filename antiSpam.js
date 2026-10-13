@@ -369,76 +369,11 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       log(`[AUTOMOD-SENSITIVE] Owner admin restoration failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
     }
 
-    if (!api || typeof api.getThreadInfo !== "function" || typeof api.changeAdminStatus !== "function") {
-      log("[AUTOMOD-SENSITIVE] Cannot safely demote the actor: required Messenger role/status methods are unavailable.");
-      return;
-    }
-
-    const botID = String(typeof api.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
-    if (!botID) {
-      log("[AUTOMOD-SENSITIVE] Cannot safely demote the actor because the bot user ID is unavailable.");
-      return;
-    }
-
-    // Start with the event group, then inspect the bot's current thread list.
-    // Every demotion is gated by a fresh role check in that specific group.
-    const candidateThreadIDs = new Set([threadID]);
-    if (typeof api.getThreadList === "function") {
-      try {
-        const threads = await callbackCall(cb => api.getThreadList(1000, null, [], cb), 12000);
-        for (const thread of Array.isArray(threads) ? threads : []) {
-          const id = String(thread?.threadID ?? thread?.threadId ?? thread?.id ?? "").trim();
-          if (id) candidateThreadIDs.add(id);
-        }
-      } catch (error) {
-        log(`[AUTOMOD-SENSITIVE] Could not enumerate all threads; checking the triggering group only: ${String(error?.message || error).slice(0, 140)}`);
-      }
-    }
-
-    const ids = [...candidateThreadIDs];
-    let nextIndex = 0;
-    let demotedCount = 0;
-    let checkedCount = 0;
-    const worker = async () => {
-      while (nextIndex < ids.length) {
-        const candidateID = ids[nextIndex++];
-        let info;
-        try {
-          info = await callbackCall(cb => api.getThreadInfo(candidateID, cb), 8000);
-        } catch (error) {
-          log(`[AUTOMOD-SENSITIVE] Role verification failed in ${candidateID}; left unchanged: ${String(error?.message || error).slice(0, 120)}`);
-          continue;
-        }
-
-        const normalizeIds = value => (Array.isArray(value) ? value : []).map(item =>
-          String(item?.id ?? item?.userID ?? item?.userId ?? item ?? "").trim()
-        ).filter(Boolean);
-        const adminIDs = normalizeIds(info?.adminIDs);
-        checkedCount++;
-        // Fail closed independently for each group: the bot and actor must both
-        // still be admins there. This also excludes DMs and inaccessible threads.
-        if (!adminIDs.includes(botID) || !adminIDs.includes(actorID)) continue;
-
-        try {
-          await callbackCall(cb => api.changeAdminStatus(candidateID, actorID, false, cb), 12000);
-          demotedCount++;
-          log(`[AUTOMOD-SENSITIVE] Demoted ${actorLabel} in ${candidateID} after they removed bot-owner admin status in ${threadID}.`);
-        } catch (error) {
-          log(`[AUTOMOD-SENSITIVE] Could not demote ${actorLabel} in ${candidateID}: ${String(error?.message || error).slice(0, 160)}`);
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(3, ids.length) }, () => worker()));
-
-    if (demotedCount > 0) {
-      try {
-        await sendMessage(api, threadID, `Sensitive AutoMod: an admin removed the bot owner's admin status. Their admin status was revoked in ${demotedCount} group(s) where the bot could verify its own admin permissions.`);
-      } catch (error) {
-        log(`[AUTOMOD-SENSITIVE] Demotion succeeded but notice failed in ${threadID}: ${String(error?.message || error).slice(0, 140)}`);
-      }
-    } else {
-      log(`[AUTOMOD-SENSITIVE] No demotions completed; checked ${checkedCount} thread(s). The bot and actor must both be admins for each removal.`);
-    }
+    // Intentionally do not scan other threads or retaliate against the actor.
+    // Keep this handler scoped to restoring the configured owner's role in the
+    // triggering group; broad getThreadList/getThreadInfo sweeps waste resources
+    // and can affect unrelated conversations.
+    return;
   }
 
   async function processGroupProfileEvent(api, event) {
