@@ -220,12 +220,43 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
   const PROFILE_ABUSE_WINDOW_MS = 60 * 1000;
 
   async function processSensitiveAdminEvent(api, event) {
-    if (event?.type !== "event" || String(event?.logMessageType || "") !== "log:thread-admins") return;
+    if (event?.type !== "event") return;
 
+    const eventType = String(event?.logMessageType || "");
     const threadID = String(event?.threadID || "").trim();
     const data = event?.logMessageData && typeof event.logMessageData === "object"
       ? event.logMessageData
       : {};
+
+    // If the configured owner is removed from a group, attempt to re-add them
+    // only when the event explicitly identifies the owner as the removed member.
+    if (eventType === "log:unsubscribe") {
+      const removedID = String(
+        data.leftParticipantFbId ?? data.leftParticipantID ?? data.leftParticipantId ??
+        data.removedParticipantFbId ?? data.removedParticipantID ?? ""
+      ).trim();
+      if (!threadID || !removedID || !isBotOwnerId(removedID)) return;
+      const settings = await getSettings(threadID);
+      if (settings?.enabled !== true) return;
+      const config = await getConfig(threadID);
+      if (config.sensitive_admin_enabled !== true) return;
+      if (typeof api?.addUserToGroup !== "function") {
+        log("[AUTOMOD-SENSITIVE] Owner was removed, but addUserToGroup is unavailable; cannot attempt rejoin.");
+        return;
+      }
+      try {
+        await callbackCall(cb => api.addUserToGroup(removedID, threadID, cb), 12000);
+        log(`[AUTOMOD-SENSITIVE] Re-add request sent for bot owner ${removedID} to ${threadID} after removal event.`);
+        try {
+          await sendMessage(api, threadID, "Sensitive AutoMod: the bot owner was removed. A re-add request was sent.");
+        } catch (_) {}
+      } catch (error) {
+        log(`[AUTOMOD-SENSITIVE] Could not re-add bot owner to ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+      }
+      return;
+    }
+
+    if (eventType !== "log:thread-admins") return;
     const adminEvent = String(data.ADMIN_EVENT || data.admin_event || "").toLowerCase();
     const targetID = String(data.TARGET_ID ?? data.target_id ?? "").trim();
     const actorRaw = event?.author ?? event?.authorID ?? event?.senderID;
@@ -241,6 +272,30 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     if (config.sensitive_admin_enabled !== true) return;
     const actorName = await resolveMemberName(api, threadID, actorID);
     const actorLabel = actorName ? actorName + " (" + actorID + ")" : actorID;
+
+    // Restore the owner's admin role first, but only after verifying the owner
+    // remains a participant and the bot itself is currently an admin.
+    try {
+      if (!api || typeof api.getThreadInfo !== "function" || typeof api.changeAdminStatus !== "function") {
+        log("[AUTOMOD-SENSITIVE] Cannot restore owner admin status: required Messenger role/status methods are unavailable.");
+      } else {
+        const info = await callbackCall(cb => api.getThreadInfo(threadID, cb), 8000);
+        const normalizeIds = value => (Array.isArray(value) ? value : []).map(item =>
+          String(item?.id ?? item?.userID ?? item?.userId ?? item ?? "").trim()
+        ).filter(Boolean);
+        const botID = String(typeof api.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
+        const adminIDs = normalizeIds(info?.adminIDs);
+        const participantIDs = normalizeIds(info?.participantIDs ?? info?.participants);
+        if (botID && adminIDs.includes(botID) && participantIDs.includes(targetID) && !adminIDs.includes(targetID)) {
+          await callbackCall(cb => api.changeAdminStatus(threadID, targetID, true, cb), 12000);
+          log(`[AUTOMOD-SENSITIVE] Restored bot owner's admin status in ${threadID}.`);
+        } else if (!participantIDs.includes(targetID)) {
+          log(`[AUTOMOD-SENSITIVE] Owner admin restoration skipped in ${threadID}: owner is not confirmed as a participant.`);
+        }
+      }
+    } catch (error) {
+      log(`[AUTOMOD-SENSITIVE] Owner admin restoration failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+    }
 
     if (!api || typeof api.getThreadInfo !== "function" || typeof api.changeAdminStatus !== "function") {
       log("[AUTOMOD-SENSITIVE] Cannot safely demote the actor: required Messenger role/status methods are unavailable.");
