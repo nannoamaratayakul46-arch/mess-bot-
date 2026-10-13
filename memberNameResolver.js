@@ -115,6 +115,10 @@ function callApi(api, method, args, timeoutMs = 4500) {
         result.then(value => {
           if (value !== undefined && value !== null) callback(null, value);
         }, error => callback(error));
+      } else if (Array.isArray(result) && method === "getThreadList") {
+        // Some ws3-fca builds return the thread array synchronously instead of
+        // invoking the callback. Accept that documented payload shape.
+        callback(null, result);
       } else if (result && typeof result === "object" && !Array.isArray(result)) {
         // Accept immediate payloads only when they look like data, not request handles.
         if (method === "getThreadInfo" && (result.participantIDs || result.userInfo || result.participants || result.participantList || result.participant_list || result.threadID || result.threadName)) callback(null, result);
@@ -180,9 +184,38 @@ function collectParticipants(info) {
 
 async function resolveGroupMembers(api, threadID, options = {}) {
   const timeoutMs = Math.max(1000, Math.min(10000, Number(options.timeoutMs) || 4500));
-  const info = await callApi(api, "getThreadInfo", [String(threadID)], timeoutMs);
-  if (!info || typeof info !== "object") {
-    return { members: [], diagnostics: { threadInfo: false, participantIds: 0, named: 0, unresolved: 0, error: "getThreadInfo returned no usable data" } };
+  const threadInfo = await callApi(api, "getThreadInfo", [String(threadID)], timeoutMs);
+  let info = threadInfo && typeof threadInfo === "object" ? threadInfo : null;
+  let source = "threadInfo";
+
+  // Fallback to the matching inbox thread when getThreadInfo is empty or
+  // omits participant data. Some ws3-fca sessions expose profile records only
+  // through getThreadList().userInfo.
+  const hasParticipantData = value => Boolean(value && typeof value === "object" && [
+    value.participantIDs, value.participants, value.userInfo,
+    value.participantList, value.participant_list, value.nicknames
+  ].some(part => Array.isArray(part) ? part.length > 0 : part && typeof part === "object" && Object.keys(part).length > 0));
+  if (!hasParticipantData(info) && typeof api?.getThreadList === "function") {
+    try {
+      const threads = await callApi(api, "getThreadList", [1000, null, []], timeoutMs);
+      const matching = (Array.isArray(threads) ? threads : []).find(item =>
+        String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? item?.id ?? "").trim() === String(threadID)
+      );
+      if (matching && hasParticipantData(matching)) {
+        info = matching;
+        source = "threadList";
+      }
+    } catch (_) {
+      // Continue with any partial threadInfo payload; lookups may still help.
+    }
+  }
+  if (!info || typeof info !== "object" || !hasParticipantData(info)) {
+    return { members: [], diagnostics: {
+      threadInfo: Boolean(threadInfo && typeof threadInfo === "object"),
+      threadListFallback: source === "threadList",
+      participantIds: 0, named: 0, unresolved: 0,
+      error: "No usable participant data from getThreadInfo or getThreadList"
+    } };
   }
   const { ids, names, nicknameNames } = collectParticipants(info);
   const currentID = String(api?.getCurrentUserID?.() || "");
@@ -256,7 +289,9 @@ async function resolveGroupMembers(api, threadID, options = {}) {
   }).sort((a, b) => Number(b.resolved) - Number(a.resolved) || a.name.localeCompare(b.name));
 
   const diagnostics = {
-    threadInfo: true,
+    threadInfo: Boolean(threadInfo && typeof threadInfo === "object"),
+    threadListFallback: source === "threadList",
+    participantSource: source,
     participantIds: ids.size,
     named: members.filter(member => member.resolved).length,
     unresolved: members.filter(member => !member.resolved).length,
