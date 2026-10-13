@@ -255,16 +255,39 @@ async function resolveGroupMembers(api, threadID, options = {}) {
 }
 
 async function resolveMemberName(api, threadID, userID, fallback = "") {
+  const thread = String(threadID || "").trim();
   const id = idOf(userID);
-  if (!id) return cleanName(fallback) || "";
-  const key = String(threadID) + ":" + id;
+  if (!thread || !id) return cleanName(fallback) || "";
+  const key = thread + ":" + id;
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL) return cached.name;
   const learnedName = learned.get(key);
   if (learnedName?.name) return learnedName.name;
-  const { members } = await resolveGroupMembers(api, threadID);
-  const member = members.find(item => item.user_id === id);
-  return member?.resolved ? member.name : (cleanName(fallback) || "");
+
+  // Resolve only this member; moderation should not trigger lookups for every
+  // participant whenever one person is warned or removed.
+  const info = await callApi(api, "getThreadInfo", [thread], 3500);
+  if (info && typeof info === "object") {
+    const { ids, names } = collectParticipants(info);
+    const found = names.get(id);
+    if (ids.has(id) && found?.name) {
+      boundedSet(cache, key, { name: found.name, at: Date.now() }, CACHE_MAX);
+      return found.name;
+    }
+  }
+
+  if (typeof api?.getUserInfo === "function") {
+    for (const args of [[[id]], [id]]) {
+      const payload = await callApi(api, "getUserInfo", args, 3500);
+      const row = indexUserRecords(payload, [id]).get(id) || (recordName(payload) ? payload : null);
+      const name = recordName(row);
+      if (name) {
+        boundedSet(cache, key, { name, at: Date.now() }, CACHE_MAX);
+        return name;
+      }
+    }
+  }
+  return cleanName(fallback) || "";
 }
 
 module.exports = { resolveGroupMembers, resolveMemberName, noteEvent, cleanName, recordName, idOf };
