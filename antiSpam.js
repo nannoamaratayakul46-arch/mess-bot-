@@ -303,11 +303,35 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         const botID = String(typeof api.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
         const adminIDs = normalizeIds(info?.adminIDs);
         const participantIDs = normalizeIds(info?.participantIDs ?? info?.participants);
-        if (botID && adminIDs.includes(botID) && participantIDs.includes(targetID) && !adminIDs.includes(targetID)) {
+        if (!botID || !adminIDs.includes(botID)) {
+          log(`[AUTOMOD-SENSITIVE] Cannot restore owner in ${threadID}: bot is not confirmed as a group admin.`);
+        } else if (!participantIDs.includes(targetID)) {
+          // The owner may have been kicked immediately after demotion. Try the
+          // supported re-add method before giving up, then re-read group info.
+          if (typeof api.addUserToGroup !== "function") {
+            log(`[AUTOMOD-SENSITIVE] Owner is absent from ${threadID}, but addUserToGroup is unavailable; re-add skipped.`);
+          } else {
+            try {
+              await callbackCall(cb => api.addUserToGroup(targetID, threadID, cb), 12000);
+              log(`[AUTOMOD-SENSITIVE] Re-add request sent for owner after admin-removal event in ${threadID}.`);
+              const refreshed = await callbackCall(cb => api.getThreadInfo(threadID, cb), 8000);
+              const refreshedParticipants = normalizeIds(refreshed?.participantIDs ?? refreshed?.participants);
+              const refreshedAdmins = normalizeIds(refreshed?.adminIDs);
+              if (refreshedParticipants.includes(targetID) && !refreshedAdmins.includes(targetID)) {
+                await callbackCall(cb => api.changeAdminStatus(threadID, targetID, true, cb), 12000);
+                log(`[AUTOMOD-SENSITIVE] Owner re-added and admin status restored in ${threadID}.`);
+              } else if (!refreshedParticipants.includes(targetID)) {
+                log(`[AUTOMOD-SENSITIVE] Re-add request did not restore confirmed membership in ${threadID}; admin promotion skipped.`);
+              } else {
+                log(`[AUTOMOD-SENSITIVE] Owner is already an admin after re-add attempt in ${threadID}.`);
+              }
+            } catch (error) {
+              log(`[AUTOMOD-SENSITIVE] Owner re-add/admin restoration failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+            }
+          }
+        } else if (!adminIDs.includes(targetID)) {
           await callbackCall(cb => api.changeAdminStatus(threadID, targetID, true, cb), 12000);
           log(`[AUTOMOD-SENSITIVE] Restored bot owner's admin status in ${threadID}.`);
-        } else if (!participantIDs.includes(targetID)) {
-          log(`[AUTOMOD-SENSITIVE] Owner admin restoration skipped in ${threadID}: owner is not confirmed as a participant.`);
         }
       }
     } catch (error) {
