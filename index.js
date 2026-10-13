@@ -4426,6 +4426,7 @@ async function dashboardGetParticipantIds(api, threadID, knownInfo = null) {
     if (thread) {
       for (const source of [
         thread.participantIDs,
+        thread.userInfo,
         thread.participants,
         thread.participantList,
         thread.participant_list,
@@ -4596,11 +4597,10 @@ app.get(
       diagnostics.named = members.filter(member => member.resolved).length;
       diagnostics.unresolved = members.filter(member => !member.resolved).length;
 
-      if (!diagnostics.threadInfo) {
-        console.warn("[MEMBERS] getThreadInfo returned no usable group data:", JSON.stringify({ threadID, diagnostics }));
-        return res.status(503).json({ ok: false, error: "Could not read group members from Messenger.", members: [] });
-      }
+      // A usable getThreadList fallback is sufficient even when getThreadInfo
+      // itself returns no data. Only fail when neither source yields members.
       if (!members.length) {
+        console.warn("[MEMBERS] No usable members from thread info/list:", JSON.stringify({ threadID, diagnostics }));
         console.warn("[MEMBERS] No participant IDs returned:", JSON.stringify({ threadID, diagnostics }));
         return res.status(503).json({ ok: false, error: "Messenger returned no participant IDs for this group. Check bot service logs.", members: [] });
       }
