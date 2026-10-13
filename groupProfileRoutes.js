@@ -29,6 +29,27 @@ function cooldownLeft(threadId, kind) {
   return Math.ceil(left / 1000);
 }
 
+function messengerErrorMessage(error) {
+  if (error instanceof Error && error.message) return error.message;
+  if (error == null) return "Unknown Messenger API error.";
+  const description = error?.errorDescription;
+  const candidates = [
+    typeof error === "string" ? error : "",
+    error?.message,
+    error?.errorSummary,
+    typeof description === "string" ? description : "",
+    description?.__html,
+    error?.error,
+  ].map(value => String(value || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim())
+   .filter(Boolean);
+  const code = Number(error?.errorCode ?? error?.code ?? error?.error ?? 0);
+  const message = candidates.find(value => !/^\[object Object\]$/i.test(value));
+  if (message) return code && !message.includes(String(code))
+    ? `Messenger error ${code}: ${message}`
+    : message;
+  return code ? `Messenger returned error code ${code}.` : "Unknown Messenger API error.";
+}
+
 function callApi(api, method, args) {
   return new Promise((resolve, reject) => {
     const fn = api && api[method];
@@ -37,7 +58,7 @@ function callApi(api, method, args) {
     const done = (error, value) => {
       if (settled) return;
       settled = true;
-      if (error) reject(error instanceof Error ? error : new Error(String(error)));
+      if (error) { const wrapped = new Error(messengerErrorMessage(error)); wrapped.cause = error; reject(wrapped); }
       else resolve(value);
     };
     let result;
@@ -306,7 +327,7 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
     } catch (error) {
       const detail = String(error?.message || error).replace(/[\r\n]+/g, " ").slice(0, 180);
       audit("[PROFILE] " + kind + " change failed in " + threadId + ": " + detail);
-      return res.status(502).json({ ok: false, error: "Messenger refused the change or the backup could not be saved. Check bot permissions and Render logs." });
+      return res.status(502).json({ ok: false, error: "Group profile update failed: " + detail });
     } finally {
       if (tmpFile) await fsp.rm(tmpFile, { force: true }).catch(() => {});
     }

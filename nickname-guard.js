@@ -388,6 +388,30 @@ function getNicknameWriteState(threadID) {
   return state;
 }
 
+function messengerErrorMessage(error) {
+  if (error instanceof Error && error.message) return error.message;
+  if (error == null) return "Unknown Messenger API error.";
+
+  const description = error?.errorDescription;
+  const candidates = [
+    typeof error === "string" ? error : "",
+    error?.message,
+    error?.errorSummary,
+    typeof description === "string" ? description : "",
+    description?.__html,
+    error?.error,
+    error?.messageText,
+  ].map(value => String(value || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim())
+   .filter(Boolean);
+
+  const code = Number(error?.errorCode ?? error?.code ?? error?.error ?? 0);
+  const message = candidates.find(value => !/^\[object Object\]$/i.test(value));
+  if (message) return code && !message.includes(String(code))
+    ? `Messenger error ${code}: ${message}`
+    : message;
+  return code ? `Messenger returned error code ${code}.` : "Unknown Messenger API error.";
+}
+
 function isNicknameMutationBlock(error) {
   const errorCode = Number(
     error?.error ??
@@ -493,40 +517,41 @@ function changeNicknameAsync(api, nickname, threadID, participantID) {
       }
 
       let settled = false;
+      const timeoutMs = Math.max(
+        5000,
+        Number(process.env.ECLIPSE_NICKNAME_API_TIMEOUT_MS || 25000)
+      );
+      const timer = setTimeout(() => {
+        done(new Error(`Messenger nickname change timed out after ${timeoutMs}ms (thread ${threadId}, member ${participantId}).`));
+      }, timeoutMs);
+      timer.unref?.();
 
       const done = (error) => {
         if (settled) return;
         settled = true;
+        clearTimeout(timer);
 
         if (error) {
           if (isNicknameMutationBlock(error)) {
-            const nextBlockedUntil =
-              markNicknameMutationBlocked(threadId);
-
-            const wrapped = createNicknameMutationBlockedError(
-              threadId,
-              nextBlockedUntil
-            );
-
+            const nextBlockedUntil = markNicknameMutationBlocked(threadId);
+            const wrapped = createNicknameMutationBlockedError(threadId, nextBlockedUntil);
             wrapped.cause = error;
             reject(wrapped);
             return;
           }
 
-          reject(error);
+          const wrapped = new Error(messengerErrorMessage(error));
+          wrapped.cause = error;
+          const code = error?.errorCode ?? error?.code ?? error?.error;
+          if (code != null) wrapped.messengerErrorCode = String(code);
+          reject(wrapped);
         } else {
           resolve();
         }
       };
 
       try {
-        const result = api.changeNickname(
-          nickname,
-          threadId,
-          participantId,
-          done
-        );
-
+        const result = api.changeNickname(nickname, threadId, participantId, done);
         if (result && typeof result.then === "function") {
           result.then(() => done()).catch(done);
         }
@@ -1129,6 +1154,7 @@ module.exports = {
   setMassNicknameRun,
   clearMassNicknameRun,
   changeNicknameAsync,
+  messengerErrorMessage,
   rememberProtectedTitle,
   clearProtectedTitle,
   handleTitleGuardEvent,
