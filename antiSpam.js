@@ -2,6 +2,7 @@
 
 const express = require("express");
 const { getAutoModSettings, setAutoModEnabled, removeFromGroup, isAdmin, isBotOwner } = require("./moderation");
+const { resolveMemberName, idOf } = require("./memberNameResolver");
 
 const DEFAULTS = Object.freeze({
   max_messages: 6,
@@ -187,7 +188,9 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     );
     const warnedAt = warningResult.rows[0]?.warned_at ? new Date(warningResult.rows[0].warned_at).getTime() : 0;
     const warnedRecently = warnedAt > 0 && now - warnedAt < cfg.warn_grace_seconds * 1000;
-    const name = String(event?.senderName || event?.name || "You").trim().slice(0, 60) || "You";
+    const fallbackName = String(event?.senderName || event?.name || "").trim().slice(0, 60);
+    const resolvedName = await resolveMemberName(api, threadID, userID, fallbackName);
+    const name = resolvedName || ("Member ····" + userID.slice(-4));
 
     if (cfg.warn_first && !warnedRecently) {
       await db.query(
@@ -226,11 +229,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const adminEvent = String(data.ADMIN_EVENT || data.admin_event || "").toLowerCase();
     const targetID = String(data.TARGET_ID ?? data.target_id ?? "").trim();
     const actorRaw = event?.author ?? event?.authorID ?? event?.senderID;
-    const actorID = String(
-      actorRaw && typeof actorRaw === "object"
-        ? actorRaw.id ?? actorRaw.userID ?? actorRaw.userId ?? ""
-        : actorRaw ?? ""
-    ).trim();
+    const actorID = idOf(actorRaw) || String(actorRaw ?? "").trim();
 
     // Only respond to a confirmed removal of the configured bot owner from admin.
     if (!threadID || adminEvent !== "remove_admin" || !targetID || !actorID || !isBotOwnerId(targetID)) return;
@@ -240,6 +239,8 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     if (settings?.enabled !== true) return;
     const config = await getConfig(threadID);
     if (config.sensitive_admin_enabled !== true) return;
+    const actorName = await resolveMemberName(api, threadID, actorID);
+    const actorLabel = actorName ? actorName + " (" + actorID + ")" : actorID;
 
     if (!api || typeof api.getThreadInfo !== "function" || typeof api.changeAdminStatus !== "function") {
       log("[AUTOMOD-SENSITIVE] Cannot safely demote the actor: required Messenger role/status methods are unavailable.");
@@ -294,9 +295,9 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         try {
           await callbackCall(cb => api.changeAdminStatus(candidateID, actorID, false, cb), 12000);
           demotedCount++;
-          log(`[AUTOMOD-SENSITIVE] Demoted ${actorID} in ${candidateID} after they removed bot-owner admin status in ${threadID}.`);
+          log(`[AUTOMOD-SENSITIVE] Demoted ${actorLabel} in ${candidateID} after they removed bot-owner admin status in ${threadID}.`);
         } catch (error) {
-          log(`[AUTOMOD-SENSITIVE] Could not demote ${actorID} in ${candidateID}: ${String(error?.message || error).slice(0, 160)}`);
+          log(`[AUTOMOD-SENSITIVE] Could not demote ${actorLabel} in ${candidateID}: ${String(error?.message || error).slice(0, 160)}`);
         }
       }
     };
@@ -319,11 +320,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
 
     const threadID = String(event?.threadID || "").trim();
     const rawAuthor = event?.author ?? event?.authorID ?? event?.senderID;
-    const userID = String(
-      rawAuthor && typeof rawAuthor === "object"
-        ? rawAuthor.id ?? rawAuthor.userID ?? rawAuthor.userId ?? ""
-        : rawAuthor ?? ""
-    ).trim();
+    const userID = idOf(rawAuthor) || String(rawAuthor ?? "").trim();
     if (!threadID || !userID) {
       log("[AUTOMOD-PROFILE] Ignored profile change because the group or actor ID was missing.");
       return;
@@ -370,12 +367,14 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       [threadID, userID, now - PROFILE_ABUSE_WINDOW_MS],
     );
     const count = Number(recent.rows?.[0]?.count || 0);
-    log(`[AUTOMOD-PROFILE] ${userID} made ${count}/${PROFILE_ABUSE_THRESHOLD} group photo/name changes in ${threadID} within 60 seconds.`);
+    const actorName = await resolveMemberName(api, threadID, userID);
+    const actorLabel = actorName ? actorName + " (" + userID + ")" : userID;
+    log(`[AUTOMOD-PROFILE] ${actorLabel} made ${count}/${PROFILE_ABUSE_THRESHOLD} group photo/name changes in ${threadID} within 60 seconds.`);
     if (count < PROFILE_ABUSE_THRESHOLD) return;
 
     const removal = await removeFromGroup(api, threadID, userID);
     if (!removal?.ok) {
-      log(`[AUTOMOD-PROFILE] kick not completed for ${userID} in ${threadID}: ${String(removal?.errorMessage || removal?.errorCode || "Unknown removal failure").slice(0, 180)}`);
+      log(`[AUTOMOD-PROFILE] kick not completed for ${actorLabel} in ${threadID}: ${String(removal?.errorMessage || removal?.errorCode || "Unknown removal failure").slice(0, 180)}`);
       return;
     }
 
@@ -383,7 +382,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       "DELETE FROM automod_profile_abuse_events WHERE thread_id = $1 AND user_id = $2",
       [threadID, userID],
     );
-    log(`[AUTOMOD-PROFILE] removed ${userID} from ${threadID} after repeated group photo/name changes.`);
+    log(`[AUTOMOD-PROFILE] removed ${actorLabel} from ${threadID} after repeated group photo/name changes.`);
   }
 
   function onGroupEvent(apiOrEvent, maybeEvent) {

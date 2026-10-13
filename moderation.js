@@ -1,6 +1,7 @@
 "use strict";
 
 const { resolveModerationTarget } = require("./moderation-target");
+const { resolveMemberName } = require("./memberNameResolver");
 
 const db = require("./db");
 
@@ -3585,6 +3586,8 @@ async function handleWarn(
     return true;
   }
 
+  const targetName = await resolveMemberName(api, threadID, targetId);
+
   const permission =
     canModerateTarget(
       moderatorId,
@@ -3662,7 +3665,7 @@ async function handleWarn(
     [
       "⚠️ Warning issued.",
       "",
-      `👤 User: ${targetId}`,
+      `👤 User: ${targetName || targetId}`,
       `📌 Reason: ${reason}`,
       `⚠️ Active warnings: ${warnings.length}/${modSettings.warn_limit}`,
     ].join("\n")
@@ -3747,6 +3750,8 @@ async function handleKick(
     return true;
   }
 
+  const targetName = await resolveMemberName(api, threadID, targetId);
+
   const permission =
     canModerateTarget(
       moderatorId,
@@ -3810,7 +3815,7 @@ async function handleKick(
       [
         "❌ I could not remove that user.",
         "",
-        `👤 Target: ${targetId}`,
+        `👤 Target: ${targetName || targetId}`,
         `📌 Reason: ${reason}`,
         "",
         "🔎 Facebook response:",
@@ -3835,7 +3840,7 @@ async function handleKick(
     [
       "👢 User removed.",
       "",
-      `👤 User: ${targetId}`,
+      `👤 User: ${targetName || targetId}`,
       `📌 Reason: ${reason}`,
     ].join("\n")
   );
@@ -3919,6 +3924,8 @@ async function handleBan(
     return true;
   }
 
+  const targetName = await resolveMemberName(api, threadID, targetId);
+
   const permission =
     canModerateTarget(
       moderatorId,
@@ -3988,7 +3995,7 @@ async function handleBan(
     [
       "🔨 User banned from the bot's local moderation system.",
       "",
-      `👤 User: ${targetId}`,
+      `👤 User: ${targetName || targetId}`,
       `📌 Reason: ${reason}`,
       `👢 Removed from group: ${
         removal.ok
