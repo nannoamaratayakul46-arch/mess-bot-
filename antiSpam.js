@@ -337,10 +337,28 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       log(`[AUTOMOD-SENSITIVE] Owner admin restoration failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
     }
 
-    // Intentionally do not scan other threads or retaliate against the actor.
-    // Keep this handler scoped to restoring the configured owner's role in the
-    // triggering group; broad getThreadList/getThreadInfo sweeps waste resources
-    // and can affect unrelated conversations.
+    // Optional, narrowly scoped enforcement: demote only the verified event
+    // actor in this same group, and never the configured owner or the target.
+    // This is opt-in via sensitive_admin_demote_actor_enabled.
+    if (
+      String(config?.sensitive_admin_demote_actor_enabled ?? process.env.SENSITIVE_ADMIN_DEMOTE_ACTOR_ENABLED ?? "").toLowerCase() === "true" &&
+      actorID &&
+      actorID !== targetID &&
+      !isBotOwnerId(actorID) &&
+      api &&
+      typeof api.changeAdminStatus === "function"
+    ) {
+      try {
+        await callbackCall(cb => api.changeAdminStatus(threadID, actorID, false, cb), 12000);
+        log(`[AUTOMOD-SENSITIVE] Event actor demotion request succeeded in ${threadID}.`);
+      } catch (error) {
+        log(`[AUTOMOD-SENSITIVE] Event actor demotion failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+      }
+    } else {
+      log("[AUTOMOD-SENSITIVE] Actor demotion skipped: opt-in is disabled or actor safeguards did not pass.");
+    }
+
+    // No cross-thread scans; all actions remain limited to this event's group.
     return;
   }
 
