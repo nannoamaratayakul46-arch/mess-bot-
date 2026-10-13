@@ -2,6 +2,7 @@
 
 const express = require("express");
 const { getAutoModSettings, setAutoModEnabled, removeFromGroup, isAdmin, isBotOwner } = require("./moderation");
+const { resolveMemberName } = require("./memberNameResolver");
 
 const DEFAULTS = Object.freeze({
   max_messages: 6,
@@ -187,7 +188,9 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     );
     const warnedAt = warningResult.rows[0]?.warned_at ? new Date(warningResult.rows[0].warned_at).getTime() : 0;
     const warnedRecently = warnedAt > 0 && now - warnedAt < cfg.warn_grace_seconds * 1000;
-    const name = String(event?.senderName || event?.name || "You").trim().slice(0, 60) || "You";
+    const fallbackName = String(event?.senderName || event?.name || "").trim().slice(0, 60);
+    const resolvedName = await resolveMemberName(api, threadID, userID, fallbackName);
+    const name = resolvedName || ("Member ····" + userID.slice(-4));
 
     if (cfg.warn_first && !warnedRecently) {
       await db.query(
