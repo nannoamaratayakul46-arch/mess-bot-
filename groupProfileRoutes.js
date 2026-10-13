@@ -1,5 +1,10 @@
 "use strict";
 
+const fs = require("fs");
+const fsp = require("fs/promises");
+const os = require("os");
+const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 
 const COOLDOWN_MS = 10 * 60 * 1000;
@@ -116,7 +121,23 @@ function sleep(ms) {
 }
 
 
+async function writeBufferToTemp(buffer, extension) {
+  const file = path.join(os.tmpdir(), "eclipse-group-profile-" + crypto.randomBytes(12).toString("hex") + extension);
+  await fsp.writeFile(file, buffer, { flag: "wx", mode: 0o600 });
+  return file;
+}
+
 async function changeImage(api, threadId, buffer, extension) {
+  // ws3-fca's documented changeGroupImage contract expects a file stream.
+  // Give it a real temporary file stream (with a filename) rather than a
+  // generic in-memory stream that some upload implementations cannot encode.
+  const file = await writeBufferToTemp(buffer, extension);
+  try {
+    await withTimeout(callApi(api, "changeGroupImage", [fs.createReadStream(file), String(threadId)]), API_TIMEOUT_MS);
+  } finally {
+    await fsp.rm(file, { force: true }).catch(() => {});
+  }
+}
   // Match the known-good ws3-fca call used by the bot's existing photo guard.
   // Stream the complete image as one Buffer chunk; do not iterate Buffer bytes as numbers.
   const { Readable } = require("stream");
