@@ -4625,8 +4625,8 @@ app.get(
       const isRealName = value => {
         const name = String(value || "").trim();
         return Boolean(name) &&
-          !/^\\d{6,32}$/.test(name) &&
-          !/^(?:facebook(?:\\s+user)?|messenger(?:\\s+user)?|unknown|unnamed|user)(?:\\s+\\d+)?$/i.test(name);
+          !/^\d{6,32}$/.test(name) &&
+          !/^(?:facebook(?:\s+user)?|messenger(?:\s+user)?|unknown|unnamed|user)(?:\s+\d+)?$/i.test(name);
       };
       const [threadInfoResult, threadListResult] = await Promise.all([
         dashboardGetThreadInfo(activeMessengerApi, threadID).then(value => ({ ok: true, value })).catch(() => ({ ok: false, value: {} })),
@@ -4660,7 +4660,7 @@ app.get(
         threadListParticipants: countProfileRows(listedThread?.participants || listedThread?.participantList || listedThread?.participant_list),
       };
       const unresolved = members.filter(member =>
-        /^\\d{6,32}$/.test(String(member?.user_id || "")) &&
+        /^\d{6,32}$/.test(String(member?.user_id || "")) &&
         (!member.resolved || !isRealName(member.name))
       );
       const probeMembers = unresolved.slice(0, 3);
