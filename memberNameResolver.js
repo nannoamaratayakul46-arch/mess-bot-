@@ -267,14 +267,15 @@ async function resolveMemberName(api, threadID, userID, fallback = "") {
   const cached = cache.get(key);
   if (cached && Date.now() - cached.at < CACHE_TTL) return cached.name;
   const learnedName = learned.get(key);
-  if (learnedName?.name) return learnedName.name;
 
   // Resolve only this member; moderation should not trigger lookups for every
   // participant whenever one person is warned or removed.
+  let nickname = "";
   const info = await callApi(api, "getThreadInfo", [thread], 3500);
   if (info && typeof info === "object") {
-    const { ids, names } = collectParticipants(info);
+    const { ids, names, nicknameNames } = collectParticipants(info);
     const found = names.get(id);
+    nickname = nicknameNames.get(id) || "";
     if (ids.has(id) && found?.name) {
       boundedSet(cache, key, { name: found.name, at: Date.now() }, CACHE_MAX);
       return found.name;
@@ -292,7 +293,8 @@ async function resolveMemberName(api, threadID, userID, fallback = "") {
       }
     }
   }
-  return cleanName(fallback) || "";
+  if (learnedName?.name) return learnedName.name;
+  return cleanName(nickname) || cleanName(fallback) || "";
 }
 
 module.exports = { resolveGroupMembers, resolveMemberName, noteEvent, cleanName, recordName, idOf };
