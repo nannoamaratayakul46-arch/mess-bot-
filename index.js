@@ -4440,7 +4440,48 @@ app.get(
     if (!threadID || !dashboardKnownGroups.has(threadID)) return res.status(400).json({ ok: false, error: "Choose a group in the refreshed group list." });
     if (!activeMessengerApi || activeListenerGeneration <= 0) return res.status(409).json({ ok: false, error: "Messenger is not connected." });
     try {
-      const { members, diagnostics } = await resolveGroupMembers(activeMessengerApi, threadID);
+      let { members, diagnostics } = await resolveGroupMembers(activeMessengerApi, threadID);
+
+      // Fallback to the bot's established participant parser when this FCA
+      // variant exposes participants through the thread-list response shape.
+      if (!members.length) {
+        const fallbackIDs = await dashboardGetParticipantIds(activeMessengerApi, threadID);
+        const fallbackInfo = await dashboardGetThreadInfo(activeMessengerApi, threadID).catch(() => ({}));
+        const fallbackNicknames = fallbackInfo?.nicknames && typeof fallbackInfo.nicknames === "object" ? fallbackInfo.nicknames : {};
+        const fallbackMembers = [...fallbackIDs].map(user_id => ({
+          user_id,
+          name: String(fallbackNicknames[user_id] || "").trim() || ("Unnamed ····" + user_id.slice(-4)),
+          resolved: Boolean(String(fallbackNicknames[user_id] || "").trim()),
+          source: String(fallbackNicknames[user_id] || "").trim() ? "nickname" : "unresolved",
+        }));
+        // Failed profile lookups must not make the whole picker disappear.
+        for (let offset = 0; offset < fallbackMembers.length; offset += 25) {
+          const batch = fallbackMembers.slice(offset, offset + 25);
+          try {
+            const rows = await dashboardGetUserInfo(activeMessengerApi, batch.map(member => member.user_id), 3500);
+            for (const member of batch) {
+              const row = dashboardGetUserInfoRow(rows, member.user_id);
+              const name = dashboardMemberDisplayName(row);
+              if (name) {
+                member.name = name;
+                member.resolved = true;
+                member.source = "userInfo";
+              }
+            }
+          } catch (lookupError) {
+            console.warn("[MEMBERS] Fallback name lookup failed:", String(lookupError?.message || lookupError).slice(0, 120));
+          }
+        }
+        members = fallbackMembers;
+        diagnostics = {
+          ...diagnostics,
+          threadInfo: true,
+          participantIds: fallbackIDs.size,
+          named: members.filter(member => member.resolved).length,
+          unresolved: members.filter(member => !member.resolved).length,
+          fallback: "dashboardGetParticipantIds",
+        };
+      }
       if (!diagnostics.threadInfo) {
         console.warn("[MEMBERS] getThreadInfo returned no usable group data:", JSON.stringify({ threadID, diagnostics }));
         return res.status(503).json({ ok: false, error: "Could not read group members from Messenger.", members: [] });
