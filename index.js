@@ -4601,7 +4601,6 @@ app.get(
       // itself returns no data. Only fail when neither source yields members.
       if (!members.length) {
         console.warn("[MEMBERS] No usable members from thread info/list:", JSON.stringify({ threadID, diagnostics }));
-        console.warn("[MEMBERS] No participant IDs returned:", JSON.stringify({ threadID, diagnostics }));
         return res.status(503).json({ ok: false, error: "Messenger returned no participant IDs for this group. Check bot service logs.", members: [] });
       }
       if (diagnostics.unresolved) console.warn("[MEMBERS] Some names remain unresolved:", JSON.stringify({ threadID, participantIds: diagnostics.participantIds, named: diagnostics.named, unresolved: diagnostics.unresolved, sources: diagnostics.sources, batchCalls: diagnostics.batchCalls, singleCalls: diagnostics.singleCalls }));
