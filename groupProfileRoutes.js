@@ -127,12 +127,24 @@ async function writeBufferToTemp(buffer, extension) {
 }
 
 async function changeImage(api, threadId, buffer, extension) {
-  const file = await writeBufferToTemp(buffer, extension);
-  try {
-    await withTimeout(callApi(api, "changeGroupImage", [fs.createReadStream(file), threadId]), API_TIMEOUT_MS);
-  } finally {
-    await fsp.rm(file, { force: true }).catch(() => {});
-  }
+  // Match the known-good ws3-fca call used by the bot's existing photo guard.
+  // Some ws3-fca builds reject a filesystem ReadStream with error 1545003.
+  const { Readable } = require("stream");
+  await withTimeout(new Promise((resolve, reject) => {
+    let settled = false;
+    const done = error => {
+      if (settled) return;
+      settled = true;
+      if (error) reject(new Error(messengerErrorMessage(error)));
+      else resolve();
+    };
+    try {
+      const result = api.changeGroupImage(Readable.from(buffer), String(threadId), done);
+      if (result && typeof result.then === "function") result.then(() => done(), done);
+    } catch (error) {
+      done(error);
+    }
+  }), API_TIMEOUT_MS);
 }
 
 async function saveExpectedUrl(db, threadId, api) {
@@ -308,7 +320,7 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
       } else {
         const decoded = decodeProfileImage(image);
         tmpFile = await writeBufferToTemp(decoded.buffer, decoded.extension);
-        await withTimeout(callApi(api, "changeGroupImage", [fs.createReadStream(tmpFile), threadId]), API_TIMEOUT_MS);
+        await changeImage(api, threadId, decoded.buffer, decoded.extension);
         // Persist the actual backup in PostgreSQL; never depend on Render's temporary disk.
         const currentUrl = await saveExpectedUrl(db, threadId, api);
         await db.query(`
