@@ -214,10 +214,22 @@ async function resolveGroupMembers(api, threadID, options = {}) {
       const chunk = stillMissing.slice(offset, offset + 8);
       const rows = await Promise.all(chunk.map(async id => {
         singleCalls++;
-        const payload = await callApi(api, "getUserInfo", [id], timeoutMs);
-        const records = indexUserRecords(payload, [id]);
-        const row = records.get(id) || (recordName(payload) ? payload : null);
-        return { id, name: recordName(row) };
+        // Match the known-good dashboard lookup: normalize one ID to an array.
+        // Some ws3-fca builds silently return no useful profile for a scalar ID.
+        let payload = await callApi(api, "getUserInfo", [[id]], timeoutMs);
+        let records = indexUserRecords(payload, [id]);
+        let row = records.get(id) || (recordName(payload) ? payload : null);
+        let name = recordName(row);
+
+        // Keep the scalar form as a compatibility fallback for API wrappers
+        // that only support scalar lookups.
+        if (!name) {
+          payload = await callApi(api, "getUserInfo", [id], timeoutMs);
+          records = indexUserRecords(payload, [id]);
+          row = records.get(id) || (recordName(payload) ? payload : null);
+          name = recordName(row);
+        }
+        return { id, name };
       }));
       for (const row of rows) if (row.name && !names.has(row.id)) names.set(row.id, { name: row.name, source: "userInfo-single" });
     }
