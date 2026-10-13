@@ -24,7 +24,7 @@ const { login } = require("ws3-fca");
 const db = require("./db");
 const { resolveTargetName } = require("./targetName");
 const { registerGroupProfileRoutes } = require("./groupProfileRoutes");
-const { resolveGroupMembers, resolveMemberName, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
+const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
 const { createLiveChat } = require("./liveChat");
 const { registerModerationRoutes } = require("./dashboardModeration");
 
