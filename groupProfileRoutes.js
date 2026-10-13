@@ -118,7 +118,7 @@ function sleep(ms) {
 
 async function changeImage(api, threadId, buffer, extension) {
   // Match the known-good ws3-fca call used by the bot's existing photo guard.
-  // Some ws3-fca builds reject a filesystem ReadStream with error 1545003.
+  // Stream the complete image as one Buffer chunk; do not iterate Buffer bytes as numbers.
   const { Readable } = require("stream");
   await withTimeout(new Promise((resolve, reject) => {
     let settled = false;
@@ -129,7 +129,7 @@ async function changeImage(api, threadId, buffer, extension) {
       else resolve();
     };
     try {
-      const result = api.changeGroupImage(Readable.from(buffer), String(threadId), done);
+      const result = api.changeGroupImage(Readable.from([buffer]), String(threadId), done);
       if (result && typeof result.then === "function") result.then(() => done(), done);
     } catch (error) {
       done(error);
