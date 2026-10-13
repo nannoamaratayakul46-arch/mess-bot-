@@ -6561,9 +6561,10 @@ function attemptLogin() {
           // Record chat only for groups currently open in the dashboard; closed chats are not buffered.
           liveChat.record(event);
 
-          // Always emit a privacy-safe event diagnostic BEFORE any event filter.
-          // This helps identify whether Messenger delivered a demotion event and
-          // whether shouldProcessIncomingEvent would otherwise discard it.
+          // Evaluate the incoming-event deduplicator exactly once per event.
+          // Calling it once for diagnostics and again for the real filter would
+          // mark the event as seen on the first call, then suppress it on the second.
+          const passesIncomingFilter = shouldProcessIncomingEvent(event);
           if (event?.type === "event" && String(event?.logMessageType || "").startsWith("log:")) {
             const diagnosticData = event?.logMessageData && typeof event.logMessageData === "object"
               ? event.logMessageData
@@ -6574,14 +6575,14 @@ function attemptLogin() {
               adminEvent: diagnosticData.ADMIN_EVENT ?? diagnosticData.admin_event ?? null,
               targetPresent: Boolean(diagnosticData.TARGET_ID ?? diagnosticData.target_id),
               authorPresent: Boolean(event?.author ?? event?.authorID ?? event?.senderID),
-              passesIncomingFilter: shouldProcessIncomingEvent(event)
+              passesIncomingFilter
             }));
-          }
-
-          if (!shouldProcessIncomingEvent(event)) {
-            if (event?.type === "event" && String(event?.logMessageType || "").startsWith("log:")) {
+            if (!passesIncomingFilter) {
               console.log("[AUTOMOD-DIAG] System event was rejected by shouldProcessIncomingEvent.");
             }
+          }
+
+          if (!passesIncomingFilter) {
             return;
           }
 
