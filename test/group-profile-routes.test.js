@@ -50,6 +50,54 @@ test("photo guard skips restoration when Messenger does not return a current pho
     changeGroupImage() { uploads += 1; },
   };
 
-  await runGuardCheck({ db, getApi: () => api });
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(" "));
+  try {
+    await runGuardCheck({ db, getApi: () => api });
+  } finally {
+    console.warn = originalWarn;
+  }
   assert.equal(uploads, 0, "an unavailable URL must not trigger a photo upload");
+  assert.ok(
+    warnings.some(message => message.includes("reason: photo-url-fields-absent")),
+    "diagnostics should identify a response object with no recognized photo URL fields",
+  );
+});
+
+test("photo guard diagnostics distinguish a null thread-info response", async () => {
+  let uploads = 0;
+  const db = {
+    async query(sql) {
+      if (sql.includes("SELECT thread_id, image_data")) {
+        return { rows: [{
+          thread_id: "test-null-thread-info",
+          image_data: Buffer.from([0xff, 0xd8, 0xff]),
+          image_mime: "image/jpeg",
+          expected_image_url: "cdn.example.com/saved-photo",
+          last_restore_at: null,
+        }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const api = {
+    getThreadInfo(_threadId, callback) { callback(null, null); },
+    changeGroupImage() { uploads += 1; },
+  };
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(" "));
+  try {
+    await runGuardCheck({ db, getApi: () => api });
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(uploads, 0, "a null thread-info response must not trigger a photo upload");
+  assert.ok(
+    warnings.some(message => message.includes("reason: thread-info-null")),
+    "diagnostics should distinguish a null thread-info response",
+  );
 });

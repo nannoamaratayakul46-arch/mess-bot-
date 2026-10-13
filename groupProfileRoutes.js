@@ -113,6 +113,16 @@ function getImageUrl(info) {
   return normalizePhotoUrl(info?.imageSrc || info?.imageUrl || info?.threadPictureUrl || null);
 }
 
+function getPhotoUrlDiagnostic(info) {
+  if (info == null) return "thread-info-null";
+  if (typeof info !== "object") return "thread-info-unexpected-type";
+  const fields = ["imageSrc", "imageUrl", "threadPictureUrl"];
+  const present = fields.filter(field => Object.prototype.hasOwnProperty.call(info, field));
+  if (!present.length) return "photo-url-fields-absent";
+  if (getImageUrl(info)) return "photo-url-present";
+  return "photo-url-fields-empty-or-invalid";
+}
+
 function sleep(ms) {
   return new Promise(resolve => {
     const timer = setTimeout(resolve, ms);
@@ -189,7 +199,9 @@ async function runGuardCheck({ db, getApi, audit = () => {} }) {
         // that the group photo changed. Never upload a backup on a null URL.
         if (!current) {
           mismatchObservations.delete(threadId);
-          console.warn("[PHOTO-GUARD] Current photo URL unavailable for " + threadId + "; skipping this check.");
+          // Log only the response shape, never raw Messenger data or photo URLs.
+          console.warn("[PHOTO-GUARD] Current photo URL unavailable for " + threadId
+            + " (reason: " + getPhotoUrlDiagnostic(info) + "); skipping this check.");
           continue;
         }
 
