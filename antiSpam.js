@@ -279,14 +279,45 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const actorRaw = event?.author ?? event?.authorID ?? event?.senderID;
     const actorID = idOf(actorRaw) || String(actorRaw ?? "").trim();
 
-    // Only respond to a confirmed removal of the configured bot owner from admin.
-    if (!threadID || adminEvent !== "remove_admin" || !targetID || !actorID || !isBotOwnerId(targetID)) return;
-    if (actorID === targetID || isBotOwnerId(actorID)) return;
+    // Diagnostic-only gates: log the failed condition without exposing account IDs.
+    // This makes silent early returns actionable while preserving existing safety checks.
+    if (!threadID) {
+      log("[AUTOMOD-SENSITIVE] Restoration skipped: missing thread ID.");
+      return;
+    }
+    if (adminEvent !== "remove_admin") return;
+    if (!targetID) {
+      log("[AUTOMOD-SENSITIVE] Restoration skipped: remove_admin event has no target ID.");
+      return;
+    }
+    if (!actorID) {
+      log("[AUTOMOD-SENSITIVE] Restoration skipped: remove_admin event has no actor ID.");
+      return;
+    }
+    if (!isBotOwnerId(targetID)) {
+      log("[AUTOMOD-SENSITIVE] Restoration skipped: removed admin does not match configured ADMIN_IDS owner (targetIsConfiguredOwner=false). Check ADMIN_IDS and the account ID being demoted.");
+      return;
+    }
+    if (actorID === targetID) {
+      log("[AUTOMOD-SENSITIVE] Restoration skipped: actor and target are the same account.");
+      return;
+    }
+    if (isBotOwnerId(actorID)) {
+      log("[AUTOMOD-SENSITIVE] Restoration skipped: event actor matches configured bot owner.");
+      return;
+    }
 
     const settings = await getSettings(threadID);
-    if (settings?.enabled !== true) return;
+    if (settings?.enabled !== true) {
+      log(`[AUTOMOD-SENSITIVE] Restoration skipped in ${threadID}: AutoMod settings are not enabled for this thread.`);
+      return;
+    }
     const config = await getConfig(threadID);
-    if (config.sensitive_admin_enabled !== true) return;
+    if (config.sensitive_admin_enabled !== true) {
+      log(`[AUTOMOD-SENSITIVE] Restoration skipped in ${threadID}: sensitive_admin_enabled is not true.`);
+      return;
+    }
+    log(`[AUTOMOD-SENSITIVE] Restoration checks passed in ${threadID}; proceeding to verify bot admin status and restore owner.`);
     const actorName = await resolveMemberName(api, threadID, actorID);
     const actorLabel = actorName ? actorName + " (" + actorID + ")" : actorID;
 
