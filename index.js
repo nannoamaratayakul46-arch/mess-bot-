@@ -6561,7 +6561,27 @@ function attemptLogin() {
           // Record chat only for groups currently open in the dashboard; closed chats are not buffered.
           liveChat.record(event);
 
+          // Always emit a privacy-safe event diagnostic BEFORE any event filter.
+          // This helps identify whether Messenger delivered a demotion event and
+          // whether shouldProcessIncomingEvent would otherwise discard it.
+          if (event?.type === "event" && String(event?.logMessageType || "").startsWith("log:")) {
+            const diagnosticData = event?.logMessageData && typeof event.logMessageData === "object"
+              ? event.logMessageData
+              : {};
+            console.log("[AUTOMOD-DIAG] Incoming Messenger system event:", JSON.stringify({
+              threadPresent: Boolean(event?.threadID),
+              eventType: String(event?.logMessageType || ""),
+              adminEvent: diagnosticData.ADMIN_EVENT ?? diagnosticData.admin_event ?? null,
+              targetPresent: Boolean(diagnosticData.TARGET_ID ?? diagnosticData.target_id),
+              authorPresent: Boolean(event?.author ?? event?.authorID ?? event?.senderID),
+              passesIncomingFilter: shouldProcessIncomingEvent(event)
+            }));
+          }
+
           if (!shouldProcessIncomingEvent(event)) {
+            if (event?.type === "event" && String(event?.logMessageType || "").startsWith("log:")) {
+              console.log("[AUTOMOD-DIAG] System event was rejected by shouldProcessIncomingEvent.");
+            }
             return;
           }
 
