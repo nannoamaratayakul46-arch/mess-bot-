@@ -88,13 +88,10 @@ function callApi(api, method, args, timeoutMs = 4500) {
     let settled = false;
     const finish = (error, data) => {
       if (settled) return;
-      // Some FCA-compatible wrappers call callback(data); normal ws3-fca calls
-      // callback(error, data). Distinguish a lone object payload from an Error.
-      if (arguments.length === 1) { /* intentionally handled by callback below */ }
       settled = true;
       clearTimeout(timer);
-      if (error instanceof Error || (error && arguments.length > 1)) reject(error);
-      else resolve(error ?? data ?? null);
+      if (error) reject(error);
+      else resolve(data ?? null);
     };
     const timer = setTimeout(() => {
       if (settled) return;
