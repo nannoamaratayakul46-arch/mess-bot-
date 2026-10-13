@@ -321,121 +321,17 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const actorName = await resolveMemberName(api, threadID, actorID);
     const actorLabel = actorName ? actorName + " (" + actorID + ")" : actorID;
 
-    // Restore the owner's admin role first, but only after verifying the owner
-    // remains a participant and the bot itself is currently an admin.
+    // This is a targeted remove_admin event for the configured owner. Avoid
+    // getThreadInfo/getThreadInfoDeprecated here: ws3-fca currently throws
+    // inside those lookups, and reading thread lists would add expensive API work.
+    // Request promotion directly; Messenger will reject it if the bot lacks
+    // permission or the owner is no longer a participant.
     try {
-      if (!api || typeof api.getThreadInfo !== "function" || typeof api.changeAdminStatus !== "function") {
-        log("[AUTOMOD-SENSITIVE] Cannot restore owner admin status: required Messenger role/status methods are unavailable.");
+      if (!api || typeof api.changeAdminStatus !== "function") {
+        log("[AUTOMOD-SENSITIVE] Cannot restore owner admin status: changeAdminStatus is unavailable.");
       } else {
-        const info = await callbackCall(cb => api.getThreadInfo(threadID, cb), 8000);
-        const normalizeIds = value => {
-          const ids = new Set();
-          const visit = item => {
-            if (item == null) return;
-            if (Array.isArray(item)) { for (const entry of item) visit(entry); return; }
-            if (typeof item === "string" || typeof item === "number") {
-              const id = String(item).trim();
-              if (id) ids.add(id);
-              return;
-            }
-            if (typeof item !== "object") return;
-            const direct = item.id ?? item.userID ?? item.userId ?? item.uid ??
-              item.participantID ?? item.participantId;
-            if (direct != null) { ids.add(String(direct).trim()); return; }
-            for (const [key, value] of Object.entries(item)) {
-              if (value === true || value === 1 || value === "true") ids.add(String(key).trim());
-              else if (value && typeof value === "object") visit(value);
-            }
-          };
-          visit(value);
-          return [...ids].filter(Boolean);
-        };
-        const botID = String(typeof api.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
-        const getAdminIDs = value => normalizeIds([
-          value?.adminIDs, value?.admin_ids, value?.threadAdminIDs, value?.thread_admin_ids,
-          value?.threadAdmins, value?.thread_admins, value?.admins
-        ]);
-        let adminIDs = getAdminIDs(info);
-        // Some FCA builds omit adminIDs from getThreadInfo but expose them in the
-        // legacy single-thread response. This is a targeted lookup, not a group scan.
-        if (!adminIDs.length && typeof api.getThreadInfoDeprecated === "function") {
-          // FCA forks differ: some callbacks use (err, data), while others
-          // return the response as the sole callback argument. Do not route
-          // this legacy method through callbackCall, which assumes (err, data).
-          try {
-            const legacyInfo = await new Promise((resolve, reject) => {
-              let settled = false;
-              const timer = setTimeout(() => {
-                if (settled) return;
-                settled = true;
-                resolve(null);
-              }, 6000);
-              const finish = (...args) => {
-                if (settled) return;
-                settled = true;
-                clearTimeout(timer);
-                if (args.length > 1) {
-                  const [error, data] = args;
-                  if (error) reject(error);
-                  else resolve(data || null);
-                } else {
-                  const [data] = args;
-                  if (data instanceof Error) reject(data);
-                  else resolve(data || null);
-                }
-              };
-              try {
-                const result = api.getThreadInfoDeprecated(threadID, finish);
-                if (result && typeof result.then === "function") {
-                  result.then(data => finish(null, data), finish);
-                } else if (result && typeof result === "object") {
-                  finish(null, result);
-                }
-              } catch (error) {
-                finish(error);
-              }
-            });
-            adminIDs = getAdminIDs(legacyInfo);
-          } catch (error) {
-            log(`[AUTOMOD-SENSITIVE] Legacy role lookup failed in ${threadID}: ${String(error?.message || error).slice(0, 120)}`);
-          }
-        }
-        const participantIDs = normalizeIds(info?.participantIDs ?? info?.participants);
-        if (!botID || !adminIDs.includes(botID)) {
-          log(`[AUTOMOD-SENSITIVE] Cannot verify bot admin in ${threadID}: ${JSON.stringify({
-            botIdAvailable: Boolean(botID),
-            adminFieldPresent: Boolean(info?.adminIDs || info?.admin_ids || info?.threadAdmins || info?.thread_admins || info?.admins),
-            adminCount: adminIDs.length,
-            legacyMethodAvailable: typeof api.getThreadInfoDeprecated === "function"
-          })}`);
-        } else if (!participantIDs.includes(targetID)) {
-          // The owner may have been kicked immediately after demotion. Try the
-          // supported re-add method before giving up, then re-read group info.
-          if (typeof api.addUserToGroup !== "function") {
-            log(`[AUTOMOD-SENSITIVE] Owner is absent from ${threadID}, but addUserToGroup is unavailable; re-add skipped.`);
-          } else {
-            try {
-              await callbackCall(cb => api.addUserToGroup(targetID, threadID, cb), 12000);
-              log(`[AUTOMOD-SENSITIVE] Re-add request sent for owner after admin-removal event in ${threadID}.`);
-              const refreshed = await callbackCall(cb => api.getThreadInfo(threadID, cb), 8000);
-              const refreshedParticipants = normalizeIds(refreshed?.participantIDs ?? refreshed?.participants);
-              const refreshedAdmins = normalizeIds(refreshed?.adminIDs);
-              if (refreshedParticipants.includes(targetID) && !refreshedAdmins.includes(targetID)) {
-                await callbackCall(cb => api.changeAdminStatus(threadID, targetID, true, cb), 12000);
-                log(`[AUTOMOD-SENSITIVE] Owner re-added and admin status restored in ${threadID}.`);
-              } else if (!refreshedParticipants.includes(targetID)) {
-                log(`[AUTOMOD-SENSITIVE] Re-add request did not restore confirmed membership in ${threadID}; admin promotion skipped.`);
-              } else {
-                log(`[AUTOMOD-SENSITIVE] Owner is already an admin after re-add attempt in ${threadID}.`);
-              }
-            } catch (error) {
-              log(`[AUTOMOD-SENSITIVE] Owner re-add/admin restoration failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
-            }
-          }
-        } else if (!adminIDs.includes(targetID)) {
-          await callbackCall(cb => api.changeAdminStatus(threadID, targetID, true, cb), 12000);
-          log(`[AUTOMOD-SENSITIVE] Restored bot owner's admin status in ${threadID}.`);
-        }
+        await callbackCall(cb => api.changeAdminStatus(threadID, targetID, true, cb), 12000);
+        log(`[AUTOMOD-SENSITIVE] Owner admin restoration request succeeded in ${threadID}.`);
       }
     } catch (error) {
       log(`[AUTOMOD-SENSITIVE] Owner admin restoration failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
