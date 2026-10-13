@@ -4269,7 +4269,7 @@ function dashboardGetThreadInfo(api, threadID) {
 }
 
 
-function dashboardGetUserInfo(api, userIDs, timeoutMs = 4000, scalarLookup = false) {
+function dashboardGetUserInfo(api, userIDs, timeoutMs = 4000, scalarLookup = false, usePayload = true) {
   return new Promise((resolve, reject) => {
     if (!api || typeof api.getUserInfo !== "function") return resolve({});
     let settled = false;
@@ -4328,7 +4328,9 @@ function dashboardGetUserInfo(api, userIDs, timeoutMs = 4000, scalarLookup = fal
       const lookupIDs = scalarLookup
         ? String(Array.isArray(userIDs) ? userIDs[0] || "" : userIDs || "")
         : (Array.isArray(userIDs) ? userIDs : [userIDs]);
-      const result = api.getUserInfo(lookupIDs, done);
+      const result = usePayload
+        ? api.getUserInfo(lookupIDs, done)
+        : api.getUserInfo(lookupIDs, false, done);
       if (result && typeof result.then === "function") {
         result.then(users => done(null, users)).catch(done);
       } else if (looksLikeUserPayload(result)) {
@@ -4366,7 +4368,11 @@ function dashboardMemberDisplayName(row) {
   ];
   for (const candidate of candidates) {
     const name = String(candidate || "").replace(/\s+/g, " ").trim().slice(0, 120);
-    if (!name || /^\d{6,32}$/.test(name) || /^Messenger user \d+$/i.test(name)) continue;
+    if (
+      !name ||
+      /^\d{6,32}$/.test(name) ||
+      /^(facebook(?:\s+user)?|messenger(?:\s+user)?|unknown|unnamed|user)(?:\s+\d+)?$/i.test(name)
+    ) continue;
     return name;
   }
   return "";
@@ -4493,18 +4499,37 @@ app.get(
       for (let offset = 0; offset < retryMembers.length; offset += 8) {
         const batch = retryMembers.slice(offset, offset + 8);
         const resolvedRows = await Promise.all(batch.map(async member => {
+          const userID = String(member.user_id);
           try {
+            // First use the normal payload lookup, matching the dashboard's existing path.
             const userRows = await dashboardGetUserInfo(
               activeMessengerApi,
-              [String(member.user_id)],
+              [userID],
               3500
             );
-            const row = dashboardGetUserInfoRow(userRows, String(member.user_id)) ||
+            let row = dashboardGetUserInfoRow(userRows, userID) ||
               (userRows && typeof userRows === "object" && !Array.isArray(userRows) &&
                 dashboardMemberDisplayName(userRows) ? userRows : null);
-            return { member, name: dashboardMemberDisplayName(row) };
+            let name = dashboardMemberDisplayName(row);
+
+            // ws3-fca returns a literal "Facebook User" placeholder when its
+            // /chat/user_info payload has no profile. Retry via its documented
+            // profile-page path (usePayload=false) rather than accepting that placeholder.
+            if (!name) {
+              const profileRows = await dashboardGetUserInfo(
+                activeMessengerApi,
+                [userID],
+                4500,
+                false,
+                false
+              );
+              row = dashboardGetUserInfoRow(profileRows, userID) ||
+                (Array.isArray(profileRows) ? profileRows[0] : null);
+              name = dashboardMemberDisplayName(row);
+            }
+            return { member, name };
           } catch (lookupError) {
-            console.warn("[MEMBERS] Single-member name retry failed:", String(lookupError?.message || lookupError).slice(0, 120));
+            console.warn("[MEMBERS] Profile-page name retry failed:", String(lookupError?.message || lookupError).slice(0, 120));
             return { member, name: "" };
           }
         }));
@@ -11336,7 +11361,7 @@ async function runBanatBurstQueue(threadID) {
 // to ECLIPSE. Ordinary messages such as "!hello" still trigger Jaiden mode;
 // recognized command names continue into the normal command router.
 function isRecognizedBangCommand(body) {
-  const match = String(body || "").trim().match(/^!([a-z0-9_-]+)(?:\\s|$)/i);
+  const match = String(body || "").trim().match(/^!([a-z0-9_-]+)(?:\s|$)/i);
   if (!match) return false;
 
   const command = match[1].toLowerCase();

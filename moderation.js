@@ -3206,12 +3206,64 @@ async function removeFromGroup(
       }
     });
 
-    const admins = Array.isArray(info?.adminIDs)
-      ? info.adminIDs.map(item => String(item?.id ?? item?.userID ?? item))
-      : [];
+    const normalizeAdminIDs = (value) => {
+      const rows = Array.isArray(value)
+        ? value
+        : value && typeof value === "object"
+          ? Object.values(value)
+          : [];
+      return [...new Set(rows.map(item =>
+        String(item?.id ?? item?.userID ?? item?.userId ?? item ?? "").trim()
+      ).filter(id => Boolean(id) && id !== "[object Object]"))];
+    };
+
+    let admins = normalizeAdminIDs(info?.adminIDs);
     const botID = typeof api.getCurrentUserID === "function"
-      ? String(api.getCurrentUserID())
+      ? String(api.getCurrentUserID()).trim()
       : "";
+
+    // Some FCA builds omit adminIDs from getThreadInfo while the same
+    // thread-list GraphQL response still includes thread_admins. Check that
+    // alternate authoritative response before refusing the action.
+    if (!admins.length && typeof api.getThreadList === "function") {
+      try {
+        const threads = await new Promise((resolve, reject) => {
+          let settled = false;
+          const timer = setTimeout(() => {
+            if (settled) return;
+            settled = true;
+            resolve([]);
+          }, 8000);
+          const finish = (error, rows) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            if (error) reject(error);
+            else resolve(Array.isArray(rows) ? rows : []);
+          };
+          try {
+            const result = api.getThreadList(200, null, ["INBOX", "ARCHIVED", "PENDING", "OTHER"], finish);
+            if (result && typeof result.then === "function") {
+              result.then(rows => finish(null, rows), error => finish(error));
+            } else if (Array.isArray(result)) {
+              finish(null, result);
+            }
+          } catch (error) {
+            finish(error);
+          }
+        });
+        const listedThread = threads.find(item =>
+          String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? "") === String(threadID)
+        );
+        const listedAdmins = normalizeAdminIDs(listedThread?.adminIDs);
+        if (listedAdmins.length) admins = listedAdmins;
+      } catch (roleFallbackError) {
+        console.warn(
+          "[moderation] Alternate group-role lookup failed:",
+          String(roleFallbackError?.message || roleFallbackError).slice(0, 160)
+        );
+      }
+    }
 
     if (!admins.length || !botID) {
       return {

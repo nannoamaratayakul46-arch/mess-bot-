@@ -9,7 +9,7 @@ const NAME_FIELDS = [
   "profileName", "profile_name", "alternateName", "firstName", "first_name",
   "shortName", "short_name",
 ];
-const BAD_NAME = /^(facebook user|messenger user|unknown|unnamed|user)$/i;
+const BAD_NAME = /^(facebook(?:\s+user)?|messenger(?:\s+user)?|unknown|unnamed|user)(?:\s+\d+)?$/i;
 const CACHE_TTL = 24 * 60 * 60 * 1000;
 const CACHE_MAX = 6000;
 const LEARN_MAX = 10000;
