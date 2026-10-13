@@ -24,6 +24,7 @@ const { login } = require("ws3-fca");
 const db = require("./db");
 const { resolveTargetName } = require("./targetName");
 const { registerGroupProfileRoutes } = require("./groupProfileRoutes");
+const { resolveGroupMembers, resolveMemberName, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
 const { createLiveChat } = require("./liveChat");
 const { registerModerationRoutes } = require("./dashboardModeration");
 
@@ -4436,149 +4437,43 @@ app.get(
   requireDashboardAccess,
   async (req, res) => {
     const threadID = String(req.params.thread_id || "").trim();
-    if (!threadID || !dashboardKnownGroups.has(threadID)) {
-      return res.status(400).json({ ok: false, error: "Choose a group in the refreshed group list." });
-    }
-    if (!activeMessengerApi || activeListenerGeneration <= 0) {
-      return res.status(409).json({ ok: false, error: "Messenger is not connected." });
-    }
+    if (!threadID || !dashboardKnownGroups.has(threadID)) return res.status(400).json({ ok: false, error: "Choose a group in the refreshed group list." });
+    if (!activeMessengerApi || activeListenerGeneration <= 0) return res.status(409).json({ ok: false, error: "Messenger is not connected." });
     try {
-      const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
-      const names = new Map();
-      const ids = new Set();
-      const participantSources = [
-        info.participantIDs, info.userInfo, info.participants,
-        info.participantList, info.participant_list,
-      ];
-      const participantValues = participantSources.flatMap(value => {
-        if (Array.isArray(value)) return value;
-        if (value && typeof value === "object") {
-          return Object.entries(value).map(([id, row]) =>
-            row && typeof row === "object" ? { id, ...row } : id
-          );
-        }
-        return [];
-      });
-
-      // ws3-fca can return participant data as arrays, keyed objects, strings,
-      // or user records whose identifier field is uid/userID instead of id.
-      for (const row of participantValues) {
-        const id = dashboardNormalizeMemberId(row);
-        if (!id) continue;
-        ids.add(id);
-        if (row && typeof row === "object") {
-          const name = dashboardMemberDisplayName(row) || dashboardMemberDisplayName({ name: info?.nicknames?.[id] });
-          if (name) names.set(id, name);
-        }
+      const { members, diagnostics } = await resolveGroupMembers(activeMessengerApi, threadID);
+      if (!diagnostics.threadInfo) {
+        console.warn("[MEMBERS] getThreadInfo returned no usable group data:", JSON.stringify({ threadID, diagnostics }));
+        return res.status(503).json({ ok: false, error: "Could not read group members from Messenger.", members: [] });
       }
-
-      // getThreadInfo sometimes omits participant data. Fall back to the thread
-      // list that also supplies the dashboard's known group list.
-      if (!ids.size) {
-        const threads = await dashboardGetThreadList(activeMessengerApi);
-        const thread = threads.find(item =>
-          String(item.threadID || item.threadId || item.thread_id || "") === threadID
-        );
-        if (thread) {
-          const participantSource = thread.participantIDs || thread.participants || thread.participantList || [];
-          const participants = Array.isArray(participantSource)
-            ? participantSource
-            : participantSource && typeof participantSource === "object"
-              ? Object.entries(participantSource).map(([id, value]) =>
-                  value && typeof value === "object" ? { id, ...value } : id
-                )
-              : [];
-          for (const value of participants) {
-            const id = dashboardNormalizeMemberId(value);
-            if (id) ids.add(id);
-            if (value && typeof value === "object" && id) {
-              const name = dashboardMemberDisplayName(value);
-              if (name) names.set(id, name);
-            }
-          }
-        }
-      }
-
-      // Thread nicknames are often present even when participant records are
-      // bare numeric IDs. Resolve those before calling getUserInfo so the UI
-      // does not fall back to rendering the IDs as member labels.
-      const threadNicknames = info?.nicknames && typeof info.nicknames === "object"
-        ? info.nicknames
-        : {};
-      for (const id of ids) {
-        if (names.has(id)) continue;
-        const nickname = dashboardMemberDisplayName({ name: threadNicknames[id] });
-        if (nickname) names.set(id, nickname);
-      }
-
-      // First try the efficient multi-ID lookup. Some ws3-fca 2.0.x builds
-      // only resolve a single ID correctly, even though the method accepts an
-      // array without throwing. If the batch omitted names, retry those IDs
-      // individually (with bounded concurrency) so both dashboard pickers get
-      // real display names instead of permanently rendering "Name unavailable".
-      const missingNames = [...ids].filter(id => !names.has(id));
-      for (let offset = 0; offset < missingNames.length; offset += 50) {
-        const batch = missingNames.slice(offset, offset + 50);
-        try {
-          const userRows = await dashboardGetUserInfo(activeMessengerApi, batch);
-          for (const id of batch) {
-            const row = dashboardGetUserInfoRow(userRows, id);
-            const name = dashboardMemberDisplayName(row);
-            if (name) names.set(id, name);
-          }
-        } catch (error) {
-          console.warn("[DASHBOARD] Member batch display-name lookup failed:", error?.message || error);
-        }
-      }
-
-      const stillMissing = [...ids].filter(id => !names.has(id));
-      for (let offset = 0; offset < stillMissing.length; offset += 8) {
-        const batch = stillMissing.slice(offset, offset + 8);
-        const rows = await Promise.all(batch.map(async id => {
-          try {
-            const result = await dashboardGetUserInfo(activeMessengerApi, id, 3500, true);
-            const row = dashboardGetUserInfoRow(result, id) ||
-              (result && typeof result === "object" && !Array.isArray(result) &&
-                (result.name || result.firstName || result.first_name || result.fullName || result.full_name ||
-                 result.displayName || result.display_name || result.userID || result.userId || result.uid || result.id)
-                ? result : null);
-            return { id, name: dashboardMemberDisplayName(row) };
-          } catch (error) {
-            console.warn("[DASHBOARD] Individual member name lookup failed:", error?.message || error);
-            return { id, name: "" };
-          }
-        }));
-        for (const row of rows) {
-          if (row.name) names.set(row.id, row.name);
-        }
-      }
-
-      const botID = String(activeMessengerApi.getCurrentUserID?.() || "");
-      const members = [...ids]
-        .filter(id => id && id !== botID)
-        .map(id => ({ user_id: id, name: names.get(id) || "" }))
-        .sort((a, b) => a.name.localeCompare(b.name));
       if (!members.length) {
-        console.warn("[DASHBOARD] Member lookup returned no IDs", JSON.stringify({
-          threadID,
-          infoKeys: Object.keys(info || {}),
-          participantIDsType: Array.isArray(info.participantIDs) ? "array" : typeof info.participantIDs,
-          userInfoType: Array.isArray(info.userInfo) ? "array" : typeof info.userInfo,
-          participantsType: Array.isArray(info.participants) ? "array" : typeof info.participants,
-        }));
-        return res.status(503).json({
-          ok: false,
-          error: "Messenger returned no participant IDs for this group. Check the bot service logs for [DASHBOARD] Member lookup returned no IDs.",
-        });
+        console.warn("[MEMBERS] No participant IDs returned:", JSON.stringify({ threadID, diagnostics }));
+        return res.status(503).json({ ok: false, error: "Messenger returned no participant IDs for this group. Check bot service logs.", members: [] });
       }
+      if (diagnostics.unresolved) console.warn("[MEMBERS] Some names remain unresolved:", JSON.stringify({ threadID, participantIds: diagnostics.participantIds, named: diagnostics.named, unresolved: diagnostics.unresolved, sources: diagnostics.sources, batchCalls: diagnostics.batchCalls, singleCalls: diagnostics.singleCalls }));
       return res.json({ ok: true, thread_id: threadID, members, count: members.length });
     } catch (error) {
-      console.error("[DASHBOARD] Could not load group members:", error);
-      return res.status(503).json({ ok: false, error: "Could not load this group's members from Messenger." });
+      console.error("[MEMBERS] Failed to resolve group members:", String(error?.message || error).slice(0, 200));
+      return res.status(503).json({ ok: false, error: "Could not load group members from Messenger." });
     }
   }
 );
 
+app.get(
+  "/api/dashboard/groups/:thread_id/members/debug",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.params.thread_id || "").trim();
+    if (!threadID || !dashboardKnownGroups.has(threadID)) return res.status(400).json({ ok: false, error: "Choose a group in the refreshed group list." });
+    if (!activeMessengerApi || activeListenerGeneration <= 0) return res.status(409).json({ ok: false, error: "Messenger is not connected." });
+    try {
+      const { diagnostics } = await resolveGroupMembers(activeMessengerApi, threadID);
+      res.set("Cache-Control", "no-store");
+      return res.json({ ok: true, diagnostics });
+    } catch (error) {
+      return res.status(503).json({ ok: false, error: "Member diagnostics failed." });
+    }
+  }
+);
 app.put(
   "/api/dashboard/groups/:thread_id/target",
   requireDashboardAccess,
@@ -6419,6 +6314,9 @@ function attemptLogin() {
           ) {
             return;
           }
+
+          // Learn sender, mention, join, and nickname names without blocking message handling.
+          noteMemberNameEvent(event);
 
           // Record chat only for groups currently open in the dashboard; closed chats are not buffered.
           liveChat.record(event);
