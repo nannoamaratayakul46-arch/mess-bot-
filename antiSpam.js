@@ -228,12 +228,29 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       ? event.logMessageData
       : {};
 
+    if (eventType === "log:unsubscribe" || eventType === "log:thread-admins") {
+      const payloadKeys = Object.keys(data).slice(0, 20);
+      log(`[AUTOMOD-SENSITIVE] Received group security event: ${JSON.stringify({
+        threadID,
+        eventType,
+        authorPresent: Boolean(event?.author ?? event?.authorID ?? event?.senderID),
+        payloadKeys,
+        adminEvent: data.ADMIN_EVENT ?? data.admin_event ?? null,
+        targetPresent: Boolean(data.TARGET_ID ?? data.target_id),
+        removedParticipantPresent: Boolean(
+          data.leftParticipantFbId ?? data.leftParticipantID ?? data.leftParticipantId ??
+          data.removedParticipantFbId ?? data.removedParticipantID
+        )
+      })}`);
+    }
+
     // If the configured owner is removed from a group, attempt to re-add them
     // only when the event explicitly identifies the owner as the removed member.
     if (eventType === "log:unsubscribe") {
       const removedID = String(
-        data.leftParticipantFbId ?? data.leftParticipantID ?? data.leftParticipantId ??
-        data.removedParticipantFbId ?? data.removedParticipantID ?? ""
+        data.leftParticipantFbId ?? data.leftParticipantFBID ?? data.leftParticipantID ??
+        data.leftParticipantId ?? data.removedParticipantFbId ?? data.removedParticipantFBID ??
+        data.removedParticipantID ?? data.removedParticipantId ?? data.TARGET_ID ?? data.target_id ?? ""
       ).trim();
       if (!threadID || !removedID || !isBotOwnerId(removedID)) return;
       const settings = await getSettings(threadID);
