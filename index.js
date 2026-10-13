@@ -4486,10 +4486,10 @@ app.get(
         }
       }
       const isPlaceholderName = value =>
-        /^(?:facebook(?:\\s+user)?|messenger(?:\\s+user)?|unknown|unnamed|user)(?:\\s+\\d+)?$/i
+        /^(?:facebook(?:\s+user)?|messenger(?:\s+user)?|unknown|unnamed|user)(?:\s+\d+)?$/i
           .test(String(value || "").trim());
       for (const member of members) {
-        if (!member || !/^\\d{6,32}$/.test(String(member.user_id || ""))) continue;
+        if (!member || !/^\d{6,32}$/.test(String(member.user_id || ""))) continue;
         if (!member.resolved || member.source === "nickname" || isPlaceholderName(member.name)) {
           const profileName = profileNames.get(String(member.user_id));
           if (profileName) {
