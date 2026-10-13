@@ -65,6 +65,47 @@ test("photo guard skips restoration when Messenger does not return a current pho
   );
 });
 
+test("photo guard prefers getThreadInfo callback data over a null promise result", async () => {
+  let uploads = 0;
+  const db = {
+    async query(sql) {
+      if (sql.includes("SELECT thread_id, image_data")) {
+        return { rows: [{
+          thread_id: "test-thread-info-promise-race",
+          image_data: Buffer.from([0xff, 0xd8, 0xff]),
+          image_mime: "image/jpeg",
+          expected_image_url: "cdn.example.com/saved-photo",
+          last_restore_at: null,
+        }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const api = {
+    getThreadInfo(_threadId, callback) {
+      setImmediate(() => callback(null, { imageSrc: "https://cdn.example.com/saved-photo" }));
+      return Promise.resolve(null);
+    },
+    changeGroupImage() { uploads += 1; },
+  };
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(" "));
+  try {
+    await runGuardCheck({ db, getApi: () => api });
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(uploads, 0, "matching callback data must not trigger a photo upload");
+  assert.equal(
+    warnings.some(message => message.includes("reason: thread-info-null")),
+    false,
+    "a null promise result must not mask the callback's thread-info object",
+  );
+});
+
 test("photo guard diagnostics distinguish a null thread-info response", async () => {
   let uploads = 0;
   const db = {
