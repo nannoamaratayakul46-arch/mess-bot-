@@ -4365,6 +4365,57 @@ function dashboardNormalizeMemberId(value) {
   return /^\d{6,32}$/.test(id) ? id : "";
 }
 
+// Use the same tolerant participant-ID resolution for every dashboard action.
+// ws3-fca variants do not always populate participantIDs, even when member
+// records are available under userInfo/participants or the thread list.
+function dashboardParticipantIdsFrom(source) {
+  const ids = new Set();
+  const values = Array.isArray(source)
+    ? source
+    : source && typeof source === "object"
+      ? Object.entries(source).map(([id, row]) =>
+          row && typeof row === "object" ? { id, ...row } : id
+        )
+      : [];
+  for (const value of values) {
+    const id = dashboardNormalizeMemberId(value);
+    if (id) ids.add(id);
+  }
+  return ids;
+}
+
+async function dashboardGetParticipantIds(api, threadID, knownInfo = null) {
+  const info = knownInfo || await dashboardGetThreadInfo(api, threadID);
+  const ids = new Set();
+  for (const source of [
+    info?.participantIDs,
+    info?.userInfo,
+    info?.participants,
+    info?.participantList,
+    info?.participant_list,
+  ]) {
+    for (const id of dashboardParticipantIdsFrom(source)) ids.add(id);
+  }
+
+  if (!ids.size) {
+    const threads = await dashboardGetThreadList(api);
+    const thread = threads.find(item =>
+      String(item.threadID || item.threadId || item.thread_id || "") === String(threadID)
+    );
+    if (thread) {
+      for (const source of [
+        thread.participantIDs,
+        thread.participants,
+        thread.participantList,
+        thread.participant_list,
+      ]) {
+        for (const id of dashboardParticipantIdsFrom(source)) ids.add(id);
+      }
+    }
+  }
+  return ids;
+}
+
 
 app.get(
   "/api/dashboard/groups/:thread_id/members",
@@ -4519,9 +4570,9 @@ app.put(
     }
     try {
       const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
-      const ids = Array.isArray(info.participantIDs) ? info.participantIDs.map(String) : [];
+      const ids = await dashboardGetParticipantIds(activeMessengerApi, threadID, info);
       const botID = String(activeMessengerApi.getCurrentUserID?.() || "");
-      if (!ids.includes(targetID) || targetID === botID) {
+      if (!ids.has(targetID) || targetID === botID) {
         return res.status(400).json({ ok: false, error: "Target must be a member of this group, not the bot." });
       }
       const requestedBangEnabled = typeof req.body?.bang_enabled === "boolean" ? req.body.bang_enabled : null;
@@ -5023,9 +5074,9 @@ app.post(
 
     try {
       const info = await dashboardGetThreadInfo(activeMessengerApi, threadID);
-      const ids = Array.isArray(info.participantIDs) ? info.participantIDs.map(String) : [];
+      const ids = await dashboardGetParticipantIds(activeMessengerApi, threadID, info);
       const botID = String(activeMessengerApi.getCurrentUserID?.() || "");
-      if (!ids.includes(participantID) || participantID === botID) {
+      if (!ids.has(participantID) || participantID === botID) {
         return res.status(400).json({ ok: false, error: "The selected target must be a member of this group, not the bot." });
       }
 

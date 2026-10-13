@@ -99,7 +99,9 @@ test("dashboard target API validates group membership and persists the target", 
   assert.ok(start >= 0 && end > start);
   assert.match(body, /dashboardKnownGroups\.has\(threadID\)/);
   assert.match(body, /dashboardGetThreadInfo\(activeMessengerApi, threadID\)/);
-  assert.match(body, /ids\.includes\(targetID\)/);
+  assert.match(body, /ids\.(?:includes\(targetID\)|has\(targetID\))/);
+  assert.match(source, /async function dashboardGetParticipantIds\(api, threadID, knownInfo = null\)/);
+  assert.match(source, /info\?\.participantIDs,[\s\S]*info\?\.participantList,[\s\S]*info\?\.participant_list/);
   assert.match(body, /db\.setBanatThreadTarget\(\s*threadID,\s*targetID,\s*"dashboard-admin",\s*requestedBangEnabled,\s*targetName,\s*jaidenSettings\s*\)/);
   assert.match(body, /setBanatDirectedTarget\(threadID, targetID/);
 });
