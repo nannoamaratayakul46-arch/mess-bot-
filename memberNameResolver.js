@@ -3,7 +3,7 @@
 // Shared member-name resolver for dashboard member pickers and moderation logs.
 // Numeric Facebook IDs are identity keys; names are display-only and are never
 // passed to removeUserFromGroup.
-const ID_RE = /^\d{6,20}$/;
+const ID_RE = /^\d{6,32}$/;
 const NAME_FIELDS = [
   "name", "fullName", "full_name", "displayName", "display_name",
   "profileName", "profile_name", "alternateName", "firstName", "first_name",
@@ -117,7 +117,7 @@ function callApi(api, method, args, timeoutMs = 4500) {
         }, error => callback(error));
       } else if (result && typeof result === "object" && !Array.isArray(result)) {
         // Accept immediate payloads only when they look like data, not request handles.
-        if (method === "getThreadInfo" && (result.participantIDs || result.userInfo || result.participants || result.threadID)) callback(null, result);
+        if (method === "getThreadInfo" && (result.participantIDs || result.userInfo || result.participants || result.participantList || result.participant_list || result.threadID || result.threadName)) callback(null, result);
         if (method === "getUserInfo" && (recordName(result) || idOf(result) || Object.keys(result).some(key => ID_RE.test(key)))) callback(null, result);
       }
     } catch (error) {
