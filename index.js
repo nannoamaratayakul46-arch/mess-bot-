@@ -4482,6 +4482,43 @@ app.get(
           fallback: "dashboardGetParticipantIds",
         };
       }
+      // Keep the pre-shared-resolver Single SetNN name lookup as a compatibility
+      // pass. The shared resolver can identify participants correctly while a
+      // particular ws3-fca response shape still leaves their display names blank.
+      // Use the established dashboard helper and ARRAY form for one-ID retries.
+      const retryMembers = members.filter(member =>
+        /^\d{6,32}$/.test(String(member.user_id || "")) &&
+        (!member.resolved || member.source === "nickname")
+      );
+      for (let offset = 0; offset < retryMembers.length; offset += 8) {
+        const batch = retryMembers.slice(offset, offset + 8);
+        const resolvedRows = await Promise.all(batch.map(async member => {
+          try {
+            const userRows = await dashboardGetUserInfo(
+              activeMessengerApi,
+              [String(member.user_id)],
+              3500
+            );
+            const row = dashboardGetUserInfoRow(userRows, String(member.user_id)) ||
+              (userRows && typeof userRows === "object" && !Array.isArray(userRows) &&
+                dashboardMemberDisplayName(userRows) ? userRows : null);
+            return { member, name: dashboardMemberDisplayName(row) };
+          } catch (lookupError) {
+            console.warn("[MEMBERS] Single-member name retry failed:", String(lookupError?.message || lookupError).slice(0, 120));
+            return { member, name: "" };
+          }
+        }));
+        for (const result of resolvedRows) {
+          if (!result.name) continue;
+          result.member.name = result.name;
+          result.member.resolved = true;
+          result.member.source = "userInfo-single";
+        }
+      }
+      members.sort((a, b) => Number(Boolean(b.resolved)) - Number(Boolean(a.resolved)) || String(a.name || "").localeCompare(String(b.name || "")));
+      diagnostics.named = members.filter(member => member.resolved).length;
+      diagnostics.unresolved = members.filter(member => !member.resolved).length;
+
       if (!diagnostics.threadInfo) {
         console.warn("[MEMBERS] getThreadInfo returned no usable group data:", JSON.stringify({ threadID, diagnostics }));
         return res.status(503).json({ ok: false, error: "Could not read group members from Messenger.", members: [] });
