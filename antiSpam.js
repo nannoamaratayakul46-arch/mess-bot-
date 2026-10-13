@@ -450,8 +450,12 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         ? rawAuthor.id ?? rawAuthor.userID ?? rawAuthor.userId ?? ""
         : rawAuthor ?? ""
     ).trim();
-    if (!threadID || !userID) return Promise.resolve();
-    const key = threadID + ":" + userID;
+    // System log events such as log:unsubscribe may not include an author ID.
+    // Do not discard them before the sensitive-admin handler can inspect the
+    // event payload and identify the removed participant.
+    if (!threadID) return Promise.resolve();
+    const eventQueueIdentity = userID || String(event?.logMessageType || event?.type || "system-event");
+    const key = threadID + ":" + eventQueueIdentity;
     const previous = queues.get(key) || Promise.resolve();
     const next = previous.then(() => processSensitiveAdminEvent(api, event)).then(() => processGroupProfileEvent(api, event)).catch(error => {
       log(`[AUTOMOD-PROFILE] event check failed: ${String(error?.message || error).slice(0, 180)}`);
