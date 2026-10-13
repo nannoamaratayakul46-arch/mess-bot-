@@ -166,14 +166,16 @@ function collectParticipants(info) {
       for (const [key, value] of Object.entries(source)) add(value, key);
     }
   }
+  const nicknameNames = new Map();
   const nicknames = info?.nicknames && typeof info.nicknames === "object" ? info.nicknames : {};
   for (const [id, nickname] of Object.entries(nicknames)) {
     if (ID_RE.test(id)) {
       ids.add(id);
-      if (!names.has(id) && cleanName(nickname)) names.set(id, { name: cleanName(nickname), source: "nickname" });
+      const name = cleanName(nickname);
+      if (name) nicknameNames.set(id, name);
     }
   }
-  return { ids, names };
+  return { ids, names, nicknameNames };
 }
 
 async function resolveGroupMembers(api, threadID, options = {}) {
@@ -182,23 +184,22 @@ async function resolveGroupMembers(api, threadID, options = {}) {
   if (!info || typeof info !== "object") {
     return { members: [], diagnostics: { threadInfo: false, participantIds: 0, named: 0, unresolved: 0, error: "getThreadInfo returned no usable data" } };
   }
-  const { ids, names } = collectParticipants(info);
+  const { ids, names, nicknameNames } = collectParticipants(info);
   const currentID = String(api?.getCurrentUserID?.() || "");
   ids.delete(currentID);
 
+  // Reuse only previously resolved profile/chat names. Nicknames are a fallback
+  // and must not prevent a real getUserInfo lookup.
   for (const id of ids) {
     const key = String(threadID) + ":" + id;
     const cached = cache.get(key);
     if (!names.has(id) && cached && Date.now() - cached.at < CACHE_TTL) names.set(id, { name: cached.name, source: "cache" });
-    const seen = learned.get(key);
-    if (!names.has(id) && seen && cleanName(seen.name)) names.set(id, { name: seen.name, source: seen.source });
   }
 
   const missing = [...ids].filter(id => !names.has(id));
   let batchCalls = 0;
   let singleCalls = 0;
   if (missing.length && typeof api?.getUserInfo === "function") {
-    // Batch first. Keep chunks modest for FCA-compatible API variants.
     for (let offset = 0; offset < missing.length; offset += 25) {
       const chunk = missing.slice(offset, offset + 25);
       batchCalls++;
@@ -208,8 +209,6 @@ async function resolveGroupMembers(api, threadID, options = {}) {
         if (name && ids.has(id) && !names.has(id)) names.set(id, { name, source: "userInfo" });
       }
     }
-    // Some versions silently return no usable records for array lookups. Retry
-    // missing IDs individually, bounded in small concurrent batches.
     const stillMissing = [...ids].filter(id => !names.has(id));
     for (let offset = 0; offset < stillMissing.length; offset += 8) {
       const chunk = stillMissing.slice(offset, offset + 8);
@@ -224,9 +223,18 @@ async function resolveGroupMembers(api, threadID, options = {}) {
     }
   }
 
+  // Last-resort order: learned names from message/mention/join events, then
+  // the group nickname. Hidden Facebook profile names stay explicitly unresolved.
+  for (const id of ids) {
+    if (names.has(id)) continue;
+    const seen = learned.get(String(threadID) + ":" + id);
+    if (seen && cleanName(seen.name)) names.set(id, { name: seen.name, source: seen.source });
+    else if (nicknameNames.has(id)) names.set(id, { name: nicknameNames.get(id), source: "nickname" });
+  }
+
   const members = [...ids].map(id => {
     const found = names.get(id);
-    if (found?.name) boundedSet(cache, String(threadID) + ":" + id, { name: found.name, at: Date.now() }, CACHE_MAX);
+    if (found?.name && found.source !== "nickname") boundedSet(cache, String(threadID) + ":" + id, { name: found.name, at: Date.now() }, CACHE_MAX);
     return {
       user_id: id,
       name: found?.name || ("Unnamed ····" + id.slice(-4)),
