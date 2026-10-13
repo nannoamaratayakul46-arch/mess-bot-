@@ -4497,6 +4497,18 @@ app.get(
         }
       }
 
+      // Thread nicknames are often present even when participant records are
+      // bare numeric IDs. Resolve those before calling getUserInfo so the UI
+      // does not fall back to rendering the IDs as member labels.
+      const threadNicknames = info?.nicknames && typeof info.nicknames === "object"
+        ? info.nicknames
+        : {};
+      for (const id of ids) {
+        if (names.has(id)) continue;
+        const nickname = dashboardMemberDisplayName({ name: threadNicknames[id] });
+        if (nickname) names.set(id, nickname);
+      }
+
       // First try the efficient multi-ID lookup. Some ws3-fca 2.0.x builds
       // only resolve a single ID correctly, even though the method accepts an
       // array without throwing. If the batch omitted names, retry those IDs
