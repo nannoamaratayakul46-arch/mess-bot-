@@ -65,13 +65,13 @@ function callApi(api, method, args) {
     try { result = fn.call(api, ...args, done); }
     catch (error) { done(error); return; }
     if (result && typeof result.then === "function") {
-      // ws3-fca callback-style methods can also return a promise that resolves
-      // to null before their callback supplies the real thread info. For
-      // getThreadInfo, prefer the callback when the function declares one;
-      // otherwise the null promise result wins the race and hides the payload.
-      const callbackExpected = method === "getThreadInfo" && fn.length > args.length;
+      // ws3-fca may return a promise that resolves to null before its
+      // getThreadInfo callback supplies the actual thread info. Ignore only
+      // that empty promise result; let the callback provide the final value.
       result.then(
-        value => { if (!callbackExpected) done(null, value); },
+        value => {
+          if (method !== "getThreadInfo" || value != null) done(null, value);
+        },
         error => done(error),
       );
     }
