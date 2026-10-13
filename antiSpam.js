@@ -359,10 +359,46 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         // Some FCA builds omit adminIDs from getThreadInfo but expose them in the
         // legacy single-thread response. This is a targeted lookup, not a group scan.
         if (!adminIDs.length && typeof api.getThreadInfoDeprecated === "function") {
+          // FCA forks differ: some callbacks use (err, data), while others
+          // return the response as the sole callback argument. Do not route
+          // this legacy method through callbackCall, which assumes (err, data).
           try {
-            const legacyInfo = await callbackCall(cb => api.getThreadInfoDeprecated(threadID, cb), 6000);
+            const legacyInfo = await new Promise((resolve, reject) => {
+              let settled = false;
+              const timer = setTimeout(() => {
+                if (settled) return;
+                settled = true;
+                resolve(null);
+              }, 6000);
+              const finish = (...args) => {
+                if (settled) return;
+                settled = true;
+                clearTimeout(timer);
+                if (args.length > 1) {
+                  const [error, data] = args;
+                  if (error) reject(error);
+                  else resolve(data || null);
+                } else {
+                  const [data] = args;
+                  if (data instanceof Error) reject(data);
+                  else resolve(data || null);
+                }
+              };
+              try {
+                const result = api.getThreadInfoDeprecated(threadID, finish);
+                if (result && typeof result.then === "function") {
+                  result.then(data => finish(null, data), finish);
+                } else if (result && typeof result === "object") {
+                  finish(null, result);
+                }
+              } catch (error) {
+                finish(error);
+              }
+            });
             adminIDs = getAdminIDs(legacyInfo);
-          } catch (_) {}
+          } catch (error) {
+            log(`[AUTOMOD-SENSITIVE] Legacy role lookup failed in ${threadID}: ${String(error?.message || error).slice(0, 120)}`);
+          }
         }
         const participantIDs = normalizeIds(info?.participantIDs ?? info?.participants);
         if (!botID || !adminIDs.includes(botID)) {
