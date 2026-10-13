@@ -308,7 +308,6 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
         await withTimeout(callApi(api, "setTitle", [title, threadId]), API_TIMEOUT_MS);
       } else {
         const decoded = decodeProfileImage(image);
-        tmpFile = await writeBufferToTemp(decoded.buffer, decoded.extension);
         await changeImage(api, threadId, decoded.buffer, decoded.extension);
         // Persist the actual backup in PostgreSQL; never depend on Render's temporary disk.
         const currentUrl = await saveExpectedUrl(db, threadId, api);
