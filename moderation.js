@@ -3406,9 +3406,39 @@ async function removeFromGroup(
     }
 
     // Central enforcement: every caller (dashboard, commands, and automod) goes
-    // through this helper. Never remove a live temporary admin, and fail closed
-    // if the protection table cannot be checked.
+    // through this helper. Protect configured and dashboard-managed permanent
+    // admins as well as active temporary grants, before any removal is attempted.
     try {
+      const { isAdmin: isConfiguredAdmin } = require("./permissions");
+      if (isConfiguredAdmin(String(targetId))) {
+        return {
+          ok: false,
+          errorCode: "PERMANENT_ADMIN_PROTECTED",
+          errorMessage: "This member is a configured bot administrator and cannot be removed by bot moderation.",
+          rawError: null,
+        };
+      }
+
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS dashboard_permanent_admins (
+          user_id TEXT PRIMARY KEY,
+          added_by TEXT NOT NULL,
+          added_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )
+      `);
+      const permanentAdmin = await db.query(
+        "SELECT 1 FROM dashboard_permanent_admins WHERE user_id=$1 LIMIT 1",
+        [String(targetId)]
+      );
+      if (permanentAdmin.rows?.length) {
+        return {
+          ok: false,
+          errorCode: "PERMANENT_ADMIN_PROTECTED",
+          errorMessage: "This member is a dashboard-managed permanent administrator and cannot be removed by bot moderation.",
+          rawError: null,
+        };
+      }
+
       await db.query(`
         CREATE TABLE IF NOT EXISTS dashboard_temp_admins (
           thread_id TEXT NOT NULL,
