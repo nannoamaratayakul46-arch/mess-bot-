@@ -272,9 +272,9 @@ function createRaidApprovalMode(options = {}) {
         "SELECT thread_id, automation_enabled, automation_active, ownership_lost, restore_after FROM raid_shield_approval_mode WHERE automation_active=TRUE LIMIT 1000",
       );
       for (const row of result.rows || []) {
-        if (row.ownership_lost === true) continue;
-        if (!row.automation_enabled || !row.restore_after || new Date(row.restore_after).getTime() <= now()) {
-          await withLock(cleanId(row.thread_id), () => restore(cleanId(row.thread_id), row.automation_enabled ? "quiet_period_elapsed" : "dashboard_disabled"));
+        if (row.ownership_lost === true || !row.automation_enabled || !row.restore_after || new Date(row.restore_after).getTime() <= now()) {
+          const reason = row.ownership_lost ? "manual_override" : row.automation_enabled ? "quiet_period_elapsed" : "dashboard_disabled";
+          await withLock(cleanId(row.thread_id), () => restore(cleanId(row.thread_id), reason));
         }
       }
     } catch (error) {
