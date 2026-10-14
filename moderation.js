@@ -4379,7 +4379,7 @@ async function handleModlog(
   threadID,
   moderatorId
 ) {
-  if (!isAdmin(moderatorId)) {
+  if (!isGroupAdmin(moderatorId, threadID)) {
     await send(
       api,
       threadID,
@@ -4614,7 +4614,7 @@ async function inspectEconomyCommand(
   originalText,
   api = null
 ) {
-  if (!isAdmin(adminId)) {
+  if (!isGroupAdmin(adminId, threadID)) {
     return {
       handled: false,
       blocked: false,
