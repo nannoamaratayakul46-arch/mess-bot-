@@ -58,6 +58,18 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     onIncident: incident => log(`[AUTOMOD-RAID] ${incident.severity} signal=${incident.event_type} group=${incident.thread_id} score=${incident.score}`),
   });
   let schemaPromise = null;
+  let raidShieldReadyPromise = null;
+
+  async function ensureRaidShieldReady() {
+    if (!raidShieldReadyPromise) {
+      raidShieldReadyPromise = (async () => {
+        const states = await raidShieldStore.loadStates({ limit: 1000 });
+        raidShield.restoreStates(states);
+        await raidShieldStore.prune();
+      })().catch(error => { raidShieldReadyPromise = null; throw error; });
+    }
+    return raidShieldReadyPromise;
+  }
 
   async function ensureTables() {
     if (!schemaPromise) {
@@ -204,6 +216,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     // Raid Shield augments the existing AutoMod signal path. Existing warning
     // and removal policy below remains authoritative; this layer never kicks.
     try {
+      await ensureRaidShieldReady();
       await raidShield.observeMessage({
         threadID,
         senderID: userID,
@@ -583,6 +596,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       const threadID = String(req.params.threadId || "").trim();
       if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
       try {
+        await ensureRaidShieldReady();
         const [state, incidents] = await Promise.all([Promise.resolve(raidShield.getState(threadID)), raidShieldStore.listIncidents({ threadId: threadID, limit: 30 })]);
         return res.json({ state, incidents });
       } catch (error) {
@@ -594,6 +608,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       const threadID = String(req.params.threadId || "").trim();
       if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
       try {
+        await ensureRaidShieldReady();
         const durationMs = clamp(req.body?.duration_ms, 30000, 30 * 60 * 1000, 5 * 60 * 1000);
         const state = await raidShield.setLockdown(threadID, durationMs, "dashboard_manual");
         log("[AUTOMOD-RAID] dashboard enabled temporary lockdown for " + threadID + " (" + durationMs + "ms)");
@@ -607,6 +622,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       const threadID = String(req.params.threadId || "").trim();
       if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
       try {
+        await ensureRaidShieldReady();
         const state = await raidShield.releaseLockdown(threadID, "dashboard_manual_release");
         log("[AUTOMOD-RAID] dashboard released temporary lockdown for " + threadID);
         return res.json({ ok: true, state });
