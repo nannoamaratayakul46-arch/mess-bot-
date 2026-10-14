@@ -558,7 +558,8 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const threadID = String(event?.threadID || "").trim();
     if (!/^\d{6,32}$/.test(threadID)) return;
     const settings = await getSettings(threadID);
-    if (settings?.enabled !== true) return;
+    const approvalSettings = await raidApprovalMode.getStatus(threadID);
+    if (settings?.enabled !== true && approvalSettings.enabled !== true) return;
     const data = event?.logMessageData && typeof event.logMessageData === "object" ? event.logMessageData : {};
     const rawParticipants = data.addedParticipants ?? data.added_participants ?? data.addedParticipantsList;
     const ids = [];
