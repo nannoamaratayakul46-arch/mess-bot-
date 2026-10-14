@@ -3526,6 +3526,7 @@ registerModerationRoutes(app, {
   removeFromGroup,
   createBan,
   logModeration,
+  db,
   audit: message => console.log(message),
 });
 
