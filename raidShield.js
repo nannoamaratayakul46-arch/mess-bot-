@@ -328,7 +328,15 @@ function createRaidShield(options = {}) {
       pruneMap(state.fingerprints, at - cfg.coordinatedWindowMs);
       if (state.lockdownUntil <= at && state.score < cfg.watch && at - state.lastTouched > cfg.decayMs * 2) groups.delete(id);
     }
-    for (const [key, atSeen] of recentEventKeys) if (at - atSeen >= cfg.decayMs) recentEventKeys.delete(key);
+    const dedupeTtl = Math.max(
+      cfg.decayMs,
+      cfg.joinWindowMs,
+      cfg.profileWindowMs,
+      cfg.coordinatedWindowMs,
+      cfg.messageWindowMs,
+      cfg.mentionWindowMs,
+    );
+    for (const [key, atSeen] of recentEventKeys) if (at - atSeen >= dedupeTtl) recentEventKeys.delete(key);
   }
 
   return { observeMessage, observeJoin, observeProfileChange, setLockdown, releaseLockdown, getState, listIncidents, restoreStates, cleanup, defaults: { ...DEFAULTS } };
