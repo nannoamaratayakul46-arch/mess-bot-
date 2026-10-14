@@ -79,3 +79,32 @@ test("uncertain approval outcome stays approved and records a review note", asyn
   assert.equal(updateParams[0], 12);
   assert.match(updateParams[1], /verify membership/);
 });
+
+
+test("startup recovery prioritizes active lockdowns over newer ordinary state", async () => {
+  const calls = [];
+  const db = { query: async (sql, params = []) => {
+    calls.push({ sql: String(sql), params });
+    if (String(sql).includes("SELECT thread_id, score, protection_level, lockdown_until, last_event_at, updated_at FROM raid_shield_state")) {
+      return { rows: [] };
+    }
+    return { rows: [], rowCount: 0 };
+  } };
+  const store = createRaidShieldStore(db);
+  await store.loadStates({ limit: 1000 });
+  const select = calls.find(call => call.sql.includes("SELECT thread_id, score, protection_level, lockdown_until, last_event_at, updated_at FROM raid_shield_state"));
+  assert.match(select.sql, /ORDER BY \(lockdown_until > NOW\(\)\) DESC NULLS LAST, updated_at DESC LIMIT \$1/);
+});
+
+test("pruning removes expired stale lockdown rows but preserves active lockdown rows", async () => {
+  const calls = [];
+  const db = { query: async (sql, params = []) => {
+    calls.push({ sql: String(sql), params });
+    return { rows: [], rowCount: 0 };
+  } };
+  const store = createRaidShieldStore(db);
+  await store.prune();
+  const deleteState = calls.find(call => call.sql.includes("DELETE FROM raid_shield_state"));
+  assert.match(deleteState.sql, /updated_at < NOW\(\) - INTERVAL '30 days'/);
+  assert.match(deleteState.sql, /protection_level <> 'lockdown' OR lockdown_until IS NULL OR lockdown_until <= NOW\(\)/);
+});
