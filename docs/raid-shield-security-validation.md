@@ -12,6 +12,16 @@ This checklist documents the security boundary and the production checks require
 - Send credentials only in the `Authorization: Bearer` or `X-ECLIPSE-DASHBOARD-KEY` header. Query-string authentication is rejected because URLs can leak through browser history, proxy logs, analytics, and referrer handling. The dashboard uses authenticated polling for events instead of placing its key in an EventSource URL.
 - Configure `ECLIPSE_DASHBOARD_ORIGIN` to the exact trusted dashboard origin rather than `*` for production. CORS is not authentication and does not prevent non-browser clients from calling the API.
 
+## Raid-triggered join approval safety
+
+- Keep the per-group join-approval automation toggle OFF by default; enable it only for a low-risk test group first.
+- The controller must confirm the live API exposes both `getThreadInfo` and `changeThreadApprovalMode` before invoking either method, and must require a boolean `approvalMode` from the thread info response.
+- A confirmed join burst is 5 joins in 30 seconds. When the feature is enabled and Messenger approval was OFF, the controller enables it and stores the prior state plus a two-minute quiet-period restore deadline.
+- If approval was already ON before the burst, the controller must not claim ownership or automatically turn it OFF later.
+- If a non-bot approval-mode change event is detected during an automation-owned window, preserve the manual setting and do not auto-restore over it.
+- Verify persistent setting and audit rows in `raid_shield_approval_mode` and `raid_shield_approval_mode_audit`. Simulate missing API methods, read failures, failed writes, restart recovery, a quiet-period restore, and a manual override.
+- The public `ws3-fca` README does not guarantee these methods for every installed version. If the live API object lacks them, the dashboard should report unsupported capability and the controller must not attempt the change.
+
 ## Approval safety
 
 - A removal proposal is not an instruction to remove a member. It must remain pending until an authenticated dashboard reviewer approves it.
