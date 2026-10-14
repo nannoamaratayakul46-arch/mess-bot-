@@ -155,10 +155,14 @@ function createRaidApprovalMode(options = {}) {
       const row = await ensureRow(id);
       if (row?.automation_enabled !== true) return { ok: false, skipped: "automation_disabled" };
       const api = getApi();
-      if (!supportedApi(api)) {
-        const message = "Approval mode unavailable: this ws3-fca runtime must expose getThreadInfo and changeThreadApprovalMode";
-        await save(id, { last_action: "api_unsupported", last_error: message });
-        await audit(id, "api_unsupported", { reason }, "system");
+      if (!api || !supportedApi(api)) {
+        const unsupported = Boolean(api);
+        const message = unsupported
+          ? "Approval mode unsupported: this ws3-fca runtime must expose getThreadInfo and changeThreadApprovalMode"
+          : "Messenger API is not connected; approval mode was not changed";
+        const action = unsupported ? "api_unsupported" : "api_unavailable";
+        await save(id, { last_action: action, last_error: message });
+        await audit(id, action, { reason }, "system");
         log("[AUTOMOD-RAID] " + message + " for group " + id);
         return { ok: false, error: message };
       }
@@ -260,7 +264,8 @@ function createRaidApprovalMode(options = {}) {
       restore_after: row?.restore_after || null,
       last_action: row?.last_action || "created",
       last_error: row?.last_error || null,
-      api_supported: supportedApi(api),
+      api_available: Boolean(api),
+      api_supported: api ? supportedApi(api) : null,
       quiet_period_ms: quietMs,
     };
   }
