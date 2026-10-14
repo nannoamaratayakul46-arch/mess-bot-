@@ -47,8 +47,11 @@ function createRaidShield(options = {}) {
     let state = groups.get(id);
     if (!state) {
       if (groups.size >= cfg.maxGroups) {
-        // Evict only the least recently updated non-locked group.
-        const candidate = [...groups.entries()].find(([, s]) => !s.lockdownUntil || s.lockdownUntil <= now());
+        // Evict the least recently touched group that is not in an active lockdown.
+        // A live lockdown is never evicted just to admit another group.
+        const candidate = [...groups.entries()]
+          .filter(([, s]) => !s.lockdownUntil || s.lockdownUntil <= now())
+          .sort((a, b) => (a[1].lastTouched || 0) - (b[1].lastTouched || 0))[0];
         if (!candidate) throw new Error("Raid Shield group capacity reached; refusing unsafe eviction");
         groups.delete(candidate[0]);
       }
@@ -121,7 +124,15 @@ function createRaidShield(options = {}) {
   }
 
   function pruneMap(map, cutoff) {
-    for (const [key, value] of map) if (value.at < cutoff) map.delete(key);
+    for (const [key, value] of map) {
+      if (Array.isArray(value)) {
+        const fresh = value.filter(entry => Number.isFinite(entry?.at) && entry.at >= cutoff);
+        if (fresh.length) map.set(key, fresh);
+        else map.delete(key);
+      } else if (!Number.isFinite(value?.at) || value.at < cutoff) {
+        map.delete(key);
+      }
+    }
   }
 
   async function observeMessage(event = {}) {
