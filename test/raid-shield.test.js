@@ -86,3 +86,14 @@ test("persisted lockdown and score are restored after restart", () => {
   assert.equal(shield.getState("987654321").protection_level, "lockdown");
   assert.equal(shield.getState("987654321").lockdown_until, new Date(2_100_000).toISOString());
 });
+
+
+test("expired lockdown does not remain active solely because the score is high", async () => {
+  let now = 1_000_000;
+  const shield = createRaidShield({ now: () => now, config: { lockdown: 10, elevated: 7, decayMs: 60_000, lockdownMs: 30_000 } });
+  await shield.observeProfileChange("123456789", "profile-1", { confirmedUnauthorized: true, actor_id: "111111" });
+  await shield.observeProfileChange("123456789", "profile-2", { confirmedUnauthorized: true, actor_id: "111111" });
+  assert.equal(shield.getState("123456789").protection_level, "lockdown");
+  now += 31_000;
+  assert.notEqual(shield.getState("123456789").protection_level, "lockdown");
+});
