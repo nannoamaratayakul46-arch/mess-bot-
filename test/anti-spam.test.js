@@ -136,6 +136,7 @@ test("automod counts standalone reaction events using userID", async () => {
         type: "message_reaction",
         threadID: "group-1",
         userID: "member-1",
+        senderID: "message-author",
         messageID: messagePrefix + "-message-" + i,
         reaction: "👍",
       });
