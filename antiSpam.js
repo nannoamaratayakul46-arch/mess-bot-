@@ -1,5 +1,8 @@
 "use strict";
 
+const { createRaidShield } = require("./raidShield");
+const { createRaidShieldStore } = require("./raidShieldStore");
+
 const express = require("express");
 const { getAutoModSettings, setAutoModEnabled, removeFromGroup, isAdmin, isBotOwner } = require("./moderation");
 const { resolveMemberName, idOf } = require("./memberNameResolver");
@@ -48,6 +51,12 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
   const hits = new Map();
   const queues = new Map();
   const removalFailures = new Map();
+  const raidShieldStore = createRaidShieldStore(db, { retentionDays: 7 });
+  const raidShield = createRaidShield({
+    persistIncident: incident => raidShieldStore.persistIncident(incident),
+    persistState: state => raidShieldStore.persistState(state),
+    onIncident: incident => log(`[AUTOMOD-RAID] ${incident.severity} signal=${incident.event_type} group=${incident.thread_id} score=${incident.score}`),
+  });
   let schemaPromise = null;
 
   async function ensureTables() {
@@ -191,6 +200,20 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
 
     const autoSettings = await getSettings(threadID);
     if (autoSettings?.enabled !== true) return;
+
+    // Raid Shield augments the existing AutoMod signal path. Existing warning
+    // and removal policy below remains authoritative; this layer never kicks.
+    try {
+      await raidShield.observeMessage({
+        threadID,
+        senderID: userID,
+        body: text,
+        isTrustedAdmin: isAdmin(userID) || isBotOwnerId(userID),
+        isBot: false,
+      });
+    } catch (error) {
+      log(`[AUTOMOD-RAID] signal processing failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+    }
 
     const cfg = await getConfig(threadID);
     const now = Date.now();
@@ -570,7 +593,13 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     });
   }
 
-  return { onMessage, onGroupEvent, registerRoutes, ensureTables };
+  return {
+    onMessage, onGroupEvent, registerRoutes, ensureTables,
+    getRaidShieldState: threadID => raidShield.getState(threadID),
+    listRaidShieldIncidents: options => raidShieldStore.listIncidents(options),
+    setRaidShieldLockdown: (threadID, durationMs, reason) => raidShield.setLockdown(threadID, durationMs, reason),
+    releaseRaidShieldLockdown: (threadID, reason) => raidShield.releaseLockdown(threadID, reason),
+  };
 }
 
 module.exports = { createAntiSpam, DEFAULTS };
