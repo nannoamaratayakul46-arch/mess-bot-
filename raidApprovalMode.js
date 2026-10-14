@@ -79,8 +79,20 @@ function createRaidApprovalMode(options = {}) {
     await db.query("UPDATE raid_shield_approval_mode SET " + sets.join(", ") + " WHERE thread_id=$1", params);
   }
 
+  function approvalWriteMethod(api) {
+    if (typeof api?.changeThreadApprovalMode === "function") {
+      return { name: "changeThreadApprovalMode", args: (threadId, enabled) => [threadId, Boolean(enabled)] };
+    }
+    // Compatibility with FCA forks that expose the same operation under the
+    // legacy fbchat-compatible name and argument order.
+    if (typeof api?.changeGroupApprovalMode === "function") {
+      return { name: "changeGroupApprovalMode", args: (threadId, enabled) => [Boolean(enabled), threadId] };
+    }
+    return null;
+  }
+
   function supportedApi(api) {
-    return Boolean(api && typeof api.changeThreadApprovalMode === "function" &&
+    return Boolean(api && approvalWriteMethod(api) &&
       (typeof api.getThreadInfo === "function" || typeof api.getThreadList === "function"));
   }
 
@@ -141,8 +153,11 @@ function createRaidApprovalMode(options = {}) {
   }
 
   async function changeMode(api, threadId, enabled) {
-    if (!supportedApi(api)) throw new Error("Installed ws3-fca does not expose the required approval-mode read/write methods");
-    await callApi(api, "changeThreadApprovalMode", [threadId, Boolean(enabled)]);
+    const writer = approvalWriteMethod(api);
+    if (!writer || !(typeof api?.getThreadInfo === "function" || typeof api?.getThreadList === "function")) {
+      throw new Error("Installed FCA runtime does not expose a supported approval-mode read/write method pair");
+    }
+    await callApi(api, writer.name, writer.args(threadId, enabled));
   }
 
   async function setAutomation(threadId, enabled, actor = "authenticated_dashboard") {
@@ -182,7 +197,7 @@ function createRaidApprovalMode(options = {}) {
       if (!api || !supportedApi(api)) {
         const unsupported = Boolean(api);
         const message = unsupported
-          ? "Approval mode unsupported: this ws3-fca runtime must expose getThreadInfo and changeThreadApprovalMode"
+          ? "Approval mode unsupported: this FCA runtime must expose getThreadInfo/getThreadList and changeThreadApprovalMode or changeGroupApprovalMode"
           : "Messenger API is not connected; approval mode was not changed";
         const action = unsupported ? "api_unsupported" : "api_unavailable";
         await save(id, { last_action: action, last_error: message });
