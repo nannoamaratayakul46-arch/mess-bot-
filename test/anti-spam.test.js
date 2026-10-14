@@ -80,6 +80,24 @@ test("automod does nothing while the shared !automod setting is off", async () =
   assert.equal(removed.length, 0);
 });
 
+test("automod continues role verification through legacy lookup when primary thread info throws", async () => {
+  const { detector, api, sent, removed, logs } = makeHarness();
+  api.getThreadInfo = () => {
+    throw new TypeError("simulated ws3-fca thread-info failure");
+  };
+  api.getThreadInfoDeprecated = (_threadID, callback) => {
+    callback(null, { adminIDs: ["bot-id", "admin-id"] });
+  };
+
+  await sendBurst(detector, api, "first");
+  assert.equal(sent.length, 1);
+  await sendBurst(detector, api, "second");
+
+  assert.equal(removed.length, 1);
+  assert.deepEqual(removed[0], { userID: "member-1", threadID: "group-1" });
+  assert.ok(logs.some(message => message.includes("removed member-1")));
+});
+
 test("automod refuses to remove a group admin", async () => {
   const { detector, api, sent, removed } = makeHarness();
   api.getThreadInfo = (_threadID, callback) => callback(null, { adminIDs: ["bot-id", "member-1"] });
