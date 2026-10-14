@@ -679,7 +679,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
       if (!actionId || !["approve", "reject"].includes(decision)) return res.status(400).json({ error: "Choose approve or reject for a valid action ID." });
       try {
-        const reviewed = await raidShieldStore.reviewApprovalAction({ id: actionId, status: decision === "approve" ? "approved" : "rejected", reviewedBy: String(req.body?.reviewed_by || "dashboard_admin").slice(0, 80), note: String(req.body?.note || "").slice(0, 300) });
+        const reviewed = await raidShieldStore.reviewApprovalAction({ id: actionId, threadId: threadID, status: decision === "approve" ? "approved" : "rejected", reviewedBy: String(req.body?.reviewed_by || "dashboard_admin").slice(0, 80), note: String(req.body?.note || "").slice(0, 300) });
         if (!reviewed || reviewed.thread_id !== threadID) return res.status(409).json({ error: "Action is not pending for this group, or has already been reviewed." });
         if (decision === "reject") {
           log("[AUTOMOD-RAID] pending member-removal action rejected for group " + threadID);
