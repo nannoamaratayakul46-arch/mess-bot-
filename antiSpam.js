@@ -216,8 +216,21 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
 
   async function processMessage(api, event) {
     const threadID = String(event?.threadID || "").trim();
-    const userID = String(event?.senderID || "").trim();
-    const text = String(event?.body || "").trim();
+    const userID = String(event?.senderID ?? event?.userID ?? event?.authorID ?? "").trim();
+    const bodyText = String(event?.body || "").trim();
+    const eventType = String(event?.type || "").toLowerCase();
+    const attachments = Array.isArray(event?.attachments) ? event.attachments : [];
+    const sticker = attachments.find(item =>
+      String(item?.type || item?.attachmentType || "").toLowerCase() === "sticker" ||
+      Boolean(item?.stickerID || item?.stickerId || item?.packID && item?.spriteUrl)
+    );
+    const isReaction = eventType === "message_reaction" || eventType === "messagereactionadd";
+    const isSticker = Boolean(sticker);
+    // Keep the existing word-spam path intact. Only synthesize a signal when
+    // Messenger sends a sticker with no body or a standalone reaction event.
+    const text = bodyText ||
+      (isSticker ? "[sticker:" + String(sticker?.ID ?? sticker?.id ?? sticker?.stickerID ?? sticker?.stickerId ?? "unknown") + "]" : "") ||
+      (isReaction ? "[reaction:" + String(event?.reaction ?? event?.reactionEmoji ?? event?.emoji ?? event?.reactionType ?? "like") + "]" : "");
     if (!threadID || !userID || !text) return;
     if (typeof api?.getCurrentUserID === "function" && userID === String(api.getCurrentUserID())) return;
 
@@ -597,7 +610,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const api = maybeEvent ? apiOrEvent : getApi();
     const event = maybeEvent || apiOrEvent;
     const threadID = String(event?.threadID || "");
-    const userID = String(event?.senderID || "");
+    const userID = String(event?.senderID ?? event?.userID ?? event?.authorID ?? "");
     if (!threadID || !userID) return Promise.resolve();
     const key = threadID + ":" + userID;
     const previous = queues.get(key) || Promise.resolve();
