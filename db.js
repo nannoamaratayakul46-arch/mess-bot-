@@ -205,6 +205,7 @@ async function connect() {
       image_data BYTEA,
       image_mime TEXT NOT NULL DEFAULT 'image/jpeg',
       expected_image_url TEXT,
+      expected_title TEXT,
       updated_at BIGINT NOT NULL DEFAULT 0,
       last_restore_at BIGINT
     );
@@ -213,6 +214,7 @@ async function connect() {
       ADD COLUMN IF NOT EXISTS image_data BYTEA,
       ADD COLUMN IF NOT EXISTS image_mime TEXT NOT NULL DEFAULT 'image/jpeg',
       ADD COLUMN IF NOT EXISTS expected_image_url TEXT,
+      ADD COLUMN IF NOT EXISTS expected_title TEXT,
       ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS last_restore_at BIGINT;
   `);

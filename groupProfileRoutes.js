@@ -70,7 +70,7 @@ function callApi(api, method, args) {
       // that empty promise result; let the callback provide the final value.
       result.then(
         value => {
-          if (method !== "getThreadInfo" || value != null) done(null, value);
+          if (!["getThreadInfo", "getThreadInfoDeprecated", "getThreadList"].includes(method) || value != null) done(null, value);
         },
         error => done(error),
       );
@@ -183,69 +183,146 @@ async function restoreSavedPhoto(api, db, row) {
   console.log("[PHOTO-GUARD] Restored saved group photo for " + threadId + (url ? "" : " (photo URL not yet available)"));
 }
 
+async function getThreadInfoWithFallback(api, threadId, threadListState) {
+  let info = null;
+  try {
+    info = await withTimeout(callApi(api, "getThreadInfo", [threadId]), 10_000);
+  } catch (error) {
+    console.warn("[PROFILE-GUARD] getThreadInfo failed for " + threadId + ": " + String(error?.message || error).slice(0, 120));
+  }
+  const hasUsefulFields = value => Boolean(value && typeof value === "object" && (
+    getImageUrl(value) ||
+    ["threadName", "name", "title", "thread_name"].some(key =>
+      typeof value[key] === "string" && value[key].trim()
+    )
+  ));
+  if (hasUsefulFields(info)) return info;
+
+  if (typeof api?.getThreadInfoDeprecated === "function") {
+    try {
+      const legacy = await withTimeout(callApi(api, "getThreadInfoDeprecated", [threadId]), 8_000);
+      if (hasUsefulFields(legacy)) return legacy;
+    } catch (error) {
+      console.warn("[PROFILE-GUARD] legacy thread info failed for " + threadId + ": " + String(error?.message || error).slice(0, 120));
+    }
+  }
+
+  // If both thread-info methods omit the group, fetch the thread list only once
+  // per guard pass and reuse the matching group record for the remaining rows.
+  if (typeof api?.getThreadList === "function") {
+    try {
+      if (!threadListState.promise) {
+        threadListState.promise = withTimeout(callApi(api, "getThreadList", [1000, null, []]), 10_000);
+      }
+      const threads = await threadListState.promise;
+      if (Array.isArray(threads)) {
+        const listed = threads.find(item =>
+          String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? "") === String(threadId)
+        );
+        if (hasUsefulFields(listed)) return listed;
+      }
+    } catch (error) {
+      console.warn("[PROFILE-GUARD] thread-list fallback failed for " + threadId + ": " + String(error?.message || error).slice(0, 120));
+    }
+  }
+  return info;
+}
+
+function getGroupTitle(info) {
+  for (const key of ["threadName", "name", "title", "thread_name"]) {
+    if (typeof info?.[key] === "string" && info[key].trim()) return info[key].replace(/\s+/g, " ").trim();
+  }
+  return null;
+}
+
 async function runGuardCheck({ db, getApi, audit = () => {} }) {
   if (guardRunning) return;
   const api = getApi();
-  if (!api || typeof api.getThreadInfo !== "function" || typeof api.changeGroupImage !== "function") return;
+  if (!api || typeof api.getThreadInfo !== "function") return;
   guardRunning = true;
   try {
-    const result = await db.query(`
-      SELECT thread_id, image_data, image_mime, expected_image_url, last_restore_at
-      FROM group_photo_guard
-      WHERE enabled = TRUE AND image_data IS NOT NULL
-      ORDER BY updated_at ASC
-      LIMIT 250
-    `);
+    const result = await db.query(
+      "SELECT thread_id, image_data, image_mime, expected_image_url, expected_title, last_restore_at " +
+      "FROM group_photo_guard WHERE enabled = TRUE AND (image_data IS NOT NULL OR expected_title IS NOT NULL) " +
+      "ORDER BY updated_at ASC LIMIT 250"
+    );
+    const threadListState = { promise: null };
     for (const row of result.rows) {
       const threadId = String(row.thread_id);
-      const lastAttempt = lastRestoreAttempt.get(threadId) || 0;
-      if (Date.now() - lastAttempt < RESTORE_RETRY_MS) continue;
+      let info;
       try {
-        const info = await withTimeout(callApi(api, "getThreadInfo", [threadId]), 10_000);
-        const current = getImageUrl(info);
-        const expected = normalizePhotoUrl(row.expected_image_url);
+        info = await getThreadInfoWithFallback(api, threadId, threadListState);
+      } catch (error) {
+        console.warn("[PROFILE-GUARD] Info check failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
+        continue;
+      }
+      if (!info || typeof info !== "object") {
+        console.warn("[PROFILE-GUARD] Group profile unavailable for " + threadId + "; skipping this check.");
+        continue;
+      }
 
-        // A missing Messenger photo URL is an unavailable observation, not proof
-        // that the group photo changed. Never upload a backup on a null URL.
-        if (!current) {
-          mismatchObservations.delete(threadId);
-          // Log only the response shape, never raw Messenger data or photo URLs.
-          console.warn("[PHOTO-GUARD] Current photo URL unavailable for " + threadId
-            + " (reason: " + getPhotoUrlDiagnostic(info) + "); skipping this check.");
-          continue;
+      const currentTitle = getGroupTitle(info);
+      const expectedTitle = typeof row.expected_title === "string" ? row.expected_title.trim() : "";
+      const titleKey = threadId + ":title";
+      if (expectedTitle && currentTitle && currentTitle !== expectedTitle) {
+        const previous = mismatchObservations.get(titleKey);
+        if (!previous || previous.value !== currentTitle) {
+          mismatchObservations.set(titleKey, { value: currentTitle, at: Date.now() });
+          console.warn("[PROFILE-GUARD] Group name differs for " + threadId + "; waiting for confirmation before restoring.");
+        } else if (Date.now() - (lastRestoreAttempt.get(titleKey) || 0) >= RESTORE_RETRY_MS) {
+          mismatchObservations.delete(titleKey);
+          lastRestoreAttempt.set(titleKey, Date.now());
+          try {
+            if (typeof api.setTitle !== "function") throw new Error("setTitle is unavailable");
+            await withTimeout(callApi(api, "setTitle", [expectedTitle, threadId]), API_TIMEOUT_MS);
+            await db.query("UPDATE group_photo_guard SET last_restore_at = $2, updated_at = $2 WHERE thread_id = $1", [threadId, Date.now()]);
+            audit("[PROFILE-GUARD] Restored saved group name in " + threadId);
+          } catch (error) {
+            console.warn("[PROFILE-GUARD] Name restore failed for " + threadId + ": " + String(error?.message || error).slice(0, 150));
+          }
         }
+      } else {
+        mismatchObservations.delete(titleKey);
+      }
 
-        if (!expected) {
-          await db.query("UPDATE group_photo_guard SET expected_image_url = $2 WHERE thread_id = $1", [threadId, current]);
-          mismatchObservations.delete(threadId);
-          continue;
-        }
-
-        if (current === expected) {
-          mismatchObservations.delete(threadId);
-          continue;
-        }
-
-        // Confirm the same differing URL in two checks before restoring. This
-        // avoids treating transient/rotating Messenger CDN URLs as a real change.
-        const previousMismatch = mismatchObservations.get(threadId);
-        if (!previousMismatch || previousMismatch.url !== current) {
-          mismatchObservations.set(threadId, { url: current, at: Date.now() });
-          console.warn("[PHOTO-GUARD] Photo URL differs for " + threadId + "; waiting for confirmation before restoring.");
-          continue;
-        }
-
-        mismatchObservations.delete(threadId);
-        lastRestoreAttempt.set(threadId, Date.now());
-        audit("[PHOTO-GUARD] Photo change confirmed; restoring saved image in " + threadId);
+      const hasPhotoBackup = Buffer.isBuffer(row.image_data) ? row.image_data.length > 0 : Boolean(row.image_data);
+      if (!hasPhotoBackup) continue;
+      const currentPhoto = getImageUrl(info);
+      const expectedPhoto = normalizePhotoUrl(row.expected_image_url);
+      const photoKey = threadId + ":image";
+      if (!currentPhoto) {
+        mismatchObservations.delete(photoKey);
+        console.warn("[PHOTO-GUARD] Current photo URL unavailable for " + threadId
+          + " (reason: " + getPhotoUrlDiagnostic(info) + "); skipping this check.");
+        continue;
+      }
+      if (!expectedPhoto) {
+        await db.query("UPDATE group_photo_guard SET expected_image_url = $2 WHERE thread_id = $1", [threadId, currentPhoto]);
+        mismatchObservations.delete(photoKey);
+        continue;
+      }
+      if (currentPhoto === expectedPhoto) {
+        mismatchObservations.delete(photoKey);
+        continue;
+      }
+      const previousPhoto = mismatchObservations.get(photoKey);
+      if (!previousPhoto || previousPhoto.value !== currentPhoto) {
+        mismatchObservations.set(photoKey, { value: currentPhoto, at: Date.now() });
+        console.warn("[PHOTO-GUARD] Photo URL differs for " + threadId + "; waiting for confirmation before restoring.");
+        continue;
+      }
+      if (Date.now() - (lastRestoreAttempt.get(photoKey) || 0) < RESTORE_RETRY_MS) continue;
+      mismatchObservations.delete(photoKey);
+      lastRestoreAttempt.set(photoKey, Date.now());
+      audit("[PHOTO-GUARD] Photo change confirmed; restoring saved image in " + threadId);
+      try {
         await restoreSavedPhoto(api, db, row);
       } catch (error) {
-        console.warn("[PHOTO-GUARD] Check failed for " + threadId + ": " + String(error?.message || error).replace(/[\r\n]+/g, " ").slice(0, 150));
+        console.warn("[PHOTO-GUARD] Restore failed for " + threadId + ": " + String(error?.message || error).replace(/[\r\n]+/g, " ").slice(0, 150));
       }
     }
   } catch (error) {
-    // Database may not be ready yet during boot. The next scheduled check retries.
-    console.warn("[PHOTO-GUARD] Check unavailable: " + String(error?.message || error).replace(/[\r\n]+/g, " ").slice(0, 150));
+    console.warn("[PROFILE-GUARD] Check unavailable: " + String(error?.message || error).replace(/[\r\n]+/g, " ").slice(0, 150));
   } finally {
     guardRunning = false;
   }
@@ -329,6 +406,13 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
       if (image && typeof api.changeGroupImage !== "function") return res.status(501).json({ ok: false, error: "This bot library has no changeGroupImage method." });
       if (title) {
         await withTimeout(callApi(api, "setTitle", [title, threadId]), API_TIMEOUT_MS);
+        // Keep the expected GC name alongside the saved photo so the guard can
+        // restore both pieces of the profile after manual resets.
+        await db.query(
+          "INSERT INTO group_photo_guard(thread_id, expected_title, updated_at) VALUES ($1, $2, $3) " +
+          "ON CONFLICT(thread_id) DO UPDATE SET expected_title = EXCLUDED.expected_title, updated_at = EXCLUDED.updated_at",
+          [threadId, title, Date.now()],
+        );
       } else {
         const decoded = decodeProfileImage(image);
         await changeImage(api, threadId, decoded.buffer, decoded.extension);

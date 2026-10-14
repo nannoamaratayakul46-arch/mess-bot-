@@ -136,14 +136,17 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
 
     if (
       !removal?.ok &&
-      String(removal?.errorCode || "") === "TARGET_IS_GROUP_ADMIN" &&
-      String(process.env.AUTOMOD_SPAM_DEMOTE_ADMIN_ENABLED || "").toLowerCase() === "true" &&
+      (
+        String(removal?.errorCode || "") === "TARGET_IS_GROUP_ADMIN" ||
+        /target is a group admin/i.test(String(removal?.errorMessage || ""))
+      ) &&
       !isBotOwner(userID) &&
+      !isAdmin(userID) &&
       api &&
       typeof api.changeAdminStatus === "function"
     ) {
-      // Opt-in escalation for a spammer who is currently a group admin.
-      // Never demote the configured bot owner; only act in the triggering group.
+      // Repeated-spam escalation for a group-admin spammer. Never demote the
+      // configured bot owner or a trusted bot admin; only act in this group.
       try {
         await callbackCall(cb => api.changeAdminStatus(String(threadID), String(userID), false, cb), 12000);
         log(`[AUTOMOD-SPAM] Demotion request succeeded for spammer ${userID} in ${threadID}; retrying removal.`);
