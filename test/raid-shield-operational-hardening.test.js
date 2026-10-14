@@ -12,7 +12,8 @@ test("group capacity evicts the least-recently touched non-locked group", async 
   now += 10;
   await shield.observeProfileChange("222222", "p2", { confirmedUnauthorized: true, actor_id: "900002" });
   now += 10;
-  // Touch the first group so the second group is now the least recently used.
+  // A benign observation touches the first group's LRU timestamp.
+  await shield.observeMessage({ threadID: "111111", senderID: "900001", body: "normal activity" });
   assert.equal(shield.getState("111111").score, 5);
   now += 10;
   await shield.observeProfileChange("333333", "p3", { confirmedUnauthorized: true, actor_id: "900003" });
