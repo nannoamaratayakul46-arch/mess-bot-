@@ -175,14 +175,14 @@ function createRaidShieldStore(db, options = {}) {
     return result.rows;
   }
 
-  async function reviewApprovalAction({ id, status, reviewedBy, note = "" } = {}) {
+  async function reviewApprovalAction({ id, threadId, status, reviewedBy, note = "" } = {}) {
     await ensureApprovalTable();
     if (!["approved", "rejected"].includes(status)) throw new TypeError("status must be approved or rejected");
     const result = await db.query(
       `UPDATE raid_shield_approval_actions SET status=$2, reviewed_by=$3, review_note=$4, reviewed_at=NOW()
-       WHERE id=$1 AND status='pending'
+       WHERE id=$1 AND thread_id=$5 AND status='pending'
        RETURNING id, thread_id, target_id, action_type, reason, status, proposed_by, reviewed_by, review_note, created_at, reviewed_at`,
-      [clamp(id, 1, Number.MAX_SAFE_INTEGER, 0), status, cleanId(reviewedBy) || "dashboard_admin", String(note || "").slice(0, 300)],
+      [clamp(id, 1, Number.MAX_SAFE_INTEGER, 0), status, cleanId(reviewedBy) || "dashboard_admin", String(note || "").slice(0, 300), cleanId(threadId)],
     );
     return result.rows[0] || null;
   }
