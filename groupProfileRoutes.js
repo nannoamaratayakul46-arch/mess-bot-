@@ -258,6 +258,11 @@ async function runGuardCheck({ db, getApi, audit = () => {} }) {
       }
       if (!info || typeof info !== "object") {
         console.warn("[PROFILE-GUARD] Group profile unavailable for " + threadId + "; skipping this check.");
+        const hasPhotoBackup = Buffer.isBuffer(row.image_data) ? row.image_data.length > 0 : Boolean(row.image_data);
+        if (hasPhotoBackup) {
+          console.warn("[PHOTO-GUARD] Current photo URL unavailable for " + threadId
+            + " (reason: " + getPhotoUrlDiagnostic(info) + "); skipping this check.");
+        }
         continue;
       }
 
