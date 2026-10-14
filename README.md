@@ -117,3 +117,21 @@ Lucien uses the official Groq API. Set these environment variables in Render (ne
 - ALAIZA_MESSENGER_ID — the authorized Devoura/Alaiza Messenger user ID
 
 The AI handler checks authorization before calling Gemini. Unauthorized users do not trigger an AI request.
+
+
+## Raid Shield operations checklist
+
+Use this checklist before enabling Raid Shield broadly. CI validates code structure and unit behavior; it does not validate the live Messenger event schema or a production database.
+
+1. Confirm the deployed commit matches the intended `main` SHA in Render.
+2. Confirm PostgreSQL can create the Raid Shield state, incident, and approval tables/indexes. Review startup logs for migration errors.
+3. In a test group, verify a normal conversation stays at normal risk and repeated messages create a persisted incident.
+4. Verify a real `log:subscribe` payload includes participant IDs before expecting join-burst detection. Unknown shapes must remain ignored.
+5. Verify profile-change events distinguish authorized admin changes from confirmed unauthorized changes.
+6. Create a pending action, reject it, then create a separate action and approve it. Verify the final status reflects the Messenger helper result.
+7. Simulate an unavailable removal API and a database error. Confirm the dashboard shows a failure and the action does not remain indefinitely pending/approved.
+8. Enable a short lockdown, confirm its expiry timestamp, restart the service, and confirm expired state is no longer reported as active.
+9. Verify a non-admin cannot access dashboard endpoints and that a group ID from outside the bot's known group list is rejected.
+10. Check logs and database records after each test; never use a real member as the first removal test.
+
+Rollback: disable the Raid Shield dashboard controls/feature route or redeploy the last known-good commit if startup migrations or the message pipeline fail. Do not manually delete incident/action tables as a rollback strategy; preserve the audit trail.
