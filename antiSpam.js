@@ -486,6 +486,20 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       [threadID, userID, now - PROFILE_ABUSE_WINDOW_MS],
     );
     const count = Number(recent.rows?.[0]?.count || 0);
+    // Feed confirmed profile-change events into Raid Shield for durable risk
+    // history. Existing AutoMod enforcement below remains unchanged.
+    try {
+      await ensureRaidShieldReady();
+      await raidShield.observeProfileChange(threadID, fingerprint, {
+        actor_id: userID,
+        sender_id: userID,
+        event_type: eventType,
+        observed_count: count,
+        confirmedUnauthorized: false,
+      });
+    } catch (error) {
+      log(`[AUTOMOD-RAID] profile signal failed in ${threadID}: ${String(error?.message || error).slice(0, 140)}`);
+    }
     const actorName = await resolveMemberName(api, threadID, userID);
     const actorLabel = actorName ? actorName + " (" + userID + ")" : userID;
     log(`[AUTOMOD-PROFILE] ${actorLabel} made ${count}/${PROFILE_ABUSE_THRESHOLD} group photo/name changes in ${threadID} within 60 seconds.`);
