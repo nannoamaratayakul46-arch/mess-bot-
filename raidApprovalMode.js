@@ -182,19 +182,27 @@ function createRaidApprovalMode(options = {}) {
         await audit(id, "approval_already_enabled", { reason, changed_by_automation: false });
         return { ok: true, alreadyEnabled: true };
       }
+      const at = now();
+      const restoreAfter = new Date(at + quietMs).toISOString();
+      // Persist ownership and the restore deadline before the external write.
+      // If the process crashes or times out after Messenger applies the change,
+      // the next poll can reconcile the real mode instead of losing ownership.
+      await save(id, { automation_active: true, previous_approval_mode: false, ownership_lost: false, last_join_at: new Date(at).toISOString(), restore_after: restoreAfter, last_action: "enable_requested", last_error: null });
+      await audit(id, "approval_enable_requested", { reason, previous_approval_mode: false, restore_after: restoreAfter });
       try {
         await changeMode(api, id, true);
-        const at = now();
-        await save(id, { automation_active: true, previous_approval_mode: false, ownership_lost: false, last_join_at: new Date(at).toISOString(), restore_after: new Date(at + quietMs).toISOString(), last_action: "enabled_by_automation", last_error: null });
-        await audit(id, "approval_enabled_by_automation", { reason, previous_approval_mode: false, restore_after: new Date(at + quietMs).toISOString() });
+        await save(id, { last_action: "enabled_by_automation", last_error: null });
+        await audit(id, "approval_enabled_by_automation", { reason, previous_approval_mode: false, restore_after: restoreAfter });
         log("[AUTOMOD-RAID] Messenger join approval enabled for group " + id + "; restore after " + quietMs + "ms without joins");
         return { ok: true, enabled: true };
       } catch (error) {
         const message = String(error?.message || error).slice(0, 180);
-        await save(id, { last_action: "enable_failed", last_error: message });
-        await audit(id, "approval_enable_failed", { reason, error: message });
-        log("[AUTOMOD-RAID] could not enable Messenger join approval for group " + id + ": " + message);
-        return { ok: false, error: message };
+        // The write may have succeeded remotely even if the callback timed out.
+        // Keep ownership/deadline so the restore sweep can read the actual mode.
+        await save(id, { last_action: "enable_outcome_uncertain", last_error: message });
+        await audit(id, "approval_enable_outcome_uncertain", { reason, error: message });
+        log("[AUTOMOD-RAID] Messenger join-approval enable outcome uncertain for group " + id + ": " + message);
+        return { ok: false, error: message, uncertain: true };
       }
     });
   }
