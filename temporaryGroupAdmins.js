@@ -25,7 +25,7 @@ function allowTemporaryKick(threadId, userId, now = Date.now()) {
   return true;
 }
 
-function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => false, audit = () => {} }) {
+function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => false, isAuthorizedOperator = () => false, audit = () => {} }) {
   if (!app || typeof app.get !== "function" || typeof app.post !== "function" || typeof app.delete !== "function") throw new TypeError("Express app required");
   if (typeof auth !== "function" || !db || typeof db.query !== "function") throw new TypeError("Dashboard auth and PostgreSQL db.query are required");
 
@@ -55,7 +55,20 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
   // use an explicit server-attached principal when available and a neutral fallback.
   function actorId(req) {
     const candidate = req.dashboardUser?.id ?? req.user?.id ?? req.session?.user?.id;
-    return String(candidate ?? "dashboard-api-key").trim().slice(0, 80) || "dashboard-api-key";
+    return String(candidate ?? "").trim().slice(0, 80);
+  }
+
+  async function requireTrustedOperator(req, res) {
+    const actor = actorId(req);
+    if (!actor || !(await Promise.resolve(isAuthorizedOperator(actor, req)))) {
+      res.status(403).json({
+        ok: false,
+        error: "A verified, trusted operator identity is required for this action.",
+        code: "TRUSTED_OPERATOR_REQUIRED",
+      });
+      return null;
+    }
+    return actor;
   }
 
   function validGroup(req, res) {
@@ -80,10 +93,10 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
     try {
       await init;
       const threadId=validGroup(req,res); if(!threadId) return;
+      const grantedBy=await requireTrustedOperator(req,res); if(!grantedBy)return;
       const userId=String(req.body?.user_id ?? req.body?.userId ?? "").trim();
       const reason=String(req.body?.reason||"").replace(/[\u0000-\u001f\u007f]/g," ").trim().slice(0,200);
       if(!/^\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Enter a valid numeric Messenger member ID."});
-      const grantedBy=actorId(req);
       const result=await db.query(`INSERT INTO dashboard_temp_admins(thread_id,user_id,granted_by,granted_at,expires_at,status,reason)
         VALUES($1,$2,$3,NOW(),NOW()+INTERVAL '5 days','active',$4)
         ON CONFLICT(thread_id,user_id) DO UPDATE SET granted_by=EXCLUDED.granted_by,granted_at=NOW(),
@@ -118,8 +131,8 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
   app.post("/api/dashboard/groups/:threadId/admin-approvals", auth, async(req,res)=>{
     try{
       await init;const threadId=validGroup(req,res);if(!threadId)return;
+      const requestedBy=await requireTrustedOperator(req,res); if(!requestedBy)return;
       const actionType=String(req.body?.action_type||"");
-      const requestedBy=actorId(req);
       const reason=String(req.body?.reason||"").replace(/[\u0000-\u001f\u007f]/g," ").trim().slice(0,200);
       const payload=req.body?.payload && typeof req.body.payload==="object" && !Array.isArray(req.body.payload)?req.body.payload:{};
       if(!["mass_action","role_change"].includes(actionType))return res.status(400).json({ok:false,error:"Approval type must be mass_action or role_change."});
@@ -136,7 +149,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       await init;const threadId=validGroup(req,res);if(!threadId)return;
       const id=String(req.params.approvalId||"");const decision=String(req.body?.decision||"");
       if(!/^\d+$/.test(id)||!["approved","rejected"].includes(decision))return res.status(400).json({ok:false,error:"Provide a valid approval ID and approved/rejected decision."});
-      const reviewer=actorId(req);
+      const reviewer=await requireTrustedOperator(req,res); if(!reviewer)return;
       const result=await db.query(`UPDATE dashboard_admin_approvals SET status=$1,reviewed_by=$2,reviewed_at=NOW()
         WHERE id=$3 AND thread_id=$4 AND status='pending'
         RETURNING id,thread_id,action_type,payload,status,reviewed_by,reviewed_at`,[decision,reviewer,id,threadId]);
