@@ -4856,22 +4856,39 @@ app.delete(
   }
 );
 
-function dashboardGetThreadList(api) {
+function dashboardGetThreadList(api, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     let settled = false;
+    let timer = null;
     const done = (error, threads) => {
       if (settled) return;
       settled = true;
+      if (timer) clearTimeout(timer);
       if (error) reject(error);
       else resolve(Array.isArray(threads) ? threads : []);
     };
+    if (typeof api?.getThreadList !== "function") {
+      reject(new Error("Messenger thread list is unavailable."));
+      return;
+    }
+
+    // Some ws3-fca calls never invoke their callback after an upstream API
+    // failure. Return an empty list after a bounded wait so dashboard jobs
+    // can report a useful no-targets/fallback result instead of hanging.
+    timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      console.warn("[THREAD-LIST] Lookup timed out; no fallback thread list is available.");
+      resolve([]);
+    }, Math.max(1000, Number(timeoutMs) || 8000));
+    timer.unref?.();
+
     try {
-      if (typeof api.getThreadList !== "function") {
-        return reject(new Error("Messenger thread list is unavailable."));
-      }
       const result = api.getThreadList(1000, null, [], done);
       if (result && typeof result.then === "function") {
-        result.then((threads) => done(null, threads)).catch(done);
+        result.then((threads) => {
+          if (threads != null) done(null, threads);
+        }).catch(done);
       }
     } catch (error) {
       done(error);
