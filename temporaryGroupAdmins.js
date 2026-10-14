@@ -113,7 +113,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       const { isOwner } = require("./permissions");
       if(!ownerTokenMatches(req.body?.owner_token) && (!actorId(req) || !isOwner(actor))) return res.status(403).json({ok:false,code:"OWNER_REQUIRED",error:"Set DASHBOARD_OWNER_TOKEN in Render and enter it to authorize permanent-admin changes."});
       const userId=String(req.body?.user_id ?? req.body?.userId ?? "").trim();
-      if(!/^\\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Enter a valid numeric Messenger member ID."});
+      if(!/^\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Enter a valid numeric Messenger member ID."});
       if(isOwner(userId)) return res.status(409).json({ok:false,error:"This ID is already an original owner."});
       await db.query("INSERT INTO dashboard_group_permanent_admins(thread_id,user_id,added_by) VALUES($1,$2,$3) ON CONFLICT(thread_id,user_id) DO NOTHING",[threadId,userId,actor]);
       const { GROUP_TRUSTED_ADMIN_IDS } = require("./permissions");
@@ -132,7 +132,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       const { isOwner, ADMIN_IDS } = require("./permissions");
       if(!ownerTokenMatches(req.body?.owner_token) && (!actorId(req) || !isOwner(actor))) return res.status(403).json({ok:false,code:"OWNER_REQUIRED",error:"Set DASHBOARD_OWNER_TOKEN in Render and enter it to authorize permanent-admin changes."});
       const userId=String(req.params.userId||"").trim();
-      if(!/^\\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Invalid member ID."});
+      if(!/^\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Invalid member ID."});
       if(ADMIN_IDS.has(userId)) return res.status(409).json({ok:false,error:"Original owners cannot be removed here."});
       const result=await db.query("DELETE FROM dashboard_group_permanent_admins WHERE thread_id=$1 AND user_id=$2 RETURNING user_id",[threadId,userId]);
       if (result.rowCount) require("./permissions").GROUP_TRUSTED_ADMIN_IDS.get(threadId)?.delete(userId);
