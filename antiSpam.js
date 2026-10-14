@@ -744,6 +744,11 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         }
         const removal = await removeFromGroup(api, threadID, reviewed.target_id);
         const completed = await raidShieldStore.completeApprovalAction(actionId, removal?.ok === true);
+        // A successful external operation is not enough: require the persisted
+        // approved -> completed/failed transition to return its row. If the row
+        // disappeared or changed unexpectedly, fall through to the uncertainty
+        // handler rather than reporting success with a null action record.
+        if (!completed) throw new Error("Could not persist the final approval action status");
         log("[AUTOMOD-RAID] approved member-removal action " + (removal?.ok ? "completed" : "failed") + " for group " + threadID);
         if (!removal?.ok) return res.status(502).json({ error: "Messenger did not complete the approved removal.", action: completed });
         return res.json({ ok: true, action: completed });
