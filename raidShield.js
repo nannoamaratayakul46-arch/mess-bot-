@@ -112,7 +112,15 @@ function createRaidShield(options = {}) {
     if (key) {
       const dedupeKey = state.threadId + ":" + key;
       const prior = recentEventKeys.get(dedupeKey);
-      if (prior && at - prior < cfg.decayMs) return { duplicate: true, state: snapshot(state) };
+      const dedupeTtl = Math.max(
+        cfg.decayMs,
+        cfg.joinWindowMs,
+        cfg.profileWindowMs,
+        cfg.coordinatedWindowMs,
+        cfg.messageWindowMs,
+        cfg.mentionWindowMs,
+      );
+      if (prior && at - prior < dedupeTtl) return { duplicate: true, state: snapshot(state) };
       rememberEventKey(dedupeKey, at);
     }
     state.score = Math.min(30, state.score + clamp(points, 0, 10, 0));
