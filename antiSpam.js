@@ -2,6 +2,7 @@
 
 const { createRaidShield } = require("./raidShield");
 const { createRaidShieldStore } = require("./raidShieldStore");
+const { createRaidApprovalMode } = require("./raidApprovalMode");
 
 const express = require("express");
 const { getAutoModSettings, setAutoModEnabled, removeFromGroup, isAdmin, isBotOwner } = require("./moderation");
@@ -52,11 +53,17 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
   const queues = new Map();
   const removalFailures = new Map();
   const raidShieldStore = createRaidShieldStore(db, { retentionDays: 7 });
+  const raidApprovalMode = createRaidApprovalMode({ db, getApi, log });
   const raidShield = createRaidShield({
     persistIncident: incident => raidShieldStore.persistIncident(incident),
     persistState: state => raidShieldStore.persistState(state),
     onIncident: async incident => {
       log(`[AUTOMOD-RAID] ${incident.severity} signal=${incident.event_type} group=${incident.thread_id} score=${incident.score}`);
+      if (incident.event_type === "join_burst") {
+        await raidApprovalMode.activate(incident.thread_id, "join_burst").catch(error => {
+          log("[AUTOMOD-RAID] automatic join approval activation failed: " + String(error?.message || error).slice(0, 140));
+        });
+      }
       const targetID = String(incident.evidence?.sender_id || "").trim();
       if (targetID && ["elevated", "lockdown"].includes(incident.severity)) {
         try {
@@ -576,6 +583,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       : ["subscribe", threadID, timestamp || Math.floor(Date.now() / 3000), participants.slice().sort().join(",")].join(":").slice(0, 900);
     try {
       await ensureRaidShieldReady();
+      await raidApprovalMode.noteJoin(threadID);
       for (const participantID of participants) {
         await raidShield.observeJoin(threadID, participantID, true, fingerprint);
       }
@@ -601,7 +609,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const eventQueueIdentity = userID || String(event?.logMessageType || event?.type || "system-event");
     const key = threadID + ":" + eventQueueIdentity;
     const previous = queues.get(key) || Promise.resolve();
-    const next = previous.then(() => processSensitiveAdminEvent(api, event)).then(() => processGroupProfileEvent(api, event)).then(() => processGroupMembershipEvent(api, event)).catch(error => {
+    const next = previous.then(() => raidApprovalMode.observeExternalEvent(api, event)).then(() => processSensitiveAdminEvent(api, event)).then(() => processGroupProfileEvent(api, event)).then(() => processGroupMembershipEvent(api, event)).catch(error => {
       log(`[AUTOMOD-PROFILE] event check failed: ${String(error?.message || error).slice(0, 180)}`);
     });
     queues.set(key, next);
@@ -700,6 +708,30 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         return res.status(503).json({ error: "Raid Shield history is temporarily unavailable." });
       }
     });
+    const approvalModeRoute = raidRoute + "/approval-mode";
+    app.get(approvalModeRoute, auth, async (req, res) => {
+      const threadID = String(req.params.threadId || "").trim();
+      if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
+      try {
+        return res.json({ approval_mode: await raidApprovalMode.getStatus(threadID) });
+      } catch (error) {
+        log("[AUTOMOD-RAID] join-approval settings read failed: " + String(error?.message || error).slice(0, 160));
+        return res.status(503).json({ error: "Join-approval settings are temporarily unavailable." });
+      }
+    });
+    app.put(approvalModeRoute, auth, express.json({ limit: "4kb" }), async (req, res) => {
+      const threadID = String(req.params.threadId || "").trim();
+      if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
+      if (typeof req.body?.enabled !== "boolean") return res.status(400).json({ error: "enabled must be a boolean." });
+      try {
+        const approval_mode = await raidApprovalMode.setAutomation(threadID, req.body.enabled, "authenticated_dashboard");
+        return res.json({ ok: true, approval_mode });
+      } catch (error) {
+        log("[AUTOMOD-RAID] join-approval settings save failed: " + String(error?.message || error).slice(0, 160));
+        return res.status(503).json({ error: "Could not save join-approval automation settings." });
+      }
+    });
+
     app.post(raidRoute + "/lockdown", auth, express.json({ limit: "4kb" }), async (req, res) => {
       const threadID = String(req.params.threadId || "").trim();
       if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
