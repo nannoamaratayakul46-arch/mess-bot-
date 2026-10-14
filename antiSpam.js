@@ -521,7 +521,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
   async function processGroupMembershipEvent(api, event) {
     if (event?.type !== "event" || String(event?.logMessageType || "") !== "log:subscribe") return;
     const threadID = String(event?.threadID || "").trim();
-    if (!/^\\d{6,32}$/.test(threadID)) return;
+    if (!/^\d{6,32}$/.test(threadID)) return;
     const settings = await getSettings(threadID);
     if (settings?.enabled !== true) return;
     const data = event?.logMessageData && typeof event.logMessageData === "object" ? event.logMessageData : {};
@@ -531,12 +531,12 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       for (const participant of rawParticipants) {
         const rawID = participant?.userFbId ?? participant?.userFBID ?? participant?.userID ?? participant?.userId ?? participant?.id;
         const id = String(rawID ?? "").trim();
-        if (/^\\d{6,32}$/.test(id)) ids.push(id);
+        if (/^\d{6,32}$/.test(id)) ids.push(id);
       }
     }
     for (const field of ["addedParticipantFbId", "addedParticipantFBID", "addedParticipantID", "addedParticipantId"]) {
       const id = String(data[field] ?? "").trim();
-      if (/^\\d{6,32}$/.test(id)) ids.push(id);
+      if (/^\d{6,32}$/.test(id)) ids.push(id);
     }
     const botID = String(typeof api?.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
     const participants = [...new Set(ids)].filter(id => id !== botID);
