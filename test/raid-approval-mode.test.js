@@ -114,6 +114,29 @@ test("enables approval on a raid and restores the prior OFF mode after the quiet
   controller.stop();
 });
 
+test("supports legacy changeGroupApprovalMode signature without changing argument order", async () => {
+  const db = fakeDb();
+  let mode = false;
+  const calls = [];
+  const api = {
+    getThreadInfo(threadId, callback) {
+      callback(null, { approvalMode: mode });
+    },
+    changeGroupApprovalMode(enabled, threadId, callback) {
+      calls.push([enabled, threadId]);
+      mode = enabled;
+      callback(null, true);
+    },
+  };
+  const controller = createRaidApprovalMode({ db, getApi: () => api, pollMs: 120000 });
+  await controller.setAutomation("123456789", true);
+  const result = await controller.activate("123456789");
+  assert.equal(result.enabled, true);
+  assert.equal(mode, true);
+  assert.deepEqual(calls, [[true, "123456789"]]);
+  controller.stop();
+});
+
 test("does not disable approval that was already enabled before the raid", async () => {
   const db = fakeDb();
   const messenger = apiHarness(true);
