@@ -31,3 +31,25 @@ test("cleanup prunes stale rolling fingerprint entries without affecting active 
   await shield.observeMessage({ threadID: "123456789", senderID: "222222", body: "same suspicious link https://example.com" });
   assert.equal(shield.listIncidents().filter(x => x.event_type === "coordinated_duplicate").length, 0);
 });
+
+
+test("event deduplication stays bounded without periodic cleanup", async () => {
+  let now = 1_000_000;
+  const shield = createRaidShield({
+    now: () => now,
+    config: { maxGroups: 1, maxEventsPerGroup: 2, decayMs: 60_000, profileWindowMs: 60_000 },
+  });
+
+  await shield.observeProfileChange("123456789", "event-a", { confirmedUnauthorized: true });
+  now += 1;
+  await shield.observeProfileChange("123456789", "event-b", { confirmedUnauthorized: true });
+  now += 1;
+  await shield.observeProfileChange("123456789", "event-c", { confirmedUnauthorized: true });
+
+  // The configured two-key cap evicts the oldest dedupe entry. Replaying it
+  // can be processed again, but memory cannot grow without bound in the meantime.
+  now += 1;
+  const replay = await shield.observeProfileChange("123456789", "event-a", { confirmedUnauthorized: true });
+  assert.equal(replay.duplicate, undefined);
+  assert.equal(shield.listIncidents({ threadId: "123456789", limit: 10 }).length, 4);
+});
