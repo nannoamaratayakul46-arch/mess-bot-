@@ -948,7 +948,7 @@ function incomingEventKeys(event) {
   const eventType = String(event.type || "").toLowerCase();
   if (["message_reaction", "messagereactionadd", "reaction"].includes(eventType)) {
     const threadID = String(event.threadID || "").trim();
-    const actorID = String(event.senderID ?? event.userID ?? event.authorID ?? "").trim();
+    const actorID = String(event.userID ?? event.senderID ?? event.authorID ?? "").trim();
     const targetMessageID = String(event.messageID || event.messageId || "").trim();
     const timestamp = Number(event.timestamp || event.timestampMS || event.timestamp_ms || NaN);
     const reaction = String(event.reaction ?? event.reactionEmoji ?? event.emoji ?? event.reactionType ?? "");
