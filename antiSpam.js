@@ -216,9 +216,13 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
 
   async function processMessage(api, event) {
     const threadID = String(event?.threadID || "").trim();
-    const userID = String(event?.senderID ?? event?.userID ?? event?.authorID ?? "").trim();
-    const bodyText = String(event?.body || "").trim();
     const eventType = String(event?.type || "").toLowerCase();
+    const reactionEvent = ["message_reaction", "messagereactionadd", "reaction"].includes(eventType);
+    const userID = String(
+      (reactionEvent ? event?.userID ?? event?.senderID : event?.senderID ?? event?.userID) ??
+      event?.authorID ?? ""
+    ).trim();
+    const bodyText = String(event?.body || "").trim();
     const attachments = Array.isArray(event?.attachments) ? event.attachments : [];
     const sticker = attachments.find(item =>
       String(item?.type || item?.attachmentType || "").toLowerCase() === "sticker" ||
@@ -610,7 +614,12 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const api = maybeEvent ? apiOrEvent : getApi();
     const event = maybeEvent || apiOrEvent;
     const threadID = String(event?.threadID || "");
-    const userID = String(event?.senderID ?? event?.userID ?? event?.authorID ?? "");
+    const eventType = String(event?.type || "").toLowerCase();
+    const reactionEvent = ["message_reaction", "messagereactionadd", "reaction"].includes(eventType);
+    const userID = String(
+      (reactionEvent ? event?.userID ?? event?.senderID : event?.senderID ?? event?.userID) ??
+      event?.authorID ?? ""
+    );
     if (!threadID || !userID) return Promise.resolve();
     const key = threadID + ":" + userID;
     const previous = queues.get(key) || Promise.resolve();
