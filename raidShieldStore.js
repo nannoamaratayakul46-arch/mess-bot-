@@ -116,6 +116,84 @@ function createRaidShieldStore(db, options = {}) {
     return rows;
   }
 
+  async function loadStates({ limit = 1000 } = {}) {
+    await ensureTables();
+    const safeLimit = clamp(limit, 1, 1000, 1000);
+    const { rows } = await db.query(
+      "SELECT thread_id, score, protection_level, lockdown_until, last_event_at, updated_at FROM raid_shield_state ORDER BY updated_at DESC LIMIT $1",
+      [safeLimit],
+    );
+    return rows;
+  }
+
+  async function ensureApprovalTable() {
+    await ensureTables();
+    await db.query(`CREATE TABLE IF NOT EXISTS raid_shield_approval_actions (
+      id BIGSERIAL PRIMARY KEY,
+      thread_id TEXT NOT NULL,
+      target_id TEXT NOT NULL,
+      action_type TEXT NOT NULL CHECK (action_type IN ('remove_member')),
+      reason TEXT NOT NULL DEFAULT 'raid_shield_review',
+      status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'approved', 'rejected', 'completed', 'failed')),
+      proposed_by TEXT NOT NULL DEFAULT 'raid_shield',
+      reviewed_by TEXT,
+      review_note TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      reviewed_at TIMESTAMPTZ,
+      completed_at TIMESTAMPTZ
+    )`);
+    await db.query("CREATE INDEX IF NOT EXISTS idx_raid_shield_actions_pending ON raid_shield_approval_actions(thread_id, status, created_at DESC)");
+  }
+
+  async function proposeAction(action = {}) {
+    await ensureApprovalTable();
+    const threadId = requiredId(action.thread_id, "thread_id");
+    const targetId = requiredId(action.target_id, "target_id");
+    const reason = String(action.reason || "raid_shield_review").slice(0, 120);
+    const proposedBy = cleanId(action.proposed_by) || "raid_shield";
+    const result = await db.query(
+      `INSERT INTO raid_shield_approval_actions (thread_id, target_id, action_type, reason, proposed_by)
+       SELECT $1, $2, 'remove_member', $3, $4
+       WHERE NOT EXISTS (SELECT 1 FROM raid_shield_approval_actions WHERE thread_id=$1 AND target_id=$2 AND status='pending')
+       RETURNING id, thread_id, target_id, action_type, reason, status, proposed_by, created_at`,
+      [threadId, targetId, reason, proposedBy],
+    );
+    return result.rows[0] || null;
+  }
+
+  async function listApprovalActions({ threadId, status = "pending", limit = 50 } = {}) {
+    await ensureApprovalTable();
+    const safeLimit = clamp(limit, 1, 100, 50);
+    const params = [];
+    let where = "";
+    if (threadId) { params.push(cleanId(threadId)); where = "thread_id = $" + params.length; }
+    if (["pending", "approved", "rejected", "completed", "failed"].includes(status)) {
+      params.push(status); where += (where ? " AND " : "") + "status = $" + params.length;
+    }
+    params.push(safeLimit);
+    const result = await db.query("SELECT id, thread_id, target_id, action_type, reason, status, proposed_by, reviewed_by, review_note, created_at, reviewed_at, completed_at FROM raid_shield_approval_actions " + (where ? "WHERE " + where : "") + " ORDER BY created_at DESC LIMIT $" + params.length, params);
+    return result.rows;
+  }
+
+  async function reviewApprovalAction({ id, threadId, status, reviewedBy, note = "" } = {}) {
+    await ensureApprovalTable();
+    if (!["approved", "rejected"].includes(status)) throw new TypeError("status must be approved or rejected");
+    const result = await db.query(
+      `UPDATE raid_shield_approval_actions SET status=$2, reviewed_by=$3, review_note=$4, reviewed_at=NOW()
+       WHERE id=$1 AND thread_id=$5 AND status='pending'
+       RETURNING id, thread_id, target_id, action_type, reason, status, proposed_by, reviewed_by, review_note, created_at, reviewed_at`,
+      [clamp(id, 1, Number.MAX_SAFE_INTEGER, 0), status, cleanId(reviewedBy) || "dashboard_admin", String(note || "").slice(0, 300), cleanId(threadId)],
+    );
+    return result.rows[0] || null;
+  }
+
+  async function completeApprovalAction(id, success) {
+    await ensureApprovalTable();
+    const status = success ? "completed" : "failed";
+    const result = await db.query("UPDATE raid_shield_approval_actions SET status=$2, completed_at=NOW() WHERE id=$1 AND status='approved' RETURNING id, status", [clamp(id, 1, Number.MAX_SAFE_INTEGER, 0), status]);
+    return result.rows[0] || null;
+  }
+
   async function prune() {
     await ensureTables();
     const { rowCount } = await db.query(
@@ -128,7 +206,7 @@ function createRaidShieldStore(db, options = {}) {
     return { incidentsDeleted: rowCount || 0, retentionDays };
   }
 
-  return { ensureTables, persistIncident, persistState, listIncidents, listStates, prune };
+  return { ensureTables, persistIncident, persistState, listIncidents, listStates, loadStates, ensureApprovalTable, proposeAction, listApprovalActions, reviewApprovalAction, completeApprovalAction, prune };
 }
 
 function normalizeIncident(value = {}) {

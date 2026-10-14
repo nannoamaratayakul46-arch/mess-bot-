@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createAntiSpam } = require("../antiSpam");
 
-function makeHarness({ enabled = true, admins = ["bot-id", "actor-id"], ownerID = "owner-id", threads = [{ threadID: "group-1" }], adminsByThread = {} } = {}) {
+function makeHarness({ enabled = true, admins = ["bot-id", "actor-id"], ownerID = "owner-id", threads = [{ threadID: "group-1" }], adminsByThread = {}, restoreError = null } = {}) {
   const demotions = [];
   const sent = [];
   const logs = [];
@@ -20,7 +20,7 @@ function makeHarness({ enabled = true, admins = ["bot-id", "actor-id"], ownerID 
     getThreadInfo: (threadID, callback) => callback(null, { adminIDs: adminsByThread[threadID] || admins }),
     changeAdminStatus: (threadID, userID, status, callback) => {
       demotions.push({ threadID, userID, status });
-      callback(null);
+      callback(status === true && restoreError ? restoreError : null);
     },
     sendMessage: (body, threadID, callback) => {
       sent.push({ body, threadID });
@@ -48,12 +48,22 @@ function removalEvent({ targetID = "owner-id", actor = "actor-id", adminEvent = 
   };
 }
 
-test("Sensitive AutoMod demotes an admin who removes the bot owner's admin status", async () => {
-  const { detector, api, demotions, sent, logs } = makeHarness();
-  await detector.onGroupEvent(api, removalEvent());
-  assert.deepEqual(demotions, [{ threadID: "group-1", userID: "actor-id", status: false }]);
-  assert.equal(sent.length, 1);
-  assert.ok(logs.some(message => /Demoted actor-id/.test(message)));
+test("Sensitive AutoMod restores the owner and demotes the actor only when explicitly enabled", async () => {
+  const previous = process.env.SENSITIVE_ADMIN_DEMOTE_ACTOR_ENABLED;
+  process.env.SENSITIVE_ADMIN_DEMOTE_ACTOR_ENABLED = "true";
+  try {
+    const { detector, api, demotions, sent, logs } = makeHarness();
+    await detector.onGroupEvent(api, removalEvent());
+    assert.deepEqual(demotions, [
+      { threadID: "group-1", userID: "owner-id", status: true },
+      { threadID: "group-1", userID: "actor-id", status: false },
+    ]);
+    assert.equal(sent.length, 0);
+    assert.ok(logs.some(message => /Event actor demotion request succeeded/.test(message)));
+  } finally {
+    if (previous === undefined) delete process.env.SENSITIVE_ADMIN_DEMOTE_ACTOR_ENABLED;
+    else process.env.SENSITIVE_ADMIN_DEMOTE_ACTOR_ENABLED = previous;
+  }
 });
 
 test("Sensitive AutoMod does nothing while AutoMod is disabled", async () => {
@@ -69,15 +79,18 @@ test("Sensitive AutoMod ignores admin removals that do not target the bot owner"
   assert.equal(demotions.length, 0);
 });
 
-test("Sensitive AutoMod fails closed if the bot is no longer a group admin", async () => {
-  const { detector, api, demotions, logs } = makeHarness({ admins: ["actor-id"] });
+test("Sensitive AutoMod does not demote the actor when Messenger rejects owner restoration", async () => {
+  const { detector, api, demotions, logs } = makeHarness({
+    restoreError: new Error("permission denied: bot is not a group admin"),
+  });
   await detector.onGroupEvent(api, removalEvent());
-  assert.equal(demotions.length, 0);
-  assert.ok(logs.some(message => /No demotions completed/.test(message)));
+  assert.deepEqual(demotions, [{ threadID: "group-1", userID: "owner-id", status: true }]);
+  assert.ok(logs.some(message => /Owner admin restoration failed/.test(message)));
+  assert.ok(logs.some(message => /Actor demotion skipped/.test(message)));
 });
 
-test("Sensitive AutoMod demotes the actor in every listed group where both bot and actor are admins", async () => {
-  const { detector, api, demotions, sent } = makeHarness({
+test("Sensitive AutoMod never scans or demotes the actor in other groups", async () => {
+  const { detector, api, demotions } = makeHarness({
     threads: [
       { threadID: "group-1" },
       { threadID: "group-2" },
@@ -93,16 +106,15 @@ test("Sensitive AutoMod demotes the actor in every listed group where both bot a
   });
   await detector.onGroupEvent(api, removalEvent());
   assert.deepEqual(demotions, [
-    { threadID: "group-1", userID: "actor-id", status: false },
-    { threadID: "group-2", userID: "actor-id", status: false },
+    { threadID: "group-1", userID: "owner-id", status: true },
   ]);
-  assert.equal(sent.length, 1);
-  assert.match(sent[0].body, /revoked in 2 group\(s\)/);
 });
 
-test("Sensitive AutoMod falls back to the triggering group when thread enumeration fails", async () => {
+test("Sensitive AutoMod stays scoped to the triggering group if thread enumeration fails", async () => {
   const { detector, api, demotions } = makeHarness();
   api.getThreadList = (_limit, _timestamp, _tags, callback) => callback(new Error("offline"));
   await detector.onGroupEvent(api, removalEvent());
-  assert.deepEqual(demotions, [{ threadID: "group-1", userID: "actor-id", status: false }]);
+  assert.deepEqual(demotions, [
+    { threadID: "group-1", userID: "owner-id", status: true },
+  ]);
 });
