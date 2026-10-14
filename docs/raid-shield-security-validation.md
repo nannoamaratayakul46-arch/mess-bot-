@@ -15,12 +15,12 @@ This checklist documents the security boundary and the production checks require
 ## Raid-triggered join approval safety
 
 - Keep the per-group join-approval automation toggle OFF by default; enable it only for a low-risk test group first.
-- The controller must confirm the live API exposes `changeThreadApprovalMode` plus at least one of `getThreadInfo` or `getThreadList` before changing settings, and must require a boolean `approvalMode` from the selected group record.
+- The controller must confirm the live API exposes either `changeThreadApprovalMode(threadID, enabled)` or the legacy `changeGroupApprovalMode(enabled, threadID)`, plus at least one of `getThreadInfo` or `getThreadList`, before changing settings. It must require a boolean `approvalMode` from the selected group record.
 - A confirmed join burst is 5 joins in 30 seconds. When the feature is enabled and Messenger approval was OFF, the controller enables it and stores the prior state plus a two-minute quiet-period restore deadline.
 - If approval was already ON before the burst, the controller must not claim ownership or automatically turn it OFF later.
 - If a non-bot approval-mode change event is detected during an automation-owned window, preserve the manual setting and do not auto-restore over it.
 - Verify persistent setting and audit rows in `raid_shield_approval_mode` and `raid_shield_approval_mode_audit`. Simulate missing API methods, read failures, failed writes, restart recovery, a quiet-period restore, and a manual override.
-- The public `ws3-fca` README does not guarantee these methods for every installed version. If the live API object lacks them, the dashboard should report unsupported capability and the controller must not attempt the change.
+- The public `ws3-fca` README does not guarantee an approval-mode write method for every installed version. The controller supports the legacy `changeGroupApprovalMode(enabled, threadID)` signature as well as `changeThreadApprovalMode(threadID, enabled)`. If the live API object lacks either supported write method or a verified read method, the dashboard should report unsupported capability and the controller must not attempt the change.
 
 ## Approval safety
 
