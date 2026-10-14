@@ -25,7 +25,7 @@ function allowTemporaryKick(threadId, userId, now = Date.now()) {
   return true;
 }
 
-function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => false, isAuthorizedOperator = () => false, audit = () => {} }) {
+function registerTemporaryAdminRoutes(app, { auth, db, getApi = () => null, isKnownGroup = () => false, isAuthorizedOperator = () => false, audit = () => {} }) {
   if (!app || typeof app.get !== "function" || typeof app.post !== "function" || typeof app.delete !== "function") throw new TypeError("Express app required");
   if (typeof auth !== "function" || !db || typeof db.query !== "function") throw new TypeError("Dashboard auth and PostgreSQL db.query are required");
 
@@ -147,10 +147,30 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
     try {
       await init;
       const { ADMIN_IDS } = require("./permissions");
-      const owners=[...ADMIN_IDS].map(user_id=>({user_id, role:"Original administrator", removable:false}));
+      const api = getApi();
+      let threadInfo = {};
+      if (api && typeof api.getThreadInfo === "function") {
+        threadInfo = await new Promise((resolve) => {
+          let settled = false;
+          const finish = (value) => { if (settled) return; settled = true; clearTimeout(timer); resolve(value || {}); };
+          const timer = setTimeout(() => finish({}), 7000);
+          try {
+            const result = api.getThreadInfo(threadId, (error, info) => finish(error ? {} : info));
+            if (result && typeof result.then === "function") result.then(info => finish(info)).catch(() => finish({}));
+          } catch { finish({}); }
+        });
+      }
+      const nativeRows = Array.isArray(threadInfo?.adminIDs) ? threadInfo.adminIDs : [];
+      const nativeIds = [...new Set(nativeRows.map(row => String(
+        row?.id ?? row?.userID ?? row?.userId ?? row?.uid ?? row ?? ""
+      ).trim()).filter(id => /^\\d{6,32}$/.test(id)))];
+      const nativeAdmins = nativeIds.map(user_id => ({
+        user_id, role: "This group's Messenger administrator", removable: false, source: "messenger"
+      }));
+      const owners=[...ADMIN_IDS].map(user_id=>({user_id, role:"Bot owner (global)", removable:false, source:"bot"}));
       const result=await db.query("SELECT user_id FROM dashboard_group_permanent_admins WHERE thread_id=$1 ORDER BY added_at ASC",[threadId]);
-      const trusted=(result.rows||[]).map(row=>String(row.user_id)).filter(id=>!ADMIN_IDS.has(id)).map(user_id=>({user_id,role:"Permanent administrator",removable:true}));
-      return res.json({ok:true,admins:[...owners,...trusted]});
+      const trusted=(result.rows||[]).map(row=>String(row.user_id)).filter(id=>!ADMIN_IDS.has(id) && !nativeIds.includes(id)).map(user_id=>({user_id,role:"Dashboard permanent administrator",removable:true,source:"dashboard"}));
+      return res.json({ok:true,group_admins_available:nativeRows.length>0,admins:[...nativeAdmins,...owners.filter(owner=>!nativeIds.includes(owner.user_id)),...trusted]});
     } catch(error) {
       console.error("[TEMP ADMIN] permanent-admin list failed:",String(error?.message||error).slice(0,160));
       return res.status(500).json({ok:false,error:"Could not load configured permanent administrators."});
