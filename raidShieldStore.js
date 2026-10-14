@@ -110,7 +110,7 @@ function createRaidShieldStore(db, options = {}) {
     await ensureTables();
     const safeLimit = clamp(limit, 1, 500, 100);
     const { rows } = await db.query(
-      "SELECT thread_id, score, protection_level, lockdown_until, last_event_at, updated_at FROM raid_shield_state ORDER BY updated_at DESC LIMIT $1",
+      "SELECT thread_id, score, protection_level, lockdown_until, last_event_at, updated_at FROM raid_shield_state ORDER BY (lockdown_until > NOW()) DESC NULLS LAST, updated_at DESC LIMIT $1",
       [safeLimit],
     );
     return rows;
@@ -230,7 +230,7 @@ function createRaidShieldStore(db, options = {}) {
       [retentionDays],
     );
     await db.query(
-      "DELETE FROM raid_shield_state WHERE updated_at < NOW() - INTERVAL '30 days' AND protection_level <> 'lockdown'",
+      "DELETE FROM raid_shield_state WHERE updated_at < NOW() - INTERVAL '30 days' AND (protection_level <> 'lockdown' OR lockdown_until IS NULL OR lockdown_until <= NOW())",
     );
     return { incidentsDeleted: rowCount || 0, retentionDays };
   }
