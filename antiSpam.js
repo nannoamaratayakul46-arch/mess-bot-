@@ -224,7 +224,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       String(item?.type || item?.attachmentType || "").toLowerCase() === "sticker" ||
       Boolean(item?.stickerID || item?.stickerId || item?.packID && item?.spriteUrl)
     );
-    const isReaction = eventType === "message_reaction" || eventType === "messagereactionadd";
+    const isReaction = ["message_reaction", "messagereactionadd", "reaction"].includes(eventType);
     const isSticker = Boolean(sticker);
     // Keep the existing word-spam path intact. Only synthesize a signal when
     // Messenger sends a sticker with no body or a standalone reaction event.
