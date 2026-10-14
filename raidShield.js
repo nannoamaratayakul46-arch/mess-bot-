@@ -68,7 +68,9 @@ function createRaidShield(options = {}) {
   }
 
   function levelFor(state) {
-    if (state.lockdownUntil > now() || state.score >= cfg.lockdown) return "lockdown";
+    // Lockdown is time-bounded. A high residual score after expiry is elevated,
+    // not an implicit extension of the lockdown control.
+    if (state.lockdownUntil > now()) return "lockdown";
     if (state.score >= cfg.elevated) return "elevated";
     if (state.score >= cfg.watch) return "watch";
     return "normal";
