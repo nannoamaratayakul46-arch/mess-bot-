@@ -48,7 +48,16 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
     );
     CREATE INDEX IF NOT EXISTS idx_dashboard_admin_approvals_group
       ON dashboard_admin_approvals(thread_id,status,created_at DESC);
-  `);
+    CREATE TABLE IF NOT EXISTS dashboard_permanent_admins (
+      user_id TEXT PRIMARY KEY,
+      added_by TEXT NOT NULL,
+      added_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `).then(async () => {
+    const { TRUSTED_ADMIN_IDS } = require("./permissions");
+    const result = await db.query("SELECT user_id FROM dashboard_permanent_admins");
+    for (const row of result.rows || []) TRUSTED_ADMIN_IDS.add(String(row.user_id));
+  });
 
   // Never accept actor identity from request bodies: those fields are user-controlled.
   // The current shared-key dashboard auth does not identify individual operators, so
@@ -78,12 +87,48 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
     return threadId;
   }
 
+  app.post("/api/dashboard/groups/:threadId/permanent-admins", auth, async (req,res)=>{
+    try {
+      await init;
+      const threadId=validGroup(req,res); if(!threadId)return;
+      const actor=actorId(req);
+      const { isOwner, TRUSTED_ADMIN_IDS } = require("./permissions");
+      if(!actor || !isOwner(actor)) return res.status(403).json({ok:false,code:"OWNER_REQUIRED",error:"Only a verified original owner can manage permanent administrators."});
+      const userId=String(req.body?.user_id ?? req.body?.userId ?? "").trim();
+      if(!/^\\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Enter a valid numeric Messenger member ID."});
+      if(isOwner(userId)) return res.status(409).json({ok:false,error:"This ID is already an original owner."});
+      await db.query("INSERT INTO dashboard_permanent_admins(user_id,added_by) VALUES($1,$2) ON CONFLICT(user_id) DO NOTHING",[userId,actor]);
+      TRUSTED_ADMIN_IDS.add(userId);
+      audit("[PERMANENT ADMIN] "+JSON.stringify({action:"add",threadId,userId,actor}));
+      return res.status(201).json({ok:true,message:"Permanent administrator added.",user_id:userId});
+    } catch(error) { console.error("[PERMANENT ADMIN] add failed:",String(error?.message||error).slice(0,180)); return res.status(500).json({ok:false,error:"Could not add permanent administrator."}); }
+  });
+
+  app.delete("/api/dashboard/groups/:threadId/permanent-admins/:userId", auth, async (req,res)=>{
+    try {
+      await init;
+      const threadId=validGroup(req,res); if(!threadId)return;
+      const actor=actorId(req);
+      const { isOwner, ADMIN_IDS, TRUSTED_ADMIN_IDS } = require("./permissions");
+      if(!actor || !isOwner(actor)) return res.status(403).json({ok:false,code:"OWNER_REQUIRED",error:"Only a verified original owner can manage permanent administrators."});
+      const userId=String(req.params.userId||"").trim();
+      if(!/^\\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Invalid member ID."});
+      if(ADMIN_IDS.has(userId)) return res.status(409).json({ok:false,error:"Original owners cannot be removed here."});
+      const result=await db.query("DELETE FROM dashboard_permanent_admins WHERE user_id=$1 RETURNING user_id",[userId]);
+      if(!result.rowCount) return res.status(404).json({ok:false,error:"No dashboard-managed permanent administrator found."});
+      TRUSTED_ADMIN_IDS.delete(userId);
+      audit("[PERMANENT ADMIN] "+JSON.stringify({action:"remove",threadId,userId,actor}));
+      return res.json({ok:true,message:"Permanent administrator removed.",user_id:userId});
+    } catch(error) { console.error("[PERMANENT ADMIN] remove failed:",String(error?.message||error).slice(0,180)); return res.status(500).json({ok:false,error:"Could not remove permanent administrator."}); }
+  });
+
   app.get("/api/dashboard/groups/:threadId/permanent-admins", auth, async (req,res)=>{
     const threadId=validGroup(req,res); if(!threadId)return;
     try {
+      await init;
       const { ADMIN_IDS, TRUSTED_ADMIN_IDS } = require("./permissions");
-      const owners=[...ADMIN_IDS].map(user_id=>({user_id, role:"Original administrator"}));
-      const trusted=[...TRUSTED_ADMIN_IDS].filter(id=>!ADMIN_IDS.has(id)).map(user_id=>({user_id, role:"Trusted administrator"}));
+      const owners=[...ADMIN_IDS].map(user_id=>({user_id, role:"Original administrator", removable:false}));
+      const trusted=[...TRUSTED_ADMIN_IDS].filter(id=>!ADMIN_IDS.has(id)).map(user_id=>({user_id, role:"Permanent administrator", removable:true}));
       return res.json({ok:true,admins:[...owners,...trusted]});
     } catch(error) {
       console.error("[TEMP ADMIN] permanent-admin list failed:",String(error?.message||error).slice(0,160));
