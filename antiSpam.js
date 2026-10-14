@@ -632,6 +632,64 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       }
     });
 
+    const actionRoute = "/api/dashboard/groups/:threadId/raid-shield/actions";
+    app.get(actionRoute, auth, async (req, res) => {
+      const threadID = String(req.params.threadId || "").trim();
+      if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
+      try {
+        const actions = await raidShieldStore.listApprovalActions({ threadId: threadID, status: String(req.query.status || "pending"), limit: 50 });
+        return res.json({ actions });
+      } catch (error) {
+        log("[AUTOMOD-RAID] approval queue read failed: " + String(error?.message || error).slice(0, 160));
+        return res.status(503).json({ error: "Approval queue is temporarily unavailable." });
+      }
+    });
+
+    app.post(actionRoute, auth, express.json({ limit: "4kb" }), async (req, res) => {
+      const threadID = String(req.params.threadId || "").trim();
+      const targetID = String(req.body?.target_id || "").trim();
+      if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
+      if (!targetID || targetID.length > 80 || targetID === threadID) return res.status(400).json({ error: "A valid target member ID is required." });
+      try {
+        const action = await raidShieldStore.proposeAction({ thread_id: threadID, target_id: targetID, reason: String(req.body?.reason || "admin_review").slice(0, 120), proposed_by: String(req.body?.proposed_by || "dashboard_admin").slice(0, 80) });
+        if (!action) return res.status(409).json({ error: "A pending action already exists for this member in this group." });
+        log("[AUTOMOD-RAID] pending member-removal approval created for group " + threadID);
+        return res.status(201).json({ action });
+      } catch (error) {
+        log("[AUTOMOD-RAID] approval proposal failed: " + String(error?.message || error).slice(0, 160));
+        return res.status(503).json({ error: "Could not create approval request." });
+      }
+    });
+
+    app.post(actionRoute + "/:actionId/review", auth, express.json({ limit: "4kb" }), async (req, res) => {
+      const threadID = String(req.params.threadId || "").trim();
+      const actionId = clamp(req.params.actionId, 1, Number.MAX_SAFE_INTEGER, 0);
+      const decision = String(req.body?.decision || "").toLowerCase();
+      if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
+      if (!actionId || !["approve", "reject"].includes(decision)) return res.status(400).json({ error: "Choose approve or reject for a valid action ID." });
+      try {
+        const reviewed = await raidShieldStore.reviewApprovalAction({ id: actionId, status: decision === "approve" ? "approved" : "rejected", reviewedBy: String(req.body?.reviewed_by || "dashboard_admin").slice(0, 80), note: String(req.body?.note || "").slice(0, 300) });
+        if (!reviewed || reviewed.thread_id !== threadID) return res.status(409).json({ error: "Action is not pending for this group, or has already been reviewed." });
+        if (decision === "reject") {
+          log("[AUTOMOD-RAID] pending member-removal action rejected for group " + threadID);
+          return res.json({ ok: true, action: reviewed });
+        }
+        const api = getApi();
+        if (!api || typeof api.removeUserFromGroup !== "function") {
+          await raidShieldStore.completeApprovalAction(actionId, false);
+          return res.status(503).json({ error: "Messenger removal API is unavailable; action marked failed." });
+        }
+        const removal = await removeFromGroup(api, threadID, reviewed.target_id);
+        const completed = await raidShieldStore.completeApprovalAction(actionId, removal?.ok === true);
+        log("[AUTOMOD-RAID] approved member-removal action " + (removal?.ok ? "completed" : "failed") + " for group " + threadID);
+        if (!removal?.ok) return res.status(502).json({ error: "Messenger did not complete the approved removal.", action: completed });
+        return res.json({ ok: true, action: completed });
+      } catch (error) {
+        log("[AUTOMOD-RAID] approval review failed: " + String(error?.message || error).slice(0, 160));
+        return res.status(503).json({ error: "Could not process the approval decision." });
+      }
+    });
+
     app.delete(route, auth, async (req, res) => {
       try {
         const threadID = String(req.params.threadId || "").trim();
