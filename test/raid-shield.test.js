@@ -24,6 +24,8 @@ test("event deduplication honors the longest detector window, not only score dec
   time = 1_001;
   const firstBurst = await shield.observeMessage({ threadID: "123456789", senderID: "111111", body: "second message" });
   assert.equal(firstBurst.duplicate, false);
+  time = 2_000; // Cleanup must not discard keys while a detector window is active.
+  shield.cleanup();
   time = 2_500; // Past decay, but still in the same message-window bucket.
   const repeatedBurst = await shield.observeMessage({ threadID: "123456789", senderID: "111111", body: "third message" });
   assert.equal(repeatedBurst.duplicate, true);
