@@ -22,6 +22,7 @@ const DEFAULTS = Object.freeze({
   profileBurst: 3,
   maxGroups: 1000,
   maxEventsPerGroup: 100,
+  maxMessageSenders: 1000,
   maxMessageLength: 1000,
 });
 
@@ -168,6 +169,20 @@ function createRaidShield(options = {}) {
     }
   }
 
+  function pruneMessageSenders(state, at) {
+    const cutoff = at - Math.max(cfg.messageWindowMs, cfg.mentionWindowMs) * 2;
+    for (const [senderId, entries] of state.messages) {
+      const fresh = entries.filter(entry => Number.isFinite(entry?.at) && entry.at >= cutoff);
+      if (fresh.length) state.messages.set(senderId, fresh);
+      else state.messages.delete(senderId);
+    }
+    const configuredCap = Math.trunc(Number(cfg.maxMessageSenders) || 1000);
+    const cap = Math.max(1, Math.min(10_000, configuredCap));
+    while (state.messages.size > cap) {
+      state.messages.delete(state.messages.keys().next().value);
+    }
+  }
+
   async function observeMessage(event = {}) {
     const threadId = cleanId(event.threadID);
     const userId = cleanId(event.senderID);
@@ -177,11 +192,14 @@ function createRaidShield(options = {}) {
     const state = stateFor(threadId);
     const at = now();
     decay(state, at);
+    pruneMessageSenders(state, at);
     const key = userId;
     const windowStart = at - cfg.messageWindowMs;
     const prior = (state.messages.get(key) || []).filter(x => x.at >= windowStart);
     const normalized = normalizeText(body);
     prior.push({ at, text: normalized });
+    // Refresh insertion order so capacity eviction behaves like LRU.
+    state.messages.delete(key);
     state.messages.set(key, prior.slice(-20));
 
     const burst = prior.length >= cfg.maxMessages;
@@ -306,10 +324,7 @@ function createRaidShield(options = {}) {
     const at = now();
     for (const [id, state] of groups) {
       decay(state, at);
-      for (const [userId, entries] of state.messages) {
-        const fresh = entries.filter(x => at - x.at < Math.max(cfg.messageWindowMs, cfg.mentionWindowMs) * 2);
-        if (fresh.length) state.messages.set(userId, fresh); else state.messages.delete(userId);
-      }
+      pruneMessageSenders(state, at);
       pruneMap(state.fingerprints, at - cfg.coordinatedWindowMs);
       if (state.lockdownUntil <= at && state.score < cfg.watch && at - state.lastTouched > cfg.decayMs * 2) groups.delete(id);
     }
