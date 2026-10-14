@@ -211,6 +211,7 @@ function createRaidShield(options = {}) {
     // Store mention counts for subsequent rolling-window checks.
     prior[prior.length - 1].mentions = mentions;
     state.messages.set(key, prior.slice(-20));
+    pruneMessageSenders(state, at);
 
     if (burst) return emit(threadId, "message_burst", 2, { sender_id: userId, count: prior.length, window_ms: cfg.messageWindowMs }, "burst:" + userId + ":" + Math.floor(at / cfg.messageWindowMs));
     if (repeated) return emit(threadId, "repeated_message", 2, { sender_id: userId, repeats: prior.filter(x => x.text === normalized).length }, "repeat:" + userId + ":" + normalized.slice(0, 80) + ":" + Math.floor(at / cfg.messageWindowMs));
