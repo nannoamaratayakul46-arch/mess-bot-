@@ -7012,36 +7012,9 @@ async function handleMessage(
         )
       );
 
-      const threadInfo = await new Promise((resolve, reject) => {
-        let settled = false;
-
-        const done = (error, info) => {
-          if (settled) return;
-          settled = true;
-
-          if (error) reject(error);
-          else resolve(info || {});
-        };
-
-        try {
-          const result =
-            api.getThreadInfo(
-              String(threadID),
-              done
-            );
-
-          if (
-            result &&
-            typeof result.then === "function"
-          ) {
-            result
-              .then((info) => done(null, info))
-              .catch(done);
-          }
-        } catch (error) {
-          done(error);
-        }
-      });
+      // Use the shared callback-safe lookup. Some ws3-fca builds resolve
+      // the returned promise with null before the callback provides thread data.
+      const threadInfo = await dashboardGetThreadInfo(api, threadID);
 
       const botID = String(
         typeof api.getCurrentUserID === "function"
@@ -7049,20 +7022,47 @@ async function handleMessage(
           : eclipseUserID || ""
       ).trim();
 
-      const liveParticipantIDs =
-        Array.isArray(threadInfo.participantIDs)
-          ? threadInfo.participantIDs
-              .map((id) =>
-                String(id || "").trim()
-              )
-              .filter(Boolean)
-          : [];
+      // Member lists differ across ws3-fca versions: participantIDs may be
+      // absent while userInfo/participants contain the actual GC roster.
+      const resolvedParticipantIDs = await dashboardGetParticipantIds(
+        api,
+        threadID,
+        threadInfo
+      );
+      let liveParticipantIDs = new Set(resolvedParticipantIDs);
 
-      const liveTargets =
-        liveParticipantIDs.filter(
-          (participantID) =>
-            participantID !== botID
-        );
+      // If the info endpoint only returned the bot (or an empty list), retry
+      // against the matching group entry in the inbox thread list.
+      if ([...liveParticipantIDs].filter(id => id !== botID).length === 0) {
+        try {
+          const listedThreads = await dashboardGetThreadList(api);
+          const listedGroup = listedThreads.find(item =>
+            String(item?.threadID || item?.threadId || item?.thread_id || "") === String(threadID)
+          );
+          if (listedGroup) {
+            for (const source of [
+              listedGroup.participantIDs,
+              listedGroup.userInfo,
+              listedGroup.participants,
+              listedGroup.participantList,
+              listedGroup.participant_list,
+            ]) {
+              for (const id of dashboardParticipantIdsFrom(source)) {
+                liveParticipantIDs.add(id);
+              }
+            }
+          }
+        } catch (error) {
+          console.warn(
+            "[NICK GUARD] Could not load fallback member list for " +
+              threadID + ": " + String(error?.message || error).slice(0, 160)
+          );
+        }
+      }
+
+      const liveTargets = [...liveParticipantIDs].filter(
+        participantID => participantID !== botID
+      );
 
       if (!liveTargets.length) {
         sendReplyWithTyping(
