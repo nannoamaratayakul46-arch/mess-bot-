@@ -58,3 +58,24 @@ test("approval queue schema enforces a single pending action per group and targe
   const insert = calls.find(call => call.sql.includes("INSERT INTO raid_shield_approval_actions"));
   assert.match(insert.sql, /ON CONFLICT \(thread_id, target_id\) WHERE status = 'pending' DO NOTHING/);
 });
+
+
+test("uncertain approval outcome stays approved and records a review note", async () => {
+  let updateSql = "";
+  let updateParams = [];
+  const db = { query: async (sql, params = []) => {
+    const query = String(sql);
+    if (query.includes("UPDATE raid_shield_approval_actions SET review_note=$2")) {
+      updateSql = query;
+      updateParams = params;
+      return { rows: [{ id: 12, status: "approved", review_note: params[1] }] };
+    }
+    return { rows: [], rowCount: 0 };
+  } };
+  const store = createRaidShieldStore(db);
+  const row = await store.markApprovalUncertain(12, "Outcome uncertain; verify membership before retrying.");
+  assert.equal(row.status, "approved");
+  assert.match(updateSql, /WHERE id=\\$1 AND status='approved'/);
+  assert.equal(updateParams[0], 12);
+  assert.match(updateParams[1], /verify membership/);
+});
