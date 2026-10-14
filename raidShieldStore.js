@@ -120,7 +120,7 @@ function createRaidShieldStore(db, options = {}) {
     await ensureTables();
     const safeLimit = clamp(limit, 1, 1000, 1000);
     const { rows } = await db.query(
-      "SELECT thread_id, score, protection_level, lockdown_until, last_event_at, updated_at FROM raid_shield_state ORDER BY updated_at DESC LIMIT $1",
+      "SELECT thread_id, score, protection_level, lockdown_until, last_event_at, updated_at FROM raid_shield_state ORDER BY (lockdown_until > NOW()) DESC NULLS LAST, updated_at DESC LIMIT $1",
       [safeLimit],
     );
     return rows;
