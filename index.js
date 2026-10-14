@@ -3534,6 +3534,9 @@ registerTemporaryAdminRoutes(app, {
   auth: requireDashboardAccess,
   db,
   isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
+  // Grant/review endpoints require an authenticated principal attached by
+  // trusted middleware plus membership in the bot's configured admin registry.
+  isAuthorizedOperator: userId => isAdmin(userId),
   audit: message => console.log(message),
 });
 
