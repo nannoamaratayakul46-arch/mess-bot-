@@ -7,7 +7,7 @@ const { createRaidShield } = require("../raidShield");
 
 test("group capacity evicts the least-recently touched non-locked group", async () => {
   let now = 1_000_000;
-  const shield = createRaidShield({ now: () => now, config: { maxGroups: 2 } });
+  const shield = createRaidShield({ now: () => now, config: { maxGroups: 2, decayMs: 1_000_000 } });
   await shield.observeProfileChange("111111", "p1", { confirmedUnauthorized: true, actor_id: "900001" });
   now += 10;
   await shield.observeProfileChange("222222", "p2", { confirmedUnauthorized: true, actor_id: "900002" });
