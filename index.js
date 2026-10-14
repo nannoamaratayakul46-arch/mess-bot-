@@ -23,7 +23,7 @@ const { login } = require("ws3-fca");
 
 const db = require("./db");
 const { resolveTargetName } = require("./targetName");
-const { registerGroupProfileRoutes } = require("./groupProfileRoutes");
+const { registerGroupProfileRoutes, handleGroupProfileEvent } = require("./groupProfileRoutes");
 const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
 const { createLiveChat } = require("./liveChat");
 const { registerModerationRoutes } = require("./dashboardModeration");
@@ -6728,6 +6728,9 @@ function attemptLogin() {
             });
             void handleNicknameGuardEvent(api, event).catch((error) => {
               console.error("[NICK GUARD] Event handler failed:", error);
+            });
+            void handleGroupProfileEvent(api, event).catch((error) => {
+              console.error("[PROFILE-GUARD] Event-triggered verification failed:", error);
             });
             return;
           }
