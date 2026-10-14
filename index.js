@@ -942,6 +942,24 @@ function incomingEventKeys(event) {
 
   const keys = [];
 
+  // For reactions, messageID usually identifies the message being reacted
+  // to, not a unique reaction event. Deduplicate by actor + target + timestamp
+  // instead so multiple members reacting to one message are all counted.
+  const eventType = String(event.type || "").toLowerCase();
+  if (eventType === "message_reaction" || eventType === "messagereactionadd") {
+    const threadID = String(event.threadID || "").trim();
+    const actorID = String(event.senderID ?? event.userID ?? event.authorID ?? "").trim();
+    const targetMessageID = String(event.messageID || event.messageId || "").trim();
+    const timestamp = Number(event.timestamp || event.timestampMS || event.timestamp_ms || NaN);
+    const reaction = String(event.reaction ?? event.reactionEmoji ?? event.emoji ?? event.reactionType ?? "");
+    if (threadID && actorID && Number.isFinite(timestamp)) {
+      return [`reaction:${threadID}:${actorID}:${targetMessageID}:${timestamp}:${reaction}`];
+    }
+    // Without an event timestamp, don't use the target message ID as a
+    // dedup key; doing so would suppress every later reaction to that message.
+    return [];
+  }
+
   const messageID = String(
     event.messageID ||
       event.messageId ||
