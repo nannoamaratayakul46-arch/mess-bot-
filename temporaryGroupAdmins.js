@@ -53,11 +53,15 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       added_by TEXT NOT NULL,
       added_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
-  `).then(async () => {
-    const { TRUSTED_ADMIN_IDS } = require("./permissions");
-    const result = await db.query("SELECT user_id FROM dashboard_permanent_admins");
-    for (const row of result.rows || []) TRUSTED_ADMIN_IDS.add(String(row.user_id));
-  });
+    CREATE TABLE IF NOT EXISTS dashboard_group_permanent_admins (
+      thread_id TEXT NOT NULL,
+      user_id TEXT NOT NULL,
+      added_by TEXT NOT NULL,
+      added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      PRIMARY KEY (thread_id, user_id)
+    );
+    CREATE INDEX IF NOT EXISTS idx_group_permanent_admins_user ON dashboard_group_permanent_admins(user_id);
+  `);
 
   // Never accept actor identity from request bodies: those fields are user-controlled.
   // The current shared-key dashboard auth does not identify individual operators, so
@@ -102,13 +106,12 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       await init;
       const threadId=validGroup(req,res); if(!threadId)return;
       const actor=actorId(req) || "owner-token";
-      const { isOwner, TRUSTED_ADMIN_IDS } = require("./permissions");
+      const { isOwner } = require("./permissions");
       if(!ownerTokenMatches(req.body?.owner_token) && (!actorId(req) || !isOwner(actor))) return res.status(403).json({ok:false,code:"OWNER_REQUIRED",error:"Set DASHBOARD_OWNER_TOKEN in Render and enter it to authorize permanent-admin changes."});
       const userId=String(req.body?.user_id ?? req.body?.userId ?? "").trim();
       if(!/^\\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Enter a valid numeric Messenger member ID."});
       if(isOwner(userId)) return res.status(409).json({ok:false,error:"This ID is already an original owner."});
-      await db.query("INSERT INTO dashboard_permanent_admins(user_id,added_by) VALUES($1,$2) ON CONFLICT(user_id) DO NOTHING",[userId,actor]);
-      TRUSTED_ADMIN_IDS.add(userId);
+      await db.query("INSERT INTO dashboard_group_permanent_admins(thread_id,user_id,added_by) VALUES($1,$2,$3) ON CONFLICT(thread_id,user_id) DO NOTHING",[threadId,userId,actor]);
       audit("[PERMANENT ADMIN] "+JSON.stringify({action:"add",threadId,userId,actor}));
       return res.status(201).json({ok:true,message:"Permanent administrator added.",user_id:userId});
     } catch(error) { console.error("[PERMANENT ADMIN] add failed:",String(error?.message||error).slice(0,180)); return res.status(500).json({ok:false,error:"Could not add permanent administrator."}); }
@@ -119,14 +122,13 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       await init;
       const threadId=validGroup(req,res); if(!threadId)return;
       const actor=actorId(req) || "owner-token";
-      const { isOwner, ADMIN_IDS, TRUSTED_ADMIN_IDS } = require("./permissions");
+      const { isOwner, ADMIN_IDS } = require("./permissions");
       if(!ownerTokenMatches(req.body?.owner_token) && (!actorId(req) || !isOwner(actor))) return res.status(403).json({ok:false,code:"OWNER_REQUIRED",error:"Set DASHBOARD_OWNER_TOKEN in Render and enter it to authorize permanent-admin changes."});
       const userId=String(req.params.userId||"").trim();
       if(!/^\\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Invalid member ID."});
       if(ADMIN_IDS.has(userId)) return res.status(409).json({ok:false,error:"Original owners cannot be removed here."});
-      const result=await db.query("DELETE FROM dashboard_permanent_admins WHERE user_id=$1 RETURNING user_id",[userId]);
-      if(!result.rowCount) return res.status(404).json({ok:false,error:"No dashboard-managed permanent administrator found."});
-      TRUSTED_ADMIN_IDS.delete(userId);
+      const result=await db.query("DELETE FROM dashboard_group_permanent_admins WHERE thread_id=$1 AND user_id=$2 RETURNING user_id",[threadId,userId]);
+      if(!result.rowCount) return res.status(404).json({ok:false,error:"No permanent administrator found for this group."});
       audit("[PERMANENT ADMIN] "+JSON.stringify({action:"remove",threadId,userId,actor}));
       return res.json({ok:true,message:"Permanent administrator removed.",user_id:userId});
     } catch(error) { console.error("[PERMANENT ADMIN] remove failed:",String(error?.message||error).slice(0,180)); return res.status(500).json({ok:false,error:"Could not remove permanent administrator."}); }
@@ -136,9 +138,10 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
     const threadId=validGroup(req,res); if(!threadId)return;
     try {
       await init;
-      const { ADMIN_IDS, TRUSTED_ADMIN_IDS } = require("./permissions");
+      const { ADMIN_IDS } = require("./permissions");
       const owners=[...ADMIN_IDS].map(user_id=>({user_id, role:"Original administrator", removable:false}));
-      const trusted=[...TRUSTED_ADMIN_IDS].filter(id=>!ADMIN_IDS.has(id)).map(user_id=>({user_id, role:"Permanent administrator", removable:true}));
+      const result=await db.query("SELECT user_id FROM dashboard_group_permanent_admins WHERE thread_id=$1 ORDER BY added_at ASC",[threadId]);
+      const trusted=(result.rows||[]).map(row=>String(row.user_id)).filter(id=>!ADMIN_IDS.has(id)).map(user_id=>({user_id,role:"Permanent administrator",removable:true}));
       return res.json({ok:true,admins:[...owners,...trusted]});
     } catch(error) {
       console.error("[TEMP ADMIN] permanent-admin list failed:",String(error?.message||error).slice(0,160));
