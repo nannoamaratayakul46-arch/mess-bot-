@@ -9,7 +9,7 @@ This checklist documents the security boundary and the production checks require
 - Raid Shield records `authenticated_dashboard` as the reviewer label. Do not interpret it as a verified person, account, or individual-admin identity.
 - Do not accept a reviewer name or administrator ID from request JSON as proof of identity. Per-admin attribution requires a trusted identity provider/session and a server-verified identity claim.
 - Keep the dashboard key only in server-side configuration and the dashboard's intended secret configuration. Rotate it immediately if it appears in logs, source control, screenshots, or an exposed URL.
-- Prefer the `Authorization: Bearer` or `X-ECLIPSE-DASHBOARD-KEY` header. Query-string credentials can leak through browser history, proxy logs, analytics, and referrer handling; avoid them except where an existing event-stream client absolutely requires them.
+- Send credentials only in the `Authorization: Bearer` or `X-ECLIPSE-DASHBOARD-KEY` header. Query-string authentication is rejected because URLs can leak through browser history, proxy logs, analytics, and referrer handling. The dashboard uses authenticated polling for events instead of placing its key in an EventSource URL.
 - Configure `ECLIPSE_DASHBOARD_ORIGIN` to the exact trusted dashboard origin rather than `*` for production. CORS is not authentication and does not prevent non-browser clients from calling the API.
 
 ## Approval safety
