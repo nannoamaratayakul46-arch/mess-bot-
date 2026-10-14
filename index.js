@@ -4233,28 +4233,48 @@ app.post(
 // read, rewrite, replace, or clear FB_COOKIES or the durable Messenger session.
 // ============================================================
 
-function dashboardGetThreadInfo(api, threadID) {
+function dashboardGetThreadInfo(api, threadID, timeoutMs = 8000) {
   return new Promise((resolve, reject) => {
     let settled = false;
-    const done = (...args) => {
+    let timer = null;
+    const finish = (callback, value) => {
       if (settled) return;
       settled = true;
+      if (timer) clearTimeout(timer);
+      callback(value);
+    };
+    const done = (...args) => {
+      if (settled) return;
       // ws3-fca is normally error-first, but compatible wrappers sometimes
       // invoke callbacks with just the payload. Accept both forms.
       if (args.length > 1) {
         const [error, info] = args;
-        if (error) reject(error);
-        else resolve(info || {});
+        if (error) finish(reject, error);
+        else finish(resolve, info || {});
         return;
       }
       const [value] = args;
-      if (value instanceof Error) reject(value);
-      else resolve(value || {});
+      if (value instanceof Error) finish(reject, value);
+      else if (value != null) finish(resolve, value);
     };
+
+    // Some ws3-fca versions can throw internally or never call back when the
+    // thread-info response is missing. Do not let commands such as .removenn
+    // hang forever; an empty result lets callers try getThreadList fallback.
+    timer = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      console.warn("[THREAD-INFO] Lookup timed out for " + String(threadID) + "; trying available fallbacks.");
+      resolve({});
+    }, Math.max(1000, Number(timeoutMs) || 8000));
+    timer.unref?.();
+
     try {
       const result = api.getThreadInfo(String(threadID), done);
       if (result && typeof result.then === "function") {
-        result.then((info) => done(null, info)).catch(done);
+        result.then((info) => {
+          if (info != null) done(null, info);
+        }).catch(done);
       } else if (result && typeof result === "object" && !Array.isArray(result)) {
         // Only accept an immediate object when it looks like thread data;
         // request handles must not win the race against the real callback.
