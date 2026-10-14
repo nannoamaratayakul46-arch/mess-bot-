@@ -27,6 +27,7 @@ const { registerGroupProfileRoutes } = require("./groupProfileRoutes");
 const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
 const { createLiveChat } = require("./liveChat");
 const { registerModerationRoutes } = require("./dashboardModeration");
+const { registerTemporaryAdminRoutes } = require("./temporaryGroupAdmins");
 
 const {
   ensureNicknameGuardTable,
@@ -3525,6 +3526,13 @@ registerModerationRoutes(app, {
   removeFromGroup,
   createBan,
   logModeration,
+  audit: message => console.log(message),
+});
+
+registerTemporaryAdminRoutes(app, {
+  auth: requireDashboardAccess,
+  db,
+  isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
   audit: message => console.log(message),
 });
 
