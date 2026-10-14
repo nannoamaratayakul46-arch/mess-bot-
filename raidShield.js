@@ -207,6 +207,35 @@ function createRaidShield(options = {}) {
     return { ...snapshot(state), reason: String(reason).slice(0, 100) };
   }
 
+  function restoreStates(rows = []) {
+    const restored = [];
+    for (const row of rows.slice(0, cfg.maxGroups)) {
+      const id = cleanId(row?.thread_id);
+      if (!id) continue;
+      const score = Number(row.score);
+      const lockdownUntil = row.lockdown_until ? new Date(row.lockdown_until).getTime() : 0;
+      const lastEventAt = row.last_event_at ? new Date(row.last_event_at).getTime() : 0;
+      const state = {
+        threadId: id,
+        score: Number.isFinite(score) ? Math.max(0, Math.min(30, score)) : 0,
+        scoreAt: now(),
+        level: "normal",
+        lockdownUntil: Number.isFinite(lockdownUntil) && lockdownUntil > now() ? lockdownUntil : 0,
+        lastEventAt: Number.isFinite(lastEventAt) ? lastEventAt : 0,
+        messages: new Map(),
+        joins: [],
+        profileChanges: [],
+        fingerprints: new Map(),
+        lastTouched: now(),
+      };
+      decay(state);
+      state.level = levelFor(state);
+      groups.set(id, state);
+      restored.push(snapshot(state));
+    }
+    return restored;
+  }
+
   function getState(threadId) {
     const state = groups.get(cleanId(threadId));
     if (!state) return { thread_id: cleanId(threadId), score: 0, protection_level: "normal", lockdown_until: null, last_event_at: null };
@@ -234,7 +263,7 @@ function createRaidShield(options = {}) {
     for (const [key, atSeen] of recentEventKeys) if (at - atSeen >= cfg.decayMs) recentEventKeys.delete(key);
   }
 
-  return { observeMessage, observeJoin, observeProfileChange, setLockdown, releaseLockdown, getState, listIncidents, cleanup, defaults: { ...DEFAULTS } };
+  return { observeMessage, observeJoin, observeProfileChange, setLockdown, releaseLockdown, getState, listIncidents, restoreStates, cleanup, defaults: { ...DEFAULTS } };
 }
 
 function sanitizeDetail(detail) {
