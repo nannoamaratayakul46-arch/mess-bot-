@@ -53,3 +53,26 @@ test("event deduplication stays bounded without periodic cleanup", async () => {
   assert.equal(replay.duplicate, undefined);
   assert.equal(shield.listIncidents({ threadId: "123456789", limit: 10 }).length, 4);
 });
+
+
+test("per-group sender history is bounded with least-recently-used eviction", async () => {
+  let now = 2_000_000;
+  const shield = createRaidShield({
+    now: () => now,
+    config: { maxGroups: 1, maxMessageSenders: 2, maxMessages: 2, messageWindowMs: 10_000 },
+  });
+
+  await shield.observeMessage({ threadID: "123456789", senderID: "111111", body: "first message" });
+  now += 1;
+  await shield.observeMessage({ threadID: "123456789", senderID: "222222", body: "second sender" });
+  now += 1;
+  await shield.observeMessage({ threadID: "123456789", senderID: "333333", body: "third sender evicts oldest" });
+  now += 1;
+  await shield.observeMessage({ threadID: "123456789", senderID: "111111", body: "first sender returns" });
+
+  assert.equal(
+    shield.listIncidents({ threadId: "123456789", limit: 10 }).filter(x => x.event_type === "message_burst").length,
+    0,
+    "evicted sender history must not accumulate indefinitely or trigger a stale burst",
+  );
+});
