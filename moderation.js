@@ -3404,6 +3404,45 @@ async function removeFromGroup(
         rawError: null,
       };
     }
+
+    // Central enforcement: every caller (dashboard, commands, and automod) goes
+    // through this helper. Never remove a live temporary admin, and fail closed
+    // if the protection table cannot be checked.
+    try {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS dashboard_temp_admins (
+          thread_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          granted_by TEXT NOT NULL DEFAULT 'dashboard-admin',
+          granted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          expires_at TIMESTAMPTZ NOT NULL,
+          status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','revoked','demoted')),
+          reason TEXT NOT NULL DEFAULT '',
+          PRIMARY KEY (thread_id, user_id)
+        )
+      `);
+      const protectedGrant = await db.query(
+        "SELECT 1 FROM dashboard_temp_admins WHERE thread_id=$1 AND user_id=$2 AND status='active' AND expires_at>NOW() LIMIT 1",
+        [String(threadID), String(targetId)]
+      );
+      if (protectedGrant.rows?.length) {
+        return {
+          ok: false,
+          errorCode: "ACTIVE_TEMP_ADMIN_PROTECTED",
+          errorMessage: "This member has an active temporary-admin grant. Revoke the grant and verify the role status before removing them.",
+          rawError: null,
+        };
+      }
+    } catch (protectionError) {
+      console.error("[moderation] Temporary-admin protection lookup failed:", String(protectionError?.message || protectionError).slice(0, 180));
+      return {
+        ok: false,
+        errorCode: "PROTECTED_ROLE_CHECK_UNAVAILABLE",
+        errorMessage: "Temporary-admin protection could not be verified, so the removal was not attempted.",
+        rawError: null,
+      };
+    }
+
     if (admins.includes(String(targetId))) {
       return {
         ok: false,
