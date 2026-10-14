@@ -216,6 +216,11 @@ function createRaidApprovalMode(options = {}) {
       await audit(id, "restore_skipped_manual_override", { reason });
       return { ok: true, skipped: "manual_override" };
     }
+    if (row?.previous_approval_mode !== false) {
+      await save(id, { automation_active: false, previous_approval_mode: null, restore_after: null, last_action: "restore_skipped_unknown_previous_mode", last_error: "Previous approval mode was not confirmed OFF" });
+      await audit(id, "restore_skipped_unknown_previous_mode", { reason });
+      return { ok: false, skipped: "unknown_previous_mode" };
+    }
     const api = getApi();
     if (!supportedApi(api)) {
       const message = "Approval-mode API unavailable; keeping restore pending";
@@ -231,7 +236,7 @@ function createRaidApprovalMode(options = {}) {
       }
       await changeMode(api, id, false);
       await save(id, { automation_active: false, previous_approval_mode: null, ownership_lost: false, restore_after: null, last_action: "approval_restored_off", last_error: null });
-      await audit(id, "approval_restored_off", { reason, restored_to_previous: false });
+      await audit(id, "approval_restored_off", { reason, restored_to_previous: true, restored_mode: false });
       log("[AUTOMOD-RAID] restored Messenger join approval to its pre-raid OFF state for group " + id);
       return { ok: true, restored: true };
     } catch (error) {
