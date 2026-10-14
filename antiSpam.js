@@ -246,11 +246,6 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const list = (hits.get(key) || []).filter(hit => now - hit.at < windowMs * 2);
     const cleanText = norm(text);
 
-    // Emoji-only, punctuation-only, and number-only messages must not count
-    // toward word-spam burst/repetition enforcement. Messages containing actual
-    // letters still count, including messages that mix words and emojis.
-    if (!/\p{L}/u.test(cleanText)) return;
-
     list.push({ at: now, text: cleanText });
     hits.set(key, list);
 
