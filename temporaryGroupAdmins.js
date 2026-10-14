@@ -61,7 +61,11 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       PRIMARY KEY (thread_id, user_id)
     );
     CREATE INDEX IF NOT EXISTS idx_group_permanent_admins_user ON dashboard_group_permanent_admins(user_id);
-  `);
+  `).then(async () => {
+    const { replaceGroupTrustedAdmins } = require("./permissions");
+    const result = await db.query("SELECT thread_id,user_id FROM dashboard_group_permanent_admins");
+    replaceGroupTrustedAdmins(result.rows || []);
+  });
 
   // Never accept actor identity from request bodies: those fields are user-controlled.
   // The current shared-key dashboard auth does not identify individual operators, so
@@ -112,6 +116,9 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       if(!/^\\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Enter a valid numeric Messenger member ID."});
       if(isOwner(userId)) return res.status(409).json({ok:false,error:"This ID is already an original owner."});
       await db.query("INSERT INTO dashboard_group_permanent_admins(thread_id,user_id,added_by) VALUES($1,$2,$3) ON CONFLICT(thread_id,user_id) DO NOTHING",[threadId,userId,actor]);
+      const { GROUP_TRUSTED_ADMIN_IDS } = require("./permissions");
+      if (!GROUP_TRUSTED_ADMIN_IDS.has(threadId)) GROUP_TRUSTED_ADMIN_IDS.set(threadId, new Set());
+      GROUP_TRUSTED_ADMIN_IDS.get(threadId).add(userId);
       audit("[PERMANENT ADMIN] "+JSON.stringify({action:"add",threadId,userId,actor}));
       return res.status(201).json({ok:true,message:"Permanent administrator added.",user_id:userId});
     } catch(error) { console.error("[PERMANENT ADMIN] add failed:",String(error?.message||error).slice(0,180)); return res.status(500).json({ok:false,error:"Could not add permanent administrator."}); }
@@ -128,6 +135,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       if(!/^\\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Invalid member ID."});
       if(ADMIN_IDS.has(userId)) return res.status(409).json({ok:false,error:"Original owners cannot be removed here."});
       const result=await db.query("DELETE FROM dashboard_group_permanent_admins WHERE thread_id=$1 AND user_id=$2 RETURNING user_id",[threadId,userId]);
+      if (result.rowCount) require("./permissions").GROUP_TRUSTED_ADMIN_IDS.get(threadId)?.delete(userId);
       if(!result.rowCount) return res.status(404).json({ok:false,error:"No permanent administrator found for this group."});
       audit("[PERMANENT ADMIN] "+JSON.stringify({action:"remove",threadId,userId,actor}));
       return res.json({ok:true,message:"Permanent administrator removed.",user_id:userId});
