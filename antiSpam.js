@@ -55,7 +55,18 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
   const raidShield = createRaidShield({
     persistIncident: incident => raidShieldStore.persistIncident(incident),
     persistState: state => raidShieldStore.persistState(state),
-    onIncident: incident => log(`[AUTOMOD-RAID] ${incident.severity} signal=${incident.event_type} group=${incident.thread_id} score=${incident.score}`),
+    onIncident: async incident => {
+      log(`[AUTOMOD-RAID] ${incident.severity} signal=${incident.event_type} group=${incident.thread_id} score=${incident.score}`);
+      const targetID = String(incident.evidence?.sender_id || "").trim();
+      if (targetID && ["elevated", "lockdown"].includes(incident.severity)) {
+        try {
+          await raidShieldStore.proposeAction({ thread_id: incident.thread_id, target_id: targetID, reason: "risk_signal:" + incident.event_type, proposed_by: "raid_shield" });
+          log("[AUTOMOD-RAID] elevated risk queued for admin review in group " + incident.thread_id);
+        } catch (error) {
+          log("[AUTOMOD-RAID] could not queue review action: " + String(error?.message || error).slice(0, 140));
+        }
+      }
+    },
   });
   let schemaPromise = null;
   let raidShieldReadyPromise = null;
