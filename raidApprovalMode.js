@@ -80,7 +80,8 @@ function createRaidApprovalMode(options = {}) {
   }
 
   function supportedApi(api) {
-    return Boolean(api && typeof api.getThreadInfo === "function" && typeof api.changeThreadApprovalMode === "function");
+    return Boolean(api && typeof api.changeThreadApprovalMode === "function" &&
+      (typeof api.getThreadInfo === "function" || typeof api.getThreadList === "function"));
   }
 
   async function callApi(api, method, args, timeoutMs = 12_000) {
@@ -110,10 +111,33 @@ function createRaidApprovalMode(options = {}) {
   }
 
   async function readMode(api, threadId) {
-    const info = await callApi(api, "getThreadInfo", [threadId]);
-    const mode = info?.approvalMode ?? info?.approval_mode;
-    if (typeof mode !== "boolean") throw new Error("Messenger thread info did not return a boolean approvalMode");
-    return mode;
+    let lastError = null;
+    if (typeof api?.getThreadInfo === "function") {
+      try {
+        const info = await callApi(api, "getThreadInfo", [threadId]);
+        const mode = info?.approvalMode ?? info?.approval_mode;
+        if (typeof mode === "boolean") return mode;
+        lastError = new Error("getThreadInfo did not return a boolean approvalMode");
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    // Some ws3-fca deployments have unreliable per-thread lookups. The thread
+    // list is an explicitly checked fallback; never assume a missing field.
+    if (typeof api?.getThreadList === "function") {
+      try {
+        const threads = await callApi(api, "getThreadList", [1000, null, []]);
+        const info = Array.isArray(threads) ? threads.find(item =>
+          String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? "") === String(threadId)
+        ) : null;
+        const mode = info?.approvalMode ?? info?.approval_mode;
+        if (typeof mode === "boolean") return mode;
+        lastError = new Error("getThreadList did not return a boolean approvalMode for this group");
+      } catch (error) {
+        lastError = error;
+      }
+    }
+    throw new Error(String(lastError?.message || "Messenger did not return a verified approvalMode"));
   }
 
   async function changeMode(api, threadId, enabled) {
