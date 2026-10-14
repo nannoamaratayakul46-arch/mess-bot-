@@ -269,10 +269,14 @@ function createRaidApprovalMode(options = {}) {
     try {
       await ensureTables();
       const result = await db.query(
-        "SELECT thread_id, automation_enabled, automation_active, ownership_lost, restore_after FROM raid_shield_approval_mode WHERE automation_active=TRUE LIMIT 1000",
+        "SELECT thread_id, automation_enabled, automation_active, ownership_lost, restore_after, last_action, updated_at FROM raid_shield_approval_mode WHERE automation_active=TRUE LIMIT 1000",
       );
       for (const row of result.rows || []) {
-        if (row.ownership_lost === true || !row.automation_enabled || !row.restore_after || new Date(row.restore_after).getTime() <= now()) {
+        const lastAttemptAt = row.updated_at ? new Date(row.updated_at).getTime() : 0;
+        const recentRestoreFailure = ["restore_waiting_for_api", "restore_failed"].includes(String(row.last_action || "")) &&
+          lastAttemptAt > 0 && now() - lastAttemptAt < 60_000;
+        const restoreDue = !row.automation_enabled || !row.restore_after || new Date(row.restore_after).getTime() <= now();
+        if (row.ownership_lost === true || (restoreDue && !recentRestoreFailure)) {
           const reason = row.ownership_lost ? "manual_override" : row.automation_enabled ? "quiet_period_elapsed" : "dashboard_disabled";
           await withLock(cleanId(row.thread_id), () => restore(cleanId(row.thread_id), reason));
         }
