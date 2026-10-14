@@ -373,8 +373,24 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
     if (typeof req.body?.enabled !== "boolean") return res.status(400).json({ ok: false, error: "Choose whether photo protection is on or off." });
     try {
       if (req.body.enabled) {
-        const backup = await db.query("SELECT image_data IS NOT NULL AS has_backup FROM group_photo_guard WHERE thread_id = $1", [threadId]);
+        const backup = await db.query("SELECT image_data IS NOT NULL AS has_backup, expected_title FROM group_photo_guard WHERE thread_id = $1", [threadId]);
         if (!backup.rows[0]?.has_backup) return res.status(409).json({ ok: false, error: "Set a group photo first so the bot has a saved backup." });
+        // If this is an existing photo guard created before name protection was
+        // added, snapshot the current name at the moment protection is enabled.
+        if (!String(backup.rows[0]?.expected_title || "").trim()) {
+          const api = getApi();
+          if (api) {
+            try {
+              const info = await getThreadInfoWithFallback(api, threadId, { promise: null });
+              const currentTitle = getGroupTitle(info);
+              if (currentTitle) {
+                await db.query("UPDATE group_photo_guard SET expected_title = $2 WHERE thread_id = $1", [threadId, currentTitle]);
+              }
+            } catch (error) {
+              audit("[PROFILE-GUARD] Could not snapshot current group name for " + threadId + ": " + String(error?.message || error).slice(0, 120));
+            }
+          }
+        }
       }
       const result = await db.query(`
         INSERT INTO group_photo_guard(thread_id, enabled, updated_at)
