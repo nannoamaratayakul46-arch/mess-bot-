@@ -72,3 +72,17 @@ test("incident evidence strips message bodies and bounds dashboard output", asyn
   assert.equal(incident.evidence.message_body, undefined);
   assert.ok(shield.listIncidents({ limit: 1 }).length <= 1);
 });
+
+test("persisted lockdown and score are restored after restart", () => {
+  const shield = createRaidShield({ now: () => 2_000_000 });
+  const restored = shield.restoreStates([{
+    thread_id: "987654321",
+    score: 8,
+    protection_level: "elevated",
+    lockdown_until: new Date(2_100_000).toISOString(),
+    last_event_at: new Date(1_999_000).toISOString(),
+  }]);
+  assert.equal(restored.length, 1);
+  assert.equal(shield.getState("987654321").protection_level, "lockdown");
+  assert.equal(shield.getState("987654321").lockdown_until, new Date(2_100_000).toISOString());
+});
