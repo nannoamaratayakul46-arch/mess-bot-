@@ -6921,6 +6921,175 @@ async function handleMessage(
     return;
   }
 
+  // MASS REMOVE NICKNAMES — OWNER ONLY
+  // .removenn [seconds] clears custom nicknames for all other GC members.
+  const removeNicknameMatch =
+    originalText.match(/^\.removenn(?:\s+(\d+))?$/i);
+
+  if (removeNicknameMatch) {
+    if (!isOwner(senderId)) {
+      sendReplyWithTyping(api, "🔒 .removenn is owner-only.", threadID);
+      return;
+    }
+
+    const requestedIntervalSeconds = removeNicknameMatch[1]
+      ? Number(removeNicknameMatch[1])
+      : null;
+
+    if (
+      requestedIntervalSeconds !== null &&
+      (!Number.isInteger(requestedIntervalSeconds) ||
+        requestedIntervalSeconds < 2 ||
+        requestedIntervalSeconds > 60)
+    ) {
+      sendReplyWithTyping(
+        api,
+        "⏱️ .removenn interval must be between 2 and 60 seconds. Example: .removenn 10",
+        threadID
+      );
+      return;
+    }
+
+    try {
+      const threadInfo = await dashboardGetThreadInfo(api, threadID);
+      const botID = String(
+        typeof api.getCurrentUserID === "function"
+          ? api.getCurrentUserID()
+          : eclipseUserID || ""
+      ).trim();
+
+      const participantIDs = new Set(
+        await dashboardGetParticipantIds(api, threadID, threadInfo)
+      );
+
+      if ([...participantIDs].filter(id => id !== botID).length === 0) {
+        try {
+          const listedThreads = await dashboardGetThreadList(api);
+          const listedGroup = listedThreads.find(item =>
+            String(item?.threadID || item?.threadId || item?.thread_id || "") === String(threadID)
+          );
+          if (listedGroup) {
+            for (const source of [
+              listedGroup.participantIDs,
+              listedGroup.userInfo,
+              listedGroup.participants,
+              listedGroup.participantList,
+              listedGroup.participant_list,
+            ]) {
+              for (const id of dashboardParticipantIdsFrom(source)) {
+                participantIDs.add(id);
+              }
+            }
+          }
+        } catch (fallbackError) {
+          console.warn(
+            "[NICK GUARD] .removenn participant fallback failed: " +
+              String(fallbackError?.message || fallbackError).slice(0, 160)
+          );
+        }
+      }
+
+      const targets = [...participantIDs].filter(id => id && id !== botID);
+      if (!targets.length) {
+        sendReplyWithTyping(api, "🎀 walang target members sa GC.", threadID);
+        return;
+      }
+
+      // Remove stale protected nicknames first, so .nn does not restore a
+      // raider's nickname after it is cleared. Preserve the owner's own guard.
+      const protectedNicknames = await getProtectedNicknames(threadID);
+      const ownerProtectedNickname = protectedNicknames[String(senderId)];
+      await setProtectedNicknames(
+        threadID,
+        senderId,
+        ownerProtectedNickname
+          ? { [String(senderId)]: ownerProtectedNickname }
+          : {}
+      );
+
+      // Stop any saved .setnn run so it cannot re-apply the unwanted nickname.
+      await clearMassNicknameRun(threadID);
+
+      const minDelay = requestedIntervalSeconds !== null
+        ? requestedIntervalSeconds * 1000
+        : Math.max(4000, Number(process.env.ECLIPSE_SETNN_MIN_DELAY_MS || 4000));
+      let cleared = 0;
+      let alreadyBlank = 0;
+      let failed = 0;
+      let rateBlocked = false;
+
+      for (let i = 0; i < targets.length; i++) {
+        const participantID = targets[i];
+        const currentNickname = String(
+          threadInfo?.nicknames?.[participantID] ||
+          threadInfo?.nicknames?.[String(participantID)] ||
+          ""
+        ).trim();
+
+        if (!currentNickname) {
+          alreadyBlank++;
+          continue;
+        }
+
+        try {
+          // An empty nickname asks Messenger to remove the custom nickname.
+          await changeNicknameAsync(api, "", threadID, participantID);
+          cleared++;
+        } catch (error) {
+          const errorCode = Number(
+            error?.error ?? error?.code ?? error?.errorCode ??
+            error?.response?.error ?? 0
+          );
+          const errorText = [
+            error?.errorSummary,
+            error?.errorDescription?.__html,
+            error?.errorDescription,
+            error?.message,
+          ].filter(Boolean).join(" ");
+
+          if (
+            errorCode === 3252001 ||
+            /temporarily blocked|going too fast|rate.?limit/i.test(errorText)
+          ) {
+            rateBlocked = true;
+            console.warn("[NICK GUARD] .removenn stopped by Messenger rate limit.");
+            break;
+          }
+
+          failed++;
+          console.error(
+            "[NICK GUARD] .removenn failed for " + participantID + ":",
+            error
+          );
+        }
+
+        if (i < targets.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, minDelay));
+        }
+      }
+
+      sendReplyWithTyping(
+        api,
+        rateBlocked
+          ? "🎀 removenn paused because Facebook rate-limited nickname changes. " +
+            cleared + " cleared · " + alreadyBlank + " already blank · " +
+            failed + " failed. Wait for the cooldown before running .removenn again."
+          : "🎀 removenn done — " + cleared + " cleared · " +
+            alreadyBlank + " already blank · " + failed + " failed.",
+        threadID
+      );
+    } catch (error) {
+      console.error("[NICK GUARD] .removenn command failed:", error);
+      sendReplyWithTyping(
+        api,
+        "🔴 .removenn could not clear the GC nicknames.",
+        threadID
+      );
+    }
+
+    return;
+  }
+
   const setNicknameMatch =
     originalText.match(/^\.setnn(?:\s+(?:(\d+)\s+)?(.+))?$/i);
 
