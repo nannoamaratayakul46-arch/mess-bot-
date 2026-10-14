@@ -75,7 +75,7 @@ test("uncertain approval outcome stays approved and records a review note", asyn
   const store = createRaidShieldStore(db);
   const row = await store.markApprovalUncertain(12, "Outcome uncertain; verify membership before retrying.");
   assert.equal(row.status, "approved");
-  assert.match(updateSql, /WHERE id=\\$1 AND status='approved'/);
+  assert.ok(updateSql.includes("WHERE id=$1 AND status='approved'"));
   assert.equal(updateParams[0], 12);
   assert.match(updateParams[1], /verify membership/);
 });
