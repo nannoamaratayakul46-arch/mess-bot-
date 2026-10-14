@@ -235,7 +235,7 @@ function getGroupTitle(info) {
   return null;
 }
 
-async function runGuardCheck({ db, getApi, audit = () => {} }) {
+async function runGuardCheck({ db, getApi, audit = () => {}, immediateThreadId = null }) {
   if (guardRunning) return;
   const api = getApi();
   if (!api || typeof api.getThreadInfo !== "function") return;
@@ -271,7 +271,7 @@ async function runGuardCheck({ db, getApi, audit = () => {} }) {
       const titleKey = threadId + ":title";
       if (expectedTitle && currentTitle && currentTitle !== expectedTitle) {
         const previous = mismatchObservations.get(titleKey);
-        if (!previous || previous.value !== currentTitle) {
+        if ((!previous || previous.value !== currentTitle) && String(immediateThreadId || "") !== threadId) {
           mismatchObservations.set(titleKey, { value: currentTitle, at: Date.now() });
           console.warn("[PROFILE-GUARD] Group name differs for " + threadId + "; waiting for confirmation before restoring.");
         } else if (Date.now() - (lastRestoreAttempt.get(titleKey) || 0) >= RESTORE_RETRY_MS) {
@@ -311,7 +311,7 @@ async function runGuardCheck({ db, getApi, audit = () => {} }) {
         continue;
       }
       const previousPhoto = mismatchObservations.get(photoKey);
-      if (!previousPhoto || previousPhoto.value !== currentPhoto) {
+      if ((!previousPhoto || previousPhoto.value !== currentPhoto) && String(immediateThreadId || "") !== threadId) {
         mismatchObservations.set(photoKey, { value: currentPhoto, at: Date.now() });
         console.warn("[PHOTO-GUARD] Photo URL differs for " + threadId + "; waiting for confirmation before restoring.");
         continue;
