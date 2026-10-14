@@ -545,7 +545,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const eventID = String(event?.messageID || event?.messageId || event?.logMessageId || data?.messageID || data?.messageId || "").trim();
     const fingerprint = eventID
       ? "event:" + eventID
-      : ["subscribe", threadID, timestamp || Math.floor(Date.now() / 3000), JSON.stringify(data)].join(":").slice(0, 900);
+      : ["subscribe", threadID, timestamp || Math.floor(Date.now() / 3000), participants.slice().sort().join(",")].join(":").slice(0, 900);
     try {
       await ensureRaidShieldReady();
       for (const participantID of participants) {
