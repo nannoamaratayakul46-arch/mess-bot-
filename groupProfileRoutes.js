@@ -339,6 +339,17 @@ function startGuardScheduler(dependencies) {
   guardTimer.unref?.();
 }
 
+let activeGuardDependencies = null;
+
+async function handleGroupProfileEvent(api, event) {
+  const eventType = String(event?.logMessageType || "");
+  const threadId = String(event?.threadID || "").trim();
+  if (event?.type !== "event" || !threadId || !["log:thread-name", "log:thread-image"].includes(eventType)) return false;
+  if (!activeGuardDependencies || !api) return false;
+  await runGuardCheck({ ...activeGuardDependencies, getApi: () => api, immediateThreadId: threadId });
+  return true;
+}
+
 function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit = () => {} }) {
   if (!app || typeof app.put !== "function") throw new TypeError("An Express app is required.");
   if (typeof auth !== "function" || typeof getApi !== "function" || typeof isKnownGroup !== "function" || !db || typeof db.query !== "function") {
@@ -471,11 +482,13 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
     }
   });
 
-  startGuardScheduler({ db, getApi, audit });
+  activeGuardDependencies = { db, getApi, audit };
+  startGuardScheduler(activeGuardDependencies);
 }
 
 module.exports = {
   registerGroupProfileRoutes,
+  handleGroupProfileEvent,
   decodeProfileImage,
   normalizePhotoUrl,
   getImageUrl,
