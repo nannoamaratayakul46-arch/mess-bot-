@@ -52,7 +52,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
 
   function validGroup(req, res) {
     const threadId = String(req.params.threadId || "").trim();
-    if (!/^\\d{6,32}$/.test(threadId)) { res.status(400).json({ ok:false, error:"Invalid Messenger group ID." }); return null; }
+    if (!/^\d{6,32}$/.test(threadId)) { res.status(400).json({ ok:false, error:"Invalid Messenger group ID." }); return null; }
     if (!isKnownGroup(threadId)) { res.status(404).json({ ok:false, error:"Unknown group. Refresh groups first." }); return null; }
     return threadId;
   }
@@ -73,8 +73,8 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       await init;
       const threadId=validGroup(req,res); if(!threadId) return;
       const userId=String(req.body?.user_id ?? req.body?.userId ?? "").trim();
-      const reason=String(req.body?.reason||"").replace(/[\\u0000-\\u001f\\u007f]/g," ").trim().slice(0,200);
-      if(!/^\\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Enter a valid numeric Messenger member ID."});
+      const reason=String(req.body?.reason||"").replace(/[\u0000-\u001f\u007f]/g," ").trim().slice(0,200);
+      if(!/^\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Enter a valid numeric Messenger member ID."});
       const grantedBy=String(req.dashboardUser?.id ?? req.user?.id ?? req.session?.user?.id ?? "dashboard-admin").slice(0,80);
       const result=await db.query(`INSERT INTO dashboard_temp_admins(thread_id,user_id,granted_by,granted_at,expires_at,status,reason)
         VALUES($1,$2,$3,NOW(),NOW()+INTERVAL '5 days','active',$4)
@@ -90,7 +90,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
     try {
       await init; const threadId=validGroup(req,res); if(!threadId)return;
       const userId=String(req.params.userId||"").trim();
-      if(!/^\\d{6,20}$/.test(userId))return res.status(400).json({ok:false,error:"Invalid member ID."});
+      if(!/^\d{6,20}$/.test(userId))return res.status(400).json({ok:false,error:"Invalid member ID."});
       const result=await db.query("UPDATE dashboard_temp_admins SET status='revoked' WHERE thread_id=$1 AND user_id=$2 AND status='active' RETURNING user_id",[threadId,userId]);
       if(!result.rowCount)return res.status(404).json({ok:false,error:"No active temporary grant found."});
       audit("[TEMP ADMIN] "+JSON.stringify({action:"revoke",threadId,userId}));
@@ -112,7 +112,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       await init;const threadId=validGroup(req,res);if(!threadId)return;
       const actionType=String(req.body?.action_type||"");
       const requestedBy=String(req.body?.requested_by||"dashboard-admin").slice(0,80);
-      const reason=String(req.body?.reason||"").replace(/[\\u0000-\\u001f\\u007f]/g," ").trim().slice(0,200);
+      const reason=String(req.body?.reason||"").replace(/[\u0000-\u001f\u007f]/g," ").trim().slice(0,200);
       const payload=req.body?.payload && typeof req.body.payload==="object" && !Array.isArray(req.body.payload)?req.body.payload:{};
       if(!["mass_action","role_change"].includes(actionType))return res.status(400).json({ok:false,error:"Approval type must be mass_action or role_change."});
       const result=await db.query(`INSERT INTO dashboard_admin_approvals(thread_id,requested_by,action_type,payload,reason)
@@ -127,7 +127,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
     try{
       await init;const threadId=validGroup(req,res);if(!threadId)return;
       const id=String(req.params.approvalId||"");const decision=String(req.body?.decision||"");
-      if(!/^\\d+$/.test(id)||!["approved","rejected"].includes(decision))return res.status(400).json({ok:false,error:"Provide a valid approval ID and approved/rejected decision."});
+      if(!/^\d+$/.test(id)||!["approved","rejected"].includes(decision))return res.status(400).json({ok:false,error:"Provide a valid approval ID and approved/rejected decision."});
       const reviewer=String(req.dashboardUser?.id??req.user?.id??req.session?.user?.id??"dashboard-admin").slice(0,80);
       const result=await db.query(`UPDATE dashboard_admin_approvals SET status=$1,reviewed_by=$2,reviewed_at=NOW()
         WHERE id=$3 AND thread_id=$4 AND status='pending'
