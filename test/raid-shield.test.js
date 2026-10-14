@@ -97,3 +97,15 @@ test("expired lockdown does not remain active solely because the score is high",
   now += 31_000;
   assert.notEqual(shield.getState("123456789").protection_level, "lockdown");
 });
+
+
+test("join observations deduplicate the same event participant", async () => {
+  const { shield, persisted } = harness();
+  for (let i = 0; i < 4; i++) {
+    await shield.observeJoin("123456789", String(300000 + i), true, "event-1");
+    await shield.observeJoin("123456789", String(300000 + i), true, "event-1");
+  }
+  assert.equal(persisted.filter(x => x.event_type === "join_burst").length, 0);
+  await shield.observeJoin("123456789", "300004", true, "event-2");
+  assert.equal(persisted.filter(x => x.event_type === "join_burst").length, 1);
+});
