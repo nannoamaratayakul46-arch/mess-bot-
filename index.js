@@ -226,6 +226,7 @@ const lastRandomRoastByThread = new Map();
 const activeThreads = new Map();
 const dashboardKnownGroups = new Map();
 const dashboardSetNNJobs = new Map();
+const dashboardRemoveNNJobs = new Map();
 let dashboardSharedLocation = null;
 const dashboardSetNNStopRequests = new Set();
 const archivedDashboardGroups = new Set();
@@ -5372,6 +5373,72 @@ app.post(
     dashboardSetNNStopRequests.add(threadID);
     pushDashboardEvent("setnn", "SetNN stop requested for group " + threadID + ".");
     return res.json({ ok: true, stopping: true, message: "The job will stop after its current nickname operation and preserve its checkpoint." });
+  }
+);
+
+app.post(
+  "/api/dashboard/removenn/start",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadID = String(req.body?.thread_id || "").trim();
+    const interval = Number(req.body?.interval_seconds ?? 10);
+    const ownerId = dashboardOwnerId();
+
+    if (!ownerId) {
+      return res.status(503).json({ ok: false, error: "Set ADMIN_IDS to the bot owner's Messenger ID before enabling dashboard nickname removal." });
+    }
+    if (!activeMessengerApi || activeListenerGeneration <= 0) {
+      return res.status(409).json({ ok: false, error: "Messenger is not connected." });
+    }
+    if (!threadID || (!activeThreads.has(threadID) && !dashboardKnownGroups.has(threadID))) {
+      return res.status(400).json({ ok: false, error: "Choose a group in the bot group list." });
+    }
+    if (!Number.isInteger(interval) || interval < 2 || interval > 60) {
+      return res.status(400).json({ ok: false, error: "Interval must be between 2 and 60 seconds." });
+    }
+    if (dashboardRemoveNNJobs.get(threadID)?.status === "running") {
+      return res.status(409).json({ ok: false, error: "A nickname-removal job is already running for this group." });
+    }
+
+    const job = {
+      thread_id: threadID,
+      interval_seconds: interval,
+      status: "running",
+      started_at: new Date().toISOString(),
+      finished_at: null,
+      error: null,
+    };
+    dashboardRemoveNNJobs.set(threadID, job);
+    pushDashboardEvent("setnn", "Mass nickname removal started for group " + threadID + ".");
+
+    void handleMessage(activeMessengerApi, {
+      threadID,
+      senderID: ownerId,
+      body: ".removenn " + interval,
+      isGroup: true,
+    }).then(() => {
+      job.status = "completed";
+      job.finished_at = new Date().toISOString();
+      pushDashboardEvent("setnn", "Mass nickname removal completed for group " + threadID + ".");
+    }).catch((error) => {
+      job.status = "failed";
+      job.error = String(error?.message || error).slice(0, 500);
+      job.finished_at = new Date().toISOString();
+      pushDashboardEvent("error", "Mass nickname removal failed for group " + threadID + ".");
+      console.error("[DASHBOARD] Mass nickname removal failed:", error);
+    });
+
+    return res.status(202).json({ ok: true, job });
+  }
+);
+
+app.get(
+  "/api/dashboard/removenn/status",
+  requireDashboardAccess,
+  (req, res) => {
+    const threadID = String(req.query.thread_id || "").trim();
+    if (!threadID) return res.status(400).json({ ok: false, error: "thread_id is required." });
+    return res.json({ ok: true, job: dashboardRemoveNNJobs.get(threadID) || null });
   }
 );
 
