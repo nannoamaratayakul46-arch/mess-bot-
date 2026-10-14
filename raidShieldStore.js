@@ -116,6 +116,16 @@ function createRaidShieldStore(db, options = {}) {
     return rows;
   }
 
+  async function loadStates({ limit = 1000 } = {}) {
+    await ensureTables();
+    const safeLimit = clamp(limit, 1, 1000, 1000);
+    const { rows } = await db.query(
+      "SELECT thread_id, score, protection_level, lockdown_until, last_event_at, updated_at FROM raid_shield_state ORDER BY updated_at DESC LIMIT $1",
+      [safeLimit],
+    );
+    return rows;
+  }
+
   async function prune() {
     await ensureTables();
     const { rowCount } = await db.query(
@@ -128,7 +138,7 @@ function createRaidShieldStore(db, options = {}) {
     return { incidentsDeleted: rowCount || 0, retentionDays };
   }
 
-  return { ensureTables, persistIncident, persistState, listIncidents, listStates, prune };
+  return { ensureTables, persistIncident, persistState, listIncidents, listStates, loadStates, prune };
 }
 
 function normalizeIncident(value = {}) {
