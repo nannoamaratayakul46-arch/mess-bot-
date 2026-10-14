@@ -143,6 +143,8 @@ function createRaidShieldStore(db, options = {}) {
       completed_at TIMESTAMPTZ
     )`);
     await db.query("CREATE INDEX IF NOT EXISTS idx_raid_shield_actions_pending ON raid_shield_approval_actions(thread_id, status, created_at DESC)");
+    // Enforce one pending removal per target/group even when requests race.
+    await db.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_raid_shield_actions_pending_unique ON raid_shield_approval_actions(thread_id, target_id) WHERE status = 'pending'");
   }
 
   async function proposeAction(action = {}) {
@@ -154,7 +156,7 @@ function createRaidShieldStore(db, options = {}) {
     const result = await db.query(
       `INSERT INTO raid_shield_approval_actions (thread_id, target_id, action_type, reason, proposed_by)
        SELECT $1, $2, 'remove_member', $3, $4
-       WHERE NOT EXISTS (SELECT 1 FROM raid_shield_approval_actions WHERE thread_id=$1 AND target_id=$2 AND status='pending')
+       ON CONFLICT (thread_id, target_id) WHERE status = 'pending' DO NOTHING
        RETURNING id, thread_id, target_id, action_type, reason, status, proposed_by, created_at`,
       [threadId, targetId, reason, proposedBy],
     );
