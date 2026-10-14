@@ -5,12 +5,12 @@
   "main": "index.js",
   "scripts": {
     "start": "node bootstrap.js",
-    "prestart": "node --check index.js && node --check triggers.js && node --check jaiden-target-pool.js && node --check typingIndicator.js && node --check banat-human.js && node --check banat-slash-pool.js && node --check banat-state-store.js && node --check banat-randomizer.js && node --check banat-memory.js && node --check slash-banats.js && node --check bootstrap.js && node --check raidApprovalMode.js && node --check dashboardModeration.js",
+    "prestart": "node --check index.js && node --check triggers.js && node --check jaiden-target-pool.js && node --check typingIndicator.js && node --check banat-human.js && node --check banat-slash-pool.js && node --check banat-state-store.js && node --check banat-randomizer.js && node --check banat-memory.js && node --check slash-banats.js && node --check bootstrap.js && node --check dashboardModeration.js",
     "test": "node --test",
     "audit": "node scripts/audit-repo.js",
     "verify": "npm run audit && npm test && npm run check:syntax",
     "sync:english": "node scripts/sync-english-words.js",
-    "check:syntax": "node --check index.js && node --check triggers.js && node --check jaiden-target-pool.js && node --check typingIndicator.js && node --check banat-slash-pool.js && node --check banat-state-store.js && node --check banat-randomizer.js && node --check banat-memory.js && node --check slash-banats.js && node --check ai/index.js && node --check ai/prompt.js && node --check youtube.js && node --check raidApprovalMode.js && node --check dashboardModeration.js"
+    "check:syntax": "node --check index.js && node --check triggers.js && node --check jaiden-target-pool.js && node --check typingIndicator.js && node --check banat-slash-pool.js && node --check banat-state-store.js && node --check banat-randomizer.js && node --check banat-memory.js && node --check slash-banats.js && node --check ai/index.js && node --check ai/prompt.js && node --check youtube.js && node --check dashboardModeration.js"
   },
   "engines": {
     "node": ">=22.0.0"
