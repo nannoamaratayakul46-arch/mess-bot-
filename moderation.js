@@ -3421,15 +3421,17 @@ async function removeFromGroup(
       }
 
       await db.query(`
-        CREATE TABLE IF NOT EXISTS dashboard_permanent_admins (
-          user_id TEXT PRIMARY KEY,
+        CREATE TABLE IF NOT EXISTS dashboard_group_permanent_admins (
+          thread_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
           added_by TEXT NOT NULL,
-          added_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+          added_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (thread_id, user_id)
         )
       `);
       const permanentAdmin = await db.query(
-        "SELECT 1 FROM dashboard_permanent_admins WHERE user_id=$1 LIMIT 1",
-        [String(targetId)]
+        "SELECT 1 FROM dashboard_group_permanent_admins WHERE thread_id=$1 AND user_id=$2 LIMIT 1",
+        [String(threadID), String(targetId)]
       );
       if (permanentAdmin.rows?.length) {
         return {
