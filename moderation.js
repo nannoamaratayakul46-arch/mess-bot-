@@ -3171,40 +3171,50 @@ async function removeFromGroup(
   }
 
   try {
-    const info = await new Promise((resolve, reject) => {
-      let settled = false;
-      const timer = setTimeout(() => {
-        if (settled) return;
-        settled = true;
-        reject(new Error("getThreadInfo timed out"));
-      }, 8000);
-      try {
-        const result = api.getThreadInfo(threadID, (error, data) => {
+    // A broken ws3-fca getThreadInfo implementation must not prevent the
+    // independent legacy/thread-list role lookups below from running.
+    let info = null;
+    try {
+      info = await new Promise((resolve, reject) => {
+        let settled = false;
+        const timer = setTimeout(() => {
+          if (settled) return;
+          settled = true;
+          reject(new Error("getThreadInfo timed out"));
+        }, 8000);
+        try {
+          const result = api.getThreadInfo(threadID, (error, data) => {
+            if (settled) return;
+            settled = true;
+            clearTimeout(timer);
+            error ? reject(error) : resolve(data);
+          });
+          if (result && typeof result.then === "function") {
+            result.then(data => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              resolve(data);
+            }, error => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              reject(error);
+            });
+          }
+        } catch (error) {
           if (settled) return;
           settled = true;
           clearTimeout(timer);
-          error ? reject(error) : resolve(data);
-        });
-        if (result && typeof result.then === "function") {
-          result.then(data => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            resolve(data);
-          }, error => {
-            if (settled) return;
-            settled = true;
-            clearTimeout(timer);
-            reject(error);
-          });
+          reject(error);
         }
-      } catch (error) {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-        reject(error);
-      }
-    });
+      });
+    } catch (roleLookupError) {
+      console.warn(
+        "[moderation] Primary group-role lookup failed; trying fallback sources:",
+        String(roleLookupError?.message || roleLookupError).slice(0, 160)
+      );
+    }
 
     const isValidRoleID = value => /^[A-Za-z0-9_-]{3,64}$/.test(String(value ?? "").trim());
     const normalizeAdminIDs = (...values) => {
