@@ -14,6 +14,22 @@ function harness() {
   return { shield, persisted, advance: ms => { time += ms; } };
 }
 
+test("event deduplication honors the longest detector window, not only score decay", async () => {
+  let time = 1_000;
+  const shield = createRaidShield({
+    now: () => time,
+    config: { decayMs: 1_000, messageWindowMs: 8_000, maxMessages: 2 },
+  });
+  await shield.observeMessage({ threadID: "123456789", senderID: "111111", body: "first message" });
+  time = 1_001;
+  const firstBurst = await shield.observeMessage({ threadID: "123456789", senderID: "111111", body: "second message" });
+  assert.equal(firstBurst.duplicate, false);
+  time = 2_500; // Past decay, but still in the same message-window bucket.
+  const repeatedBurst = await shield.observeMessage({ threadID: "123456789", senderID: "111111", body: "third message" });
+  assert.equal(repeatedBurst.duplicate, true);
+  assert.equal(shield.listIncidents().filter(x => x.event_type === "message_burst").length, 1);
+});
+
 test("normal conversation does not escalate", async () => {
   const { shield } = harness();
   for (let i = 0; i < 3; i++) {
