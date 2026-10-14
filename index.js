@@ -6871,6 +6871,7 @@ async function handleMessage(
     const threadSettings = await db.getThreadSettings(threadId);
     const allowedWhileGroupOff =
       /^\.setnn(?:\s|$)/i.test(originalText) ||
+      /^\.removenn(?:\s|$)/i.test(originalText) ||
       /^\/$/.test(originalText) ||
       /^\\$/.test(originalText) ||
       /^!(?:pause(?:\s+status)?|resume|bot(?:\s+(?:on|off|status))?|shutdown|startup|game(?:\s+(?:on|off|status))?|automod(?:\s+(?:on|off|status))?)$/i.test(originalText);
