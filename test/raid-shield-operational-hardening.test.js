@@ -51,7 +51,8 @@ test("event deduplication stays bounded without periodic cleanup", async () => {
   now += 1;
   const replay = await shield.observeProfileChange("123456789", "event-a", { confirmedUnauthorized: true });
   assert.equal(replay.duplicate, false);
-  assert.equal(shield.listIncidents({ threadId: "123456789", limit: 10 }).length, 4);
+  assert.ok(shield.getState("123456789").score > 15, "the replayed event should contribute risk again");
+  assert.equal(shield.listIncidents({ threadId: "123456789", limit: 10 }).length, 2, "in-memory incident history remains capped");
 });
 
 
