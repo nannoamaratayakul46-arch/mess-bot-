@@ -3533,6 +3533,10 @@ registerModerationRoutes(app, {
 registerTemporaryAdminRoutes(app, {
   auth: requireDashboardAccess,
   db,
+  getApi: () =>
+    activeMessengerApi && activeListenerGeneration > 0
+      ? activeMessengerApi
+      : null,
   isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
   // Grant/review endpoints require an authenticated principal attached by
   // trusted middleware plus membership in the bot's configured admin registry.
