@@ -575,6 +575,47 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       }
     });
 
+
+    // Authenticated Raid Shield observability and manual emergency controls.
+    // These routes never kick, ban, demote, or alter Messenger group settings.
+    const raidRoute = "/api/dashboard/groups/:threadId/raid-shield";
+    app.get(raidRoute, auth, async (req, res) => {
+      const threadID = String(req.params.threadId || "").trim();
+      if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
+      try {
+        const [state, incidents] = await Promise.all([Promise.resolve(raidShield.getState(threadID)), raidShieldStore.listIncidents({ threadId: threadID, limit: 30 })]);
+        return res.json({ state, incidents });
+      } catch (error) {
+        log("[AUTOMOD-RAID] dashboard read failed: " + String(error?.message || error).slice(0, 160));
+        return res.status(503).json({ error: "Raid Shield history is temporarily unavailable." });
+      }
+    });
+    app.post(raidRoute + "/lockdown", auth, express.json({ limit: "4kb" }), async (req, res) => {
+      const threadID = String(req.params.threadId || "").trim();
+      if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
+      try {
+        const durationMs = clamp(req.body?.duration_ms, 30000, 30 * 60 * 1000, 5 * 60 * 1000);
+        const state = await raidShield.setLockdown(threadID, durationMs, "dashboard_manual");
+        log("[AUTOMOD-RAID] dashboard enabled temporary lockdown for " + threadID + " (" + durationMs + "ms)");
+        return res.json({ ok: true, state });
+      } catch (error) {
+        log("[AUTOMOD-RAID] dashboard lockdown failed: " + String(error?.message || error).slice(0, 160));
+        return res.status(503).json({ error: "Could not enable Raid Shield lockdown." });
+      }
+    });
+    app.post(raidRoute + "/release", auth, express.json({ limit: "4kb" }), async (req, res) => {
+      const threadID = String(req.params.threadId || "").trim();
+      if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
+      try {
+        const state = await raidShield.releaseLockdown(threadID, "dashboard_manual_release");
+        log("[AUTOMOD-RAID] dashboard released temporary lockdown for " + threadID);
+        return res.json({ ok: true, state });
+      } catch (error) {
+        log("[AUTOMOD-RAID] dashboard release failed: " + String(error?.message || error).slice(0, 160));
+        return res.status(503).json({ error: "Could not release Raid Shield lockdown." });
+      }
+    });
+
     app.delete(route, auth, async (req, res) => {
       try {
         const threadID = String(req.params.threadId || "").trim();
