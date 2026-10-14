@@ -486,6 +486,20 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       [threadID, userID, now - PROFILE_ABUSE_WINDOW_MS],
     );
     const count = Number(recent.rows?.[0]?.count || 0);
+    // Feed confirmed profile-change events into Raid Shield for durable risk
+    // history. Existing AutoMod enforcement below remains unchanged.
+    try {
+      await ensureRaidShieldReady();
+      await raidShield.observeProfileChange(threadID, fingerprint, {
+        actor_id: userID,
+        sender_id: userID,
+        event_type: eventType,
+        observed_count: count,
+        confirmedUnauthorized: false,
+      });
+    } catch (error) {
+      log(`[AUTOMOD-RAID] profile signal failed in ${threadID}: ${String(error?.message || error).slice(0, 140)}`);
+    }
     const actorName = await resolveMemberName(api, threadID, userID);
     const actorLabel = actorName ? actorName + " (" + userID + ")" : userID;
     log(`[AUTOMOD-PROFILE] ${actorLabel} made ${count}/${PROFILE_ABUSE_THRESHOLD} group photo/name changes in ${threadID} within 60 seconds.`);
@@ -502,6 +516,44 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       [threadID, userID],
     );
     log(`[AUTOMOD-PROFILE] removed ${actorLabel} from ${threadID} after repeated group photo/name changes.`);
+  }
+
+  async function processGroupMembershipEvent(api, event) {
+    if (event?.type !== "event" || String(event?.logMessageType || "") !== "log:subscribe") return;
+    const threadID = String(event?.threadID || "").trim();
+    if (!/^\\d{6,32}$/.test(threadID)) return;
+    const settings = await getSettings(threadID);
+    if (settings?.enabled !== true) return;
+    const data = event?.logMessageData && typeof event.logMessageData === "object" ? event.logMessageData : {};
+    const rawParticipants = data.addedParticipants ?? data.added_participants ?? data.addedParticipantsList;
+    const ids = [];
+    if (Array.isArray(rawParticipants)) {
+      for (const participant of rawParticipants) {
+        const rawID = participant?.userFbId ?? participant?.userFBID ?? participant?.userID ?? participant?.userId ?? participant?.id;
+        const id = String(rawID ?? "").trim();
+        if (/^\\d{6,32}$/.test(id)) ids.push(id);
+      }
+    }
+    for (const field of ["addedParticipantFbId", "addedParticipantFBID", "addedParticipantID", "addedParticipantId"]) {
+      const id = String(data[field] ?? "").trim();
+      if (/^\\d{6,32}$/.test(id)) ids.push(id);
+    }
+    const botID = String(typeof api?.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
+    const participants = [...new Set(ids)].filter(id => id !== botID);
+    if (!participants.length) return;
+    const timestamp = Number(event?.timestamp || event?.time || data?.timestamp || 0);
+    const eventID = String(event?.messageID || event?.messageId || event?.logMessageId || data?.messageID || data?.messageId || "").trim();
+    const fingerprint = eventID
+      ? "event:" + eventID
+      : ["subscribe", threadID, timestamp || Math.floor(Date.now() / 3000), participants.slice().sort().join(",")].join(":").slice(0, 900);
+    try {
+      await ensureRaidShieldReady();
+      for (const participantID of participants) {
+        await raidShield.observeJoin(threadID, participantID, true, fingerprint);
+      }
+    } catch (error) {
+      log("[AUTOMOD-RAID] join signal failed in " + threadID + ": " + String(error?.message || error).slice(0, 140));
+    }
   }
 
   function onGroupEvent(apiOrEvent, maybeEvent) {
@@ -521,7 +573,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const eventQueueIdentity = userID || String(event?.logMessageType || event?.type || "system-event");
     const key = threadID + ":" + eventQueueIdentity;
     const previous = queues.get(key) || Promise.resolve();
-    const next = previous.then(() => processSensitiveAdminEvent(api, event)).then(() => processGroupProfileEvent(api, event)).catch(error => {
+    const next = previous.then(() => processSensitiveAdminEvent(api, event)).then(() => processGroupProfileEvent(api, event)).then(() => processGroupMembershipEvent(api, event)).catch(error => {
       log(`[AUTOMOD-PROFILE] event check failed: ${String(error?.message || error).slice(0, 180)}`);
     });
     queues.set(key, next);
@@ -660,9 +712,9 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       const threadID = String(req.params.threadId || "").trim();
       const targetID = String(req.body?.target_id || "").trim();
       if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
-      if (!targetID || targetID.length > 80 || targetID === threadID) return res.status(400).json({ error: "A valid target member ID is required." });
+      if (!/^\d{6,32}$/.test(threadID) || !/^\d{6,32}$/.test(targetID) || targetID === threadID) return res.status(400).json({ error: "A valid numeric group and member ID are required." });
       try {
-        const action = await raidShieldStore.proposeAction({ thread_id: threadID, target_id: targetID, reason: String(req.body?.reason || "admin_review").slice(0, 120), proposed_by: String(req.body?.proposed_by || "dashboard_admin").slice(0, 80) });
+        const action = await raidShieldStore.proposeAction({ thread_id: threadID, target_id: targetID, reason: String(req.body?.reason || "admin_review").slice(0, 120), proposed_by: "raid_shield_dashboard" });
         if (!action) return res.status(409).json({ error: "A pending action already exists for this member in this group." });
         log("[AUTOMOD-RAID] pending member-removal approval created for group " + threadID);
         return res.status(201).json({ action });
@@ -679,7 +731,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       if (!threadID || !isKnownGroup(threadID)) return res.status(404).json({ error: "Group not found in the current group list." });
       if (!actionId || !["approve", "reject"].includes(decision)) return res.status(400).json({ error: "Choose approve or reject for a valid action ID." });
       try {
-        const reviewed = await raidShieldStore.reviewApprovalAction({ id: actionId, threadId: threadID, status: decision === "approve" ? "approved" : "rejected", reviewedBy: String(req.body?.reviewed_by || "dashboard_admin").slice(0, 80), note: String(req.body?.note || "").slice(0, 300) });
+        const reviewed = await raidShieldStore.reviewApprovalAction({ id: actionId, threadId: threadID, status: decision === "approve" ? "approved" : "rejected", reviewedBy: "authenticated_dashboard", note: String(req.body?.note || "").slice(0, 300) });
         if (!reviewed || reviewed.thread_id !== threadID) return res.status(409).json({ error: "Action is not pending for this group, or has already been reviewed." });
         if (decision === "reject") {
           log("[AUTOMOD-RAID] pending member-removal action rejected for group " + threadID);
@@ -696,6 +748,13 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         if (!removal?.ok) return res.status(502).json({ error: "Messenger did not complete the approved removal.", action: completed });
         return res.json({ ok: true, action: completed });
       } catch (error) {
+        // If an approved action throws before its terminal update, do not leave it
+        // looking approved indefinitely. completeApprovalAction only updates rows
+        // still in approved state, so a completed action is not overwritten.
+        if (decision === "approve" && actionId) {
+          try { await raidShieldStore.completeApprovalAction(actionId, false); }
+          catch (statusError) { log("[AUTOMOD-RAID] could not mark interrupted approval failed: " + String(statusError?.message || statusError).slice(0, 120)); }
+        }
         log("[AUTOMOD-RAID] approval review failed: " + String(error?.message || error).slice(0, 160));
         return res.status(503).json({ error: "Could not process the approval decision." });
       }

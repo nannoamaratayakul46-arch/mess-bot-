@@ -39,3 +39,22 @@ test("approval review updates only a pending action in the selected group", asyn
   assert.match(updateSql, /thread_id=\$5 AND status='pending'/);
   assert.equal(updateParams[4], "123456789");
 });
+
+
+test("approval queue schema enforces a single pending action per group and target", async () => {
+  const calls = [];
+  const db = { query: async (sql, params = []) => {
+    calls.push({ sql: String(sql), params });
+    if (String(sql).includes("INSERT INTO raid_shield_approval_actions")) {
+      return { rows: [{ id: 11, thread_id: "123456789", target_id: "222222", status: "pending" }] };
+    }
+    return { rows: [], rowCount: 0 };
+  } };
+  const store = createRaidShieldStore(db);
+  const row = await store.proposeAction({ thread_id: "123456789", target_id: "222222" });
+  assert.equal(row.id, 11);
+  assert.ok(calls.some(call => call.sql.includes("DELETE FROM raid_shield_approval_actions older")));
+  assert.ok(calls.some(call => call.sql.includes("CREATE UNIQUE INDEX IF NOT EXISTS idx_raid_shield_actions_pending_unique")));
+  const insert = calls.find(call => call.sql.includes("INSERT INTO raid_shield_approval_actions"));
+  assert.match(insert.sql, /ON CONFLICT \(thread_id, target_id\) WHERE status = 'pending' DO NOTHING/);
+});

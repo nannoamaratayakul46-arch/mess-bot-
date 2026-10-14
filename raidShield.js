@@ -68,7 +68,9 @@ function createRaidShield(options = {}) {
   }
 
   function levelFor(state) {
-    if (state.lockdownUntil > now() || state.score >= cfg.lockdown) return "lockdown";
+    // Lockdown is time-bounded. A high residual score after expiry is elevated,
+    // not an implicit extension of the lockdown control.
+    if (state.lockdownUntil > now()) return "lockdown";
     if (state.score >= cfg.elevated) return "elevated";
     if (state.score >= cfg.watch) return "watch";
     return "normal";
@@ -163,10 +165,17 @@ function createRaidShield(options = {}) {
     return { ignored: true, state: snapshot(state) };
   }
 
-  async function observeJoin(threadId, userId, reliable = false) {
+  async function observeJoin(threadId, userId, reliable = false, eventKey = "") {
     if (!reliable) return { ignored: true, reason: "join event not confirmed reliable" };
     const state = stateFor(threadId);
     const at = now();
+    const normalizedEventKey = cleanId(eventKey);
+    if (normalizedEventKey) {
+      const dedupeKey = state.threadId + ":join-event:" + normalizedEventKey + ":" + cleanId(userId);
+      const prior = recentEventKeys.get(dedupeKey);
+      if (prior && at - prior < cfg.joinWindowMs) return { duplicate: true, state: snapshot(state) };
+      recentEventKeys.set(dedupeKey, at);
+    }
     state.joins = state.joins.filter(t => at - t < cfg.joinWindowMs);
     state.joins.push(at);
     if (state.joins.length < cfg.joinBurst) return { ignored: true, state: snapshot(state) };
