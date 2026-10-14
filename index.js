@@ -7123,13 +7123,24 @@ async function handleMessage(
 
       for (let i = 0; i < targets.length; i++) {
         const participantID = targets[i];
+        const hasNicknameSnapshot =
+          Boolean(
+            threadInfo?.nicknames &&
+            typeof threadInfo.nicknames === "object" &&
+            !Array.isArray(threadInfo.nicknames)
+          );
         const currentNickname = String(
           threadInfo?.nicknames?.[participantID] ||
           threadInfo?.nicknames?.[String(participantID)] ||
           ""
         ).trim();
 
-        if (!currentNickname) {
+        // Unlike .setnn, removenn must not interpret a failed/incomplete
+        // getThreadInfo response as proof that every nickname is already blank.
+        // If Messenger supplied a real nicknames map, an absent entry means
+        // there is nothing to clear; without that map, attempt the same
+        // per-member mutation used by .setnn instead of silently skipping.
+        if (hasNicknameSnapshot && !currentNickname) {
           alreadyBlank++;
           continue;
         }
