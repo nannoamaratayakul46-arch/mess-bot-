@@ -106,3 +106,44 @@ test("automod refuses to remove a group admin", async () => {
   assert.equal(sent.length, 1);
   assert.equal(removed.length, 0);
 });
+
+test("automod counts sticker-only messages without changing ordinary word-spam handling", async () => {
+  const { detector, api, sent, removed } = makeHarness();
+  async function stickerBurst(prefix) {
+    for (let i = 0; i < 6; i += 1) {
+      await detector.onMessage(api, {
+        type: "message",
+        threadID: "group-1",
+        senderID: "member-1",
+        body: "",
+        attachments: [{ type: "sticker", ID: prefix + "-sticker-" + i }],
+        senderName: "Member",
+      });
+    }
+  }
+  await stickerBurst("first");
+  assert.equal(sent.length, 1);
+  assert.equal(removed.length, 0);
+  await stickerBurst("second");
+  assert.equal(removed.length, 1);
+});
+
+test("automod counts standalone reaction events using userID", async () => {
+  const { detector, api, sent, removed } = makeHarness();
+  async function reactionBurst(messagePrefix) {
+    for (let i = 0; i < 6; i += 1) {
+      await detector.onMessage(api, {
+        type: "message_reaction",
+        threadID: "group-1",
+        userID: "member-1",
+        messageID: messagePrefix + "-message-" + i,
+        reaction: "👍",
+      });
+    }
+  }
+  await reactionBurst("first");
+  assert.equal(sent.length, 1);
+  assert.equal(removed.length, 0);
+  await reactionBurst("second");
+  assert.equal(removed.length, 1);
+});
