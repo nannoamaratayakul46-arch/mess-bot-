@@ -14,6 +14,7 @@ const {
   isOwner: isBotOwner,
   isTrustedAdmin,
   isAdmin,
+  isGroupAdmin,
   getAdminLevel,
 } = require("./permissions");
 
@@ -1388,7 +1389,7 @@ async function handleOwnerCommand(
   threadID,
   senderId
 ) {
-  if (!isAdmin(senderId)) {
+  if (!isGroupAdmin(senderId, threadID)) {
     await send(
       api,
       threadID,
@@ -1686,7 +1687,7 @@ async function handleModCommand(
   moderatorId,
   args
 ) {
-  if (!isAdmin(moderatorId)) {
+  if (!isGroupAdmin(moderatorId, threadID)) {
     await send(
       api,
       threadID,
@@ -3707,7 +3708,7 @@ async function validateModerator(
   moderatorId
 ) {
   if (
-    !isAdmin(moderatorId)
+    !isGroupAdmin(moderatorId, threadID)
   ) {
     await send(
       api,
@@ -4305,7 +4306,7 @@ async function handleUnban(
   }
 
   if (
-    isAdmin(targetId) &&
+    isGroupAdmin(targetId, threadID) &&
     !isBotOwner(moderatorId)
   ) {
     await logAdminAbuse({
