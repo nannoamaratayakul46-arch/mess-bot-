@@ -518,6 +518,44 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     log(`[AUTOMOD-PROFILE] removed ${actorLabel} from ${threadID} after repeated group photo/name changes.`);
   }
 
+  async function processGroupMembershipEvent(api, event) {
+    if (event?.type !== "event" || String(event?.logMessageType || "") !== "log:subscribe") return;
+    const threadID = String(event?.threadID || "").trim();
+    if (!/^\\d{6,32}$/.test(threadID)) return;
+    const settings = await getSettings(threadID);
+    if (settings?.enabled !== true) return;
+    const data = event?.logMessageData && typeof event.logMessageData === "object" ? event.logMessageData : {};
+    const rawParticipants = data.addedParticipants ?? data.added_participants ?? data.addedParticipantsList;
+    const ids = [];
+    if (Array.isArray(rawParticipants)) {
+      for (const participant of rawParticipants) {
+        const rawID = participant?.userFbId ?? participant?.userFBID ?? participant?.userID ?? participant?.userId ?? participant?.id;
+        const id = String(rawID ?? "").trim();
+        if (/^\\d{6,32}$/.test(id)) ids.push(id);
+      }
+    }
+    for (const field of ["addedParticipantFbId", "addedParticipantFBID", "addedParticipantID", "addedParticipantId"]) {
+      const id = String(data[field] ?? "").trim();
+      if (/^\\d{6,32}$/.test(id)) ids.push(id);
+    }
+    const botID = String(typeof api?.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
+    const participants = [...new Set(ids)].filter(id => id !== botID);
+    if (!participants.length) return;
+    const timestamp = Number(event?.timestamp || event?.time || data?.timestamp || 0);
+    const eventID = String(event?.messageID || event?.messageId || event?.logMessageId || data?.messageID || data?.messageId || "").trim();
+    const fingerprint = eventID
+      ? "event:" + eventID
+      : ["subscribe", threadID, timestamp || Math.floor(Date.now() / 3000), JSON.stringify(data)].join(":").slice(0, 900);
+    try {
+      await ensureRaidShieldReady();
+      for (const participantID of participants) {
+        await raidShield.observeJoin(threadID, participantID, true, fingerprint);
+      }
+    } catch (error) {
+      log("[AUTOMOD-RAID] join signal failed in " + threadID + ": " + String(error?.message || error).slice(0, 140));
+    }
+  }
+
   function onGroupEvent(apiOrEvent, maybeEvent) {
     const api = maybeEvent ? apiOrEvent : getApi();
     const event = maybeEvent || apiOrEvent;
@@ -535,7 +573,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const eventQueueIdentity = userID || String(event?.logMessageType || event?.type || "system-event");
     const key = threadID + ":" + eventQueueIdentity;
     const previous = queues.get(key) || Promise.resolve();
-    const next = previous.then(() => processSensitiveAdminEvent(api, event)).then(() => processGroupProfileEvent(api, event)).catch(error => {
+    const next = previous.then(() => processSensitiveAdminEvent(api, event)).then(() => processGroupProfileEvent(api, event)).then(() => processGroupMembershipEvent(api, event)).catch(error => {
       log(`[AUTOMOD-PROFILE] event check failed: ${String(error?.message || error).slice(0, 180)}`);
     });
     queues.set(key, next);
