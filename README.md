@@ -102,7 +102,10 @@ Raid Shield adds risk scoring and a persisted incident history to the existing A
 
 - Risk state and incidents use the app's shared PostgreSQL connection; incidents are retained for 7 days by default and stale non-lockdown state is pruned.
 - Risk-triggered member removals are placed in a dashboard approval queue. Only an authenticated dashboard request can review an action, and the action is marked completed only when the shared Messenger removal helper reports success.
-- The dashboard's five-minute lockdown/release buttons update Raid Shield's temporary risk state only. They do **not** change Messenger group permissions or enable a platform-level slow mode.
+- The dashboard's five-minute lockdown/release buttons update Raid Shield's temporary risk state only; they do **not** change Messenger group permissions or enable a platform-level slow mode.
+- Each group's Raid Shield card has a separate **Raid-triggered join approval** toggle, disabled by default. When enabled, a confirmed burst of 5 joins within 30 seconds attempts to turn on Messenger approval mode, then restores the pre-raid OFF state after 2 minutes without joins.
+- Join-approval automation fails closed unless the live `ws3-fca` API object exposes both `getThreadInfo` and `changeThreadApprovalMode`, and the thread-info response contains a boolean `approvalMode`. Public package docs do not guarantee those methods for every version; the dashboard reports unsupported capability instead of guessing or making an unverified call.
+- The controller persists its per-group setting, automation ownership, restore deadline, errors, and audit trail in PostgreSQL. If it detects an external approval-mode change while it owns the temporary setting, it will not override that manual change. Test in a low-risk group first.
 - Existing AutoMod policies remain separate and authoritative. In particular, the pre-existing repeated-profile-change rule may still remove a member after its configured threshold; Raid Shield records the signal but does not replace that policy.
 - Verify the dashboard API URL and dashboard key before using live controls. Test in a low-risk group first; do not treat risk signals as proof of malicious intent.
 
