@@ -946,7 +946,7 @@ function incomingEventKeys(event) {
   // to, not a unique reaction event. Deduplicate by actor + target + timestamp
   // instead so multiple members reacting to one message are all counted.
   const eventType = String(event.type || "").toLowerCase();
-  if (eventType === "message_reaction" || eventType === "messagereactionadd") {
+  if (["message_reaction", "messagereactionadd", "reaction"].includes(eventType)) {
     const threadID = String(event.threadID || "").trim();
     const actorID = String(event.senderID ?? event.userID ?? event.authorID ?? "").trim();
     const targetMessageID = String(event.messageID || event.messageId || "").trim();
@@ -6723,7 +6723,7 @@ function attemptLogin() {
           // Reaction updates are distinct MQTT event types, not ordinary messages.
           // Route only to AutoMod; never send reaction payloads through commands/AI.
           if (
-            (event.type === "message_reaction" || event.type === "messageReactionAdd") &&
+            (["message_reaction", "messageReactionAdd", "reaction"].includes(event.type)) &&
             event.threadID
           ) {
             void antiSpam.onMessage(api, event).catch(error => {
