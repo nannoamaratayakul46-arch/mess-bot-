@@ -218,7 +218,7 @@ function createRaidShield(options = {}) {
       const state = {
         threadId: id,
         score: Number.isFinite(score) ? Math.max(0, Math.min(30, score)) : 0,
-        scoreAt: now(),
+        scoreAt: Number.isFinite(lastEventAt) && lastEventAt > 0 ? lastEventAt : now(),
         level: "normal",
         lockdownUntil: Number.isFinite(lockdownUntil) && lockdownUntil > now() ? lockdownUntil : 0,
         lastEventAt: Number.isFinite(lastEventAt) ? lastEventAt : 0,
@@ -258,7 +258,7 @@ function createRaidShield(options = {}) {
         if (fresh.length) state.messages.set(userId, fresh); else state.messages.delete(userId);
       }
       pruneMap(state.fingerprints, at - cfg.coordinatedWindowMs);
-      if (state.lockdownUntil <= at && state.score < cfg.watch && !state.lastEventAt) groups.delete(id);
+      if (state.lockdownUntil <= at && state.score < cfg.watch && at - state.lastTouched > cfg.decayMs * 2) groups.delete(id);
     }
     for (const [key, atSeen] of recentEventKeys) if (at - atSeen >= cfg.decayMs) recentEventKeys.delete(key);
   }
