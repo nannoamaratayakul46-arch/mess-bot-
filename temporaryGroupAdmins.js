@@ -50,7 +50,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       ON dashboard_admin_approvals(thread_id,status,created_at DESC);
   `);
 
-  function validGroup(req, res) {
+  // Never accept actor identity from request bodies: those fields are user-controlled.\n  // The current shared-key dashboard auth does not identify individual operators, so\n  // use an explicit server-attached principal when available and a neutral fallback.\n  function actorId(req) {\n    const candidate = req.dashboardUser?.id ?? req.user?.id ?? req.session?.user?.id;\n    return String(candidate ?? "dashboard-api-key").trim().slice(0, 80) || "dashboard-api-key";\n  }\n\n  function validGroup(req, res) {
     const threadId = String(req.params.threadId || "").trim();
     if (!/^\d{6,32}$/.test(threadId)) { res.status(400).json({ ok:false, error:"Invalid Messenger group ID." }); return null; }
     if (!isKnownGroup(threadId)) { res.status(404).json({ ok:false, error:"Unknown group. Refresh groups first." }); return null; }
@@ -75,7 +75,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       const userId=String(req.body?.user_id ?? req.body?.userId ?? "").trim();
       const reason=String(req.body?.reason||"").replace(/[\u0000-\u001f\u007f]/g," ").trim().slice(0,200);
       if(!/^\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Enter a valid numeric Messenger member ID."});
-      const grantedBy=String(req.dashboardUser?.id ?? req.user?.id ?? req.session?.user?.id ?? "dashboard-admin").slice(0,80);
+      const grantedBy=actorId(req);
       const result=await db.query(`INSERT INTO dashboard_temp_admins(thread_id,user_id,granted_by,granted_at,expires_at,status,reason)
         VALUES($1,$2,$3,NOW(),NOW()+INTERVAL '5 days','active',$4)
         ON CONFLICT(thread_id,user_id) DO UPDATE SET granted_by=EXCLUDED.granted_by,granted_at=NOW(),
@@ -111,7 +111,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
     try{
       await init;const threadId=validGroup(req,res);if(!threadId)return;
       const actionType=String(req.body?.action_type||"");
-      const requestedBy=String(req.body?.requested_by||"dashboard-admin").slice(0,80);
+      const requestedBy=actorId(req);
       const reason=String(req.body?.reason||"").replace(/[\u0000-\u001f\u007f]/g," ").trim().slice(0,200);
       const payload=req.body?.payload && typeof req.body.payload==="object" && !Array.isArray(req.body.payload)?req.body.payload:{};
       if(!["mass_action","role_change"].includes(actionType))return res.status(400).json({ok:false,error:"Approval type must be mass_action or role_change."});
@@ -128,7 +128,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       await init;const threadId=validGroup(req,res);if(!threadId)return;
       const id=String(req.params.approvalId||"");const decision=String(req.body?.decision||"");
       if(!/^\d+$/.test(id)||!["approved","rejected"].includes(decision))return res.status(400).json({ok:false,error:"Provide a valid approval ID and approved/rejected decision."});
-      const reviewer=String(req.dashboardUser?.id??req.user?.id??req.session?.user?.id??"dashboard-admin").slice(0,80);
+      const reviewer=actorId(req);
       const result=await db.query(`UPDATE dashboard_admin_approvals SET status=$1,reviewed_by=$2,reviewed_at=NOW()
         WHERE id=$3 AND thread_id=$4 AND status='pending'
         RETURNING id,thread_id,action_type,payload,status,reviewed_by,reviewed_at`,[decision,reviewer,id,threadId]);
