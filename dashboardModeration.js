@@ -70,9 +70,15 @@ function registerModerationRoutes(app, {
         "SELECT 1 FROM dashboard_temp_admins WHERE thread_id=$1 AND user_id=$2 AND status='active' AND expires_at>NOW() LIMIT 1",
         [threadId, userId]
       ).catch(error => {
-        if (error && (error.code === "42P01" || /does not exist/i.test(String(error.message)))) return { rows: [] };
-        throw error;
+        console.error("[DASHBOARD MODERATION] protected-role lookup failed:", error);
+        res.status(503).json({
+          ok: false,
+          error: "Protected-role status could not be verified. No moderation action was performed.",
+          code: "PROTECTED_ROLE_CHECK_UNAVAILABLE",
+        });
+        return null;
       });
+      if (!protectedGrant) return;
       if (protectedGrant.rows?.length) {
         return res.status(409).json({
           ok: false,
