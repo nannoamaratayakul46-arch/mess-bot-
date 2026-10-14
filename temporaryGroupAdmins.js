@@ -50,7 +50,15 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
       ON dashboard_admin_approvals(thread_id,status,created_at DESC);
   `);
 
-  // Never accept actor identity from request bodies: those fields are user-controlled.\n  // The current shared-key dashboard auth does not identify individual operators, so\n  // use an explicit server-attached principal when available and a neutral fallback.\n  function actorId(req) {\n    const candidate = req.dashboardUser?.id ?? req.user?.id ?? req.session?.user?.id;\n    return String(candidate ?? "dashboard-api-key").trim().slice(0, 80) || "dashboard-api-key";\n  }\n\n  function validGroup(req, res) {
+  // Never accept actor identity from request bodies: those fields are user-controlled.
+  // The current shared-key dashboard auth does not identify individual operators, so
+  // use an explicit server-attached principal when available and a neutral fallback.
+  function actorId(req) {
+    const candidate = req.dashboardUser?.id ?? req.user?.id ?? req.session?.user?.id;
+    return String(candidate ?? "dashboard-api-key").trim().slice(0, 80) || "dashboard-api-key";
+  }
+
+  function validGroup(req, res) {
     const threadId = String(req.params.threadId || "").trim();
     if (!/^\d{6,32}$/.test(threadId)) { res.status(400).json({ ok:false, error:"Invalid Messenger group ID." }); return null; }
     if (!isKnownGroup(threadId)) { res.status(404).json({ ok:false, error:"Unknown group. Refresh groups first." }); return null; }
