@@ -38,10 +38,12 @@ function registerModerationRoutes(app, {
   createBan,
   logModeration,
   audit = () => {},
+  db,
 }) {
   if (!app || typeof app.post !== "function") throw new TypeError("An Express app is required.");
   if (typeof auth !== "function") throw new TypeError("Dashboard auth middleware is required.");
   if (typeof getApi !== "function") throw new TypeError("getApi callback is required.");
+  if (!db || typeof db.query !== "function") throw new TypeError("PostgreSQL db is required for protected-role checks.");
   if (typeof removeFromGroup !== "function" || typeof createBan !== "function" || typeof logModeration !== "function") {
     throw new TypeError("Moderation helpers are required.");
   }
@@ -61,6 +63,24 @@ function registerModerationRoutes(app, {
       if (!isKnownGroup(threadId)) {
         return res.status(404).json({ ok: false, error: "This group is not in the dashboard's known group list. Refresh groups and try again." });
       }
+
+      // A live temporary-admin grant protects the target from dashboard kick/ban.
+      // Revoke the grant first, then perform a separate moderation action.
+      const protectedGrant = await db.query(
+        "SELECT 1 FROM dashboard_temp_admins WHERE thread_id=$1 AND user_id=$2 AND status='active' AND expires_at>NOW() LIMIT 1",
+        [threadId, userId]
+      ).catch(error => {
+        if (error && (error.code === "42P01" || /does not exist/i.test(String(error.message)))) return { rows: [] };
+        throw error;
+      });
+      if (protectedGrant.rows?.length) {
+        return res.status(409).json({
+          ok: false,
+          error: "This member has an active temporary-admin grant. Revoke the grant and verify the role change before kicking or banning them.",
+          code: "ACTIVE_TEMP_ADMIN_PROTECTED",
+        });
+      }
+
       if (!allowAction(threadId)) {
         return res.status(429).json({ ok: false, error: "Too many moderation actions for this group. Wait a minute and try again." });
       }
