@@ -41,6 +41,31 @@ function createRaidShield(options = {}) {
   const incidents = [];
   const recentEventKeys = new Map();
 
+  function rememberEventKey(key, at = now()) {
+    // Keep idempotency memory bounded even if the host never calls cleanup().
+    // Use the longest active signal window so duplicate protection is not
+    // discarded before any detector's own window has elapsed.
+    const ttl = Math.max(
+      cfg.decayMs,
+      cfg.joinWindowMs,
+      cfg.profileWindowMs,
+      cfg.coordinatedWindowMs,
+      cfg.messageWindowMs,
+      cfg.mentionWindowMs,
+    );
+    for (const [existingKey, seenAt] of recentEventKeys) {
+      if (at - seenAt >= ttl) recentEventKeys.delete(existingKey);
+    }
+    if (recentEventKeys.has(key)) recentEventKeys.delete(key);
+    recentEventKeys.set(key, at);
+    const configuredCap = Math.trunc(Number(cfg.maxGroups) || 1000) *
+      Math.trunc(Number(cfg.maxEventsPerGroup) || 100);
+    const cap = Math.max(1, Math.min(100_000, configuredCap));
+    while (recentEventKeys.size > cap) {
+      recentEventKeys.delete(recentEventKeys.keys().next().value);
+    }
+  }
+
   function stateFor(threadId) {
     const id = cleanId(threadId);
     if (!id) throw new TypeError("threadId is required");
@@ -88,7 +113,7 @@ function createRaidShield(options = {}) {
       const dedupeKey = state.threadId + ":" + key;
       const prior = recentEventKeys.get(dedupeKey);
       if (prior && at - prior < cfg.decayMs) return { duplicate: true, state: snapshot(state) };
-      recentEventKeys.set(dedupeKey, at);
+      rememberEventKey(dedupeKey, at);
     }
     state.score = Math.min(30, state.score + clamp(points, 0, 10, 0));
     state.lastEventAt = at;
@@ -185,7 +210,7 @@ function createRaidShield(options = {}) {
       const dedupeKey = state.threadId + ":join-event:" + normalizedEventKey + ":" + cleanId(userId);
       const prior = recentEventKeys.get(dedupeKey);
       if (prior && at - prior < cfg.joinWindowMs) return { duplicate: true, state: snapshot(state) };
-      recentEventKeys.set(dedupeKey, at);
+      rememberEventKey(dedupeKey, at);
     }
     state.joins = state.joins.filter(t => at - t < cfg.joinWindowMs);
     state.joins.push(at);
