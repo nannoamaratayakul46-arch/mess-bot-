@@ -6702,6 +6702,18 @@ function attemptLogin() {
             return;
           }
 
+          // Reaction updates are distinct MQTT event types, not ordinary messages.
+          // Route only to AutoMod; never send reaction payloads through commands/AI.
+          if (
+            (event.type === "message_reaction" || event.type === "messageReactionAdd") &&
+            event.threadID
+          ) {
+            void antiSpam.onMessage(api, event).catch(error => {
+              console.error("[AUTOMOD-SPAM] Unhandled reaction-check error:", error);
+            });
+            return;
+          }
+
           if (
             (
               event.type ===
@@ -6825,6 +6837,26 @@ async function handleMessage(
     Boolean(
       getBroadcastImageAttachment(event)
     );
+
+  const stickerOnlyEvent =
+    event?.type === "message" ||
+    event?.type === "message_reply"
+      ? (Array.isArray(event?.attachments) &&
+          event.attachments.some(item =>
+            String(item?.type || item?.attachmentType || "").toLowerCase() === "sticker" ||
+            Boolean(item?.stickerID || item?.stickerId || item?.packID && item?.spriteUrl)
+          ) &&
+          !(typeof body === "string" && body.trim()))
+      : false;
+
+  // Sticker-only messages have no body, so the normal command router must
+  // not discard them before AutoMod sees them.
+  if (stickerOnlyEvent && threadId) {
+    void antiSpam.onMessage(api, event).catch(error => {
+      console.error("[AUTOMOD-SPAM] Unhandled sticker-check error:", error);
+    });
+    return;
+  }
 
   if (
     !threadId ||
