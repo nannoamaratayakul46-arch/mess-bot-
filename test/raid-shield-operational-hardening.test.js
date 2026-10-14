@@ -50,7 +50,7 @@ test("event deduplication stays bounded without periodic cleanup", async () => {
   // can be processed again, but memory cannot grow without bound in the meantime.
   now += 1;
   const replay = await shield.observeProfileChange("123456789", "event-a", { confirmedUnauthorized: true });
-  assert.equal(replay.duplicate, undefined);
+  assert.equal(replay.duplicate, false);
   assert.equal(shield.listIncidents({ threadId: "123456789", limit: 10 }).length, 4);
 });
 
