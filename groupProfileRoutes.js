@@ -379,10 +379,12 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
     try {
       if (req.body.enabled) {
         const backup = await db.query("SELECT image_data IS NOT NULL AS has_backup, expected_title FROM group_photo_guard WHERE thread_id = $1", [threadId]);
-        if (!backup.rows[0]?.has_backup) return res.status(409).json({ ok: false, error: "Set a group photo first so the bot has a saved backup." });
-        // If this is an existing photo guard created before name protection was
-        // added, snapshot the current name at the moment protection is enabled.
-        if (!String(backup.rows[0]?.expected_title || "").trim()) {
+        let hasPhotoBackup = Boolean(backup.rows[0]?.has_backup);
+        let expectedTitle = String(backup.rows[0]?.expected_title || "").trim();
+
+        // Name protection must not depend on having a photo backup. Snapshot
+        // the current title when possible, then allow title-only protection.
+        if (!expectedTitle) {
           const api = getApi();
           if (api) {
             try {
@@ -390,11 +392,21 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
               const currentTitle = getGroupTitle(info);
               if (currentTitle) {
                 await db.query("UPDATE group_photo_guard SET expected_title = $2 WHERE thread_id = $1", [threadId, currentTitle]);
+                expectedTitle = currentTitle;
               }
             } catch (error) {
               audit("[PROFILE-GUARD] Could not snapshot current group name for " + threadId + ": " + String(error?.message || error).slice(0, 120));
             }
           }
+        }
+
+        // Enabling protection without either a saved photo or a saved name
+        // would falsely imply that the group profile is protected.
+        if (!hasPhotoBackup && !expectedTitle) {
+          return res.status(409).json({
+            ok: false,
+            error: "Save a group photo backup or set/save the group name first so the bot has something to restore."
+          });
         }
       }
       const result = await db.query(`
