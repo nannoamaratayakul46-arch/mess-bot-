@@ -126,9 +126,12 @@ function createRaidShieldStore(db, options = {}) {
     return rows;
   }
 
+  let approvalSchemaPromise = null;
   async function ensureApprovalTable() {
-    await ensureTables();
-    await db.query(`CREATE TABLE IF NOT EXISTS raid_shield_approval_actions (
+    if (!approvalSchemaPromise) {
+      approvalSchemaPromise = (async () => {
+        await ensureTables();
+        await db.query(`CREATE TABLE IF NOT EXISTS raid_shield_approval_actions (
       id BIGSERIAL PRIMARY KEY,
       thread_id TEXT NOT NULL,
       target_id TEXT NOT NULL,
@@ -142,16 +145,21 @@ function createRaidShieldStore(db, options = {}) {
       reviewed_at TIMESTAMPTZ,
       completed_at TIMESTAMPTZ
     )`);
-    await db.query("CREATE INDEX IF NOT EXISTS idx_raid_shield_actions_pending ON raid_shield_approval_actions(thread_id, status, created_at DESC)");
-    // Collapse any legacy duplicates before adding the race-safe partial index.
-    await db.query(`DELETE FROM raid_shield_approval_actions older
-      USING raid_shield_approval_actions newer
-      WHERE older.thread_id = newer.thread_id
-        AND older.target_id = newer.target_id
-        AND older.status = 'pending' AND newer.status = 'pending'
-        AND older.id > newer.id`);
-    // Enforce one pending removal per target/group even when requests race.
-    await db.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_raid_shield_actions_pending_unique ON raid_shield_approval_actions(thread_id, target_id) WHERE status = 'pending'");
+        await db.query("CREATE INDEX IF NOT EXISTS idx_raid_shield_actions_pending ON raid_shield_approval_actions(thread_id, status, created_at DESC)");
+        // Collapse legacy duplicates once before adding the race-safe partial index.
+        await db.query(`DELETE FROM raid_shield_approval_actions older
+          USING raid_shield_approval_actions newer
+          WHERE older.thread_id = newer.thread_id
+            AND older.target_id = newer.target_id
+            AND older.status = 'pending' AND newer.status = 'pending'
+            AND older.id > newer.id`);
+        await db.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_raid_shield_actions_pending_unique ON raid_shield_approval_actions(thread_id, target_id) WHERE status = 'pending'");
+      })().catch(error => {
+        approvalSchemaPromise = null;
+        throw error;
+      });
+    }
+    return approvalSchemaPromise;
   }
 
   async function proposeAction(action = {}) {
