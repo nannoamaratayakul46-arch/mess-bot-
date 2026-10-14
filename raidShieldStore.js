@@ -143,6 +143,13 @@ function createRaidShieldStore(db, options = {}) {
       completed_at TIMESTAMPTZ
     )`);
     await db.query("CREATE INDEX IF NOT EXISTS idx_raid_shield_actions_pending ON raid_shield_approval_actions(thread_id, status, created_at DESC)");
+    // Collapse any legacy duplicates before adding the race-safe partial index.
+    await db.query(`DELETE FROM raid_shield_approval_actions older
+      USING raid_shield_approval_actions newer
+      WHERE older.thread_id = newer.thread_id
+        AND older.target_id = newer.target_id
+        AND older.status = 'pending' AND newer.status = 'pending'
+        AND older.id > newer.id`);
     // Enforce one pending removal per target/group even when requests race.
     await db.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_raid_shield_actions_pending_unique ON raid_shield_approval_actions(thread_id, target_id) WHERE status = 'pending'");
   }
