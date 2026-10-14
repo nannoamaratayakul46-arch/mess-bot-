@@ -249,10 +249,20 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     list.push({ at: now, text: cleanText });
     hits.set(key, list);
 
-    const burst = list.filter(hit => now - hit.at < windowMs).length >= cfg.max_messages;
-    const repeated = cleanText && list.filter(hit => hit.text === cleanText).length >= cfg.repeat_max;
+    // Emit a low-volume breadcrumb when a member starts a fresh spam window,
+    // so a missing threshold/action can be distinguished from a missing event
+    // listener without logging every ordinary message.
+    if (list.length === 1) {
+      log(`[AUTOMOD-SPAM] monitoring member ${userID} in ${threadID}; threshold=${cfg.max_messages} messages/${cfg.window_seconds}s, repeat=${cfg.repeat_max}`);
+    }
+
+    const burstCount = list.filter(hit => now - hit.at < windowMs).length;
+    const repeatedCount = cleanText ? list.filter(hit => hit.text === cleanText).length : 0;
+    const burst = burstCount >= cfg.max_messages;
+    const repeated = repeatedCount >= cfg.repeat_max;
     if (!burst && !repeated) return;
 
+    log(`[AUTOMOD-SPAM] threshold reached for ${userID} in ${threadID}: burst=${burstCount}/${cfg.max_messages}, repeated=${repeatedCount}/${cfg.repeat_max}`);
     hits.set(key, []);
     const warningResult = await db.query(
       "SELECT warned_at FROM automod_spam_warnings WHERE thread_id = $1 AND user_id = $2",
