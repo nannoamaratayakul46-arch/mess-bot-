@@ -82,7 +82,7 @@ test("fails closed when installed ws3-fca lacks approval-mode methods", async ()
   await controller.setAutomation("123456789", true);
   const result = await controller.activate("123456789");
   assert.equal(result.ok, false);
-  assert.equal(result.error.includes("does not expose"), true);
+  assert.equal(result.error.includes("must expose"), true);
   assert.equal(invoked, false);
   assert.equal(db.auditRows.some(row => row.action === "api_unsupported"), true);
   controller.stop();
