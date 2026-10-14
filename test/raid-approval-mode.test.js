@@ -29,7 +29,7 @@ function fakeDb() {
         const row = rows.get(params[0]);
         return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
       }
-      if (text.includes("SELECT thread_id, automation_enabled, automation_active, ownership_lost, restore_after FROM raid_shield_approval_mode")) {
+      if (text.includes("SELECT thread_id, automation_enabled, automation_active, ownership_lost, restore_after") && text.includes("FROM raid_shield_approval_mode")) {
         return { rows: [...rows.values()].filter(row => row.automation_active).map(row => ({ ...row })), rowCount: rows.size };
       }
       if (text.includes("UPDATE raid_shield_approval_mode SET") && text.includes("RETURNING automation_active")) {
