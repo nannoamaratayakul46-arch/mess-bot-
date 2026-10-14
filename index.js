@@ -3449,8 +3449,7 @@ function requireDashboardAccess(req, res, next) {
 
   const provided = String(
     req.headers["x-eclipse-dashboard-key"] ||
-      bearer ||
-      (req.path === "/api/dashboard/events/stream" ? req.query.dashboard_key : "")
+      bearer
   ).trim();
 
   if (!provided || provided !== DASHBOARD_API_KEY) {
