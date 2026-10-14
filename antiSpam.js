@@ -748,15 +748,21 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         if (!removal?.ok) return res.status(502).json({ error: "Messenger did not complete the approved removal.", action: completed });
         return res.json({ ok: true, action: completed });
       } catch (error) {
-        // If an approved action throws before its terminal update, do not leave it
-        // looking approved indefinitely. completeApprovalAction only updates rows
-        // still in approved state, so a completed action is not overwritten.
+        // A timeout or persistence failure can occur after the external operation
+        // has succeeded. Keep the row approved and flag the outcome as uncertain;
+        // do not record a definite failure that could trigger an unsafe retry.
         if (decision === "approve" && actionId) {
-          try { await raidShieldStore.completeApprovalAction(actionId, false); }
-          catch (statusError) { log("[AUTOMOD-RAID] could not mark interrupted approval failed: " + String(statusError?.message || statusError).slice(0, 120)); }
+          try {
+            await raidShieldStore.markApprovalUncertain(
+              actionId,
+              "Outcome uncertain; verify group membership before retrying. " + String(error?.message || error).slice(0, 150),
+            );
+          } catch (statusError) {
+            log("[AUTOMOD-RAID] could not persist uncertainty note: " + String(statusError?.message || statusError).slice(0, 120));
+          }
         }
-        log("[AUTOMOD-RAID] approval review failed: " + String(error?.message || error).slice(0, 160));
-        return res.status(503).json({ error: "Could not process the approval decision." });
+        log("[AUTOMOD-RAID] approval outcome uncertain: " + String(error?.message || error).slice(0, 160));
+        return res.status(503).json({ error: "Outcome is uncertain. Verify the group's current membership before retrying." });
       }
     });
 

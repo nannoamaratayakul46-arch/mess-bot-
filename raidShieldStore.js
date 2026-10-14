@@ -211,6 +211,18 @@ function createRaidShieldStore(db, options = {}) {
     return result.rows[0] || null;
   }
 
+  // Preserve approved status when the external removal outcome cannot be verified.
+  // An ambiguous API timeout or a DB failure after removal must never be mislabeled
+  // as a definite failure, because that could encourage an unsafe duplicate retry.
+  async function markApprovalUncertain(id, note) {
+    await ensureApprovalTable();
+    const result = await db.query(
+      "UPDATE raid_shield_approval_actions SET review_note=$2 WHERE id=$1 AND status='approved' RETURNING id, status, review_note",
+      [clamp(id, 1, Number.MAX_SAFE_INTEGER, 0), String(note || "Removal outcome uncertain").slice(0, 300)],
+    );
+    return result.rows[0] || null;
+  }
+
   async function prune() {
     await ensureTables();
     const { rowCount } = await db.query(
@@ -223,7 +235,7 @@ function createRaidShieldStore(db, options = {}) {
     return { incidentsDeleted: rowCount || 0, retentionDays };
   }
 
-  return { ensureTables, persistIncident, persistState, listIncidents, listStates, loadStates, ensureApprovalTable, proposeAction, listApprovalActions, reviewApprovalAction, completeApprovalAction, prune };
+  return { ensureTables, persistIncident, persistState, listIncidents, listStates, loadStates, ensureApprovalTable, proposeAction, listApprovalActions, reviewApprovalAction, completeApprovalAction, markApprovalUncertain, prune };
 }
 
 function normalizeIncident(value = {}) {
