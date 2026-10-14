@@ -96,6 +96,18 @@ The bot now includes a persistent RPG foundation under the !rpg command. Charact
 
 Marches persist across restarts and are not limited by a global two-minute cap.
 
+## Raid Shield
+
+Raid Shield adds risk scoring and a persisted incident history to the existing AutoMod message/event pipeline. It can flag message bursts, repeated messages, mention floods, coordinated duplicate messages, confirmed group-join bursts when the Messenger event includes participant IDs, and repeated non-admin group photo/name changes. Unrecognized or incomplete join payloads are ignored rather than guessed.
+
+- Risk state and incidents use the app's shared PostgreSQL connection; incidents are retained for 7 days by default and stale non-lockdown state is pruned.
+- Risk-triggered member removals are placed in a dashboard approval queue. Only an authenticated dashboard request can review an action, and the action is marked completed only when the shared Messenger removal helper reports success.
+- The dashboard's five-minute lockdown/release buttons update Raid Shield's temporary risk state only. They do **not** change Messenger group permissions or enable a platform-level slow mode.
+- Existing AutoMod policies remain separate and authoritative. In particular, the pre-existing repeated-profile-change rule may still remove a member after its configured threshold; Raid Shield records the signal but does not replace that policy.
+- Verify the dashboard API URL and dashboard key before using live controls. Test in a low-risk group first; do not treat risk signals as proof of malicious intent.
+
+The bot's CI runs JavaScript syntax checks, repository architecture checks, and the Node.js test suite (npm test).
+
 ## Gemini AI configuration
 
 Lucien uses the official Groq API. Set these environment variables in Render (never commit them):
