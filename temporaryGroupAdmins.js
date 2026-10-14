@@ -78,6 +78,19 @@ function registerTemporaryAdminRoutes(app, { auth, db, isKnownGroup = () => fals
     return threadId;
   }
 
+  app.get("/api/dashboard/groups/:threadId/permanent-admins", auth, async (req,res)=>{
+    const threadId=validGroup(req,res); if(!threadId)return;
+    try {
+      const { ADMIN_IDS, TRUSTED_ADMIN_IDS } = require("./permissions");
+      const owners=[...ADMIN_IDS].map(user_id=>({user_id, role:"Original administrator"}));
+      const trusted=[...TRUSTED_ADMIN_IDS].filter(id=>!ADMIN_IDS.has(id)).map(user_id=>({user_id, role:"Trusted administrator"}));
+      return res.json({ok:true,admins:[...owners,...trusted]});
+    } catch(error) {
+      console.error("[TEMP ADMIN] permanent-admin list failed:",String(error?.message||error).slice(0,160));
+      return res.status(500).json({ok:false,error:"Could not load configured permanent administrators."});
+    }
+  });
+
   app.get("/api/dashboard/groups/:threadId/temp-admins", auth, async (req, res) => {
     try {
       await init;
