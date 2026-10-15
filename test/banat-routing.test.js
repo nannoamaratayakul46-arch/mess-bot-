@@ -46,7 +46,7 @@ test("forced dashboard mode chooses Jaiden replies and substitutes target name",
   const normalTriggers = source.indexOf("// EXPLICIT WORD / PHRASE TRIGGERS", force);
   assert.ok(force >= 0 && normalTriggers > force);
   const body = source.slice(force, normalTriggers);
-  assert.match(body, /pickJaidenTargetReply\(/);
+  assert.match(body, /pickJaidenSeparateReply\(/);
   assert.match(body, /threadId/);
   assert.match(body, /targetName/);
 });
