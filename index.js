@@ -12129,7 +12129,10 @@ async function handleAutomaticBanatMessage({
       const accepted = jaidenModeActive
         ? scheduleJaidenReply(threadID, dashboardTargetId, queueJob, {
             interval_seconds: savedBanatTarget?.jaiden_interval_seconds,
-            cooldown_mode: savedBanatTarget?.jaiden_cooldown_mode,
+            // Jaiden mode is message-by-message targeting: preserve every
+            // eligible target message instead of replacing it with the latest
+            // message during the quiet period.
+            cooldown_mode: "queue",
           })
         : acceptBanatBurstMessage(threadID, queueJob);
 
