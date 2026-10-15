@@ -45,7 +45,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore: sync English vocabulary"
           git push --force origin "$branch"
-          if ! gh pr view "$branch" --json number >/dev/null 2>&1; then
+          if ! gh pr list --head "$branch" --state open --json number --jq "length > 0" | grep -q true; then
             gh pr create \
               --base main \
               --head "$branch" \

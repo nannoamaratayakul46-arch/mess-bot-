@@ -5605,6 +5605,7 @@ app.post(
         headers: { Authorization: "Bearer " + token, Accept: "application/json" },
       });
       if (!response.ok) {
+        await response.body?.cancel().catch(() => {});
         console.warn("[DASHBOARD] Render restart request failed with HTTP status", response.status);
         return res.status(502).json({ ok: false, error: "Render rejected the restart request (" + response.status + ")." });
       }
