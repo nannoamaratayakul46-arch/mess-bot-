@@ -283,7 +283,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     // the same normalized content to recur repeatedly within the configured
     // window; punctuation/case/spacing variations share one signature.
     const repeatedCount = spamSignature
-      ? list.filter(hit => hit.text === spamSignature).length
+      ? list.filter(hit => now - hit.at < windowMs && hit.text === spamSignature).length
       : 0;
     hits.set(key, list);
     const repeated = repeatedCount >= cfg.repeat_max;
