@@ -130,8 +130,6 @@ async function connect() {
       ALTER COLUMN loan_principal TYPE BIGINT USING loan_principal::bigint,
       ALTER COLUMN loan_remaining TYPE BIGINT USING loan_remaining::bigint;
 
-    ALTER TABLE economy_transactions
-      ALTER COLUMN amount TYPE BIGINT USING amount::bigint;
   `);
 
   // Gambling safety net: tracks only real wagered-game losses.
@@ -398,6 +396,13 @@ async function connect() {
       description TEXT,
       created_at BIGINT NOT NULL
     );
+  `);
+
+  // Apply the amount type migration only after the table exists. Fresh Neon
+  // projects have no economy_transactions table before this initialization.
+  await pool.query(`
+    ALTER TABLE economy_transactions
+      ALTER COLUMN amount TYPE BIGINT USING amount::bigint;
   `);
 
   await pool.query(`
