@@ -1561,6 +1561,8 @@ async function trafficProcessQueue() {
                 : "Messenger send failed.") + " | " + sendContext)
                 .replace(/(["']?(?:password|passwd|cookie|appstate|access[_-]?token|refresh[_-]?token|authorization)["']?\s*[:=]\s*)[^,;\s}]+/gi, "$1[redacted]")
                 .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted email]")
+                .replace(/https?:\/\/[^\s"\x27<>]+/gi, "[redacted URL]")
+                .replace(/\b[A-Za-z0-9_-]{40,}\b/g, "[redacted token]")
                 .slice(0, 500);
               trafficLastFailure = {
                 code: rawCode,
@@ -5604,13 +5606,13 @@ app.post(
       });
       if (!response.ok) {
         const detail = await response.text().catch(() => "");
-        console.error("[DASHBOARD] Render restart request failed:", response.status, detail.slice(0, 300));
+        console.warn("[DASHBOARD] Render restart request failed with HTTP status", response.status);
         return res.status(502).json({ ok: false, error: "Render rejected the restart request (" + response.status + ")." });
       }
       pushDashboardEvent("deployment", "Render restart requested from the dashboard.");
       return res.json({ ok: true, requested: true, message: "Render accepted the restart request." });
     } catch (error) {
-      console.error("[DASHBOARD] Render restart request failed:", error);
+      console.error("[DASHBOARD] Render restart request failed:", String(error?.code || error?.name || "RENDER_REQUEST_FAILED"));
       return res.status(502).json({ ok: false, error: "Could not reach Render's API." });
     }
   }
@@ -5685,10 +5687,7 @@ const server =
 server.on(
   "error",
   (error) => {
-    console.error(
-      "Web server error:",
-      error
-    );
+    console.error("Web server error:", String(error?.code || error?.name || "SERVER_ERROR"));
 
     process.exitCode = 1;
   }
@@ -11100,10 +11099,10 @@ async function stageBroadcastImage(attachment) {
     }
 
     const contentLength = Number(response.headers.get("content-length") || "0");
-    const MAX_BROADCAST_IMAGE_BYTES = Math.max(
-      1,
-      Number(process.env.MAX_BROADCAST_IMAGE_BYTES || String(2 * 1024 * 1024))
-    );
+    const configuredMaxBytes = Number(process.env.MAX_BROADCAST_IMAGE_BYTES || String(2 * 1024 * 1024));
+    const MAX_BROADCAST_IMAGE_BYTES = Number.isFinite(configuredMaxBytes)
+      ? Math.max(1024, Math.min(configuredMaxBytes, 10 * 1024 * 1024))
+      : 2 * 1024 * 1024;
 
     if (contentLength > MAX_BROADCAST_IMAGE_BYTES) {
       throw new Error(

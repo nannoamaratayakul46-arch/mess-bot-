@@ -15,7 +15,7 @@ async function boot() {
     await db.connect();
     console.log("[BOOT] Neon database connected before ECLIPSE runtime.");
   } catch (error) {
-    console.error("[BOOT] Database initialization failed:", error?.message || error);
+    console.error("[BOOT] Database initialization failed:", String(error?.code || error?.name || "DB_INIT_FAILED"));
     process.exitCode = 1;
     return;
   }
@@ -23,7 +23,7 @@ async function boot() {
   try {
     require("./index");
   } catch (error) {
-    console.error("[BOOT] ECLIPSE runtime failed to start:", error);
+    console.error("[BOOT] ECLIPSE runtime failed to start:", String(error?.code || error?.name || "RUNTIME_START_FAILED"));
     process.exitCode = 1;
   }
 }
