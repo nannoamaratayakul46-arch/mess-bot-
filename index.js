@@ -11442,15 +11442,9 @@ function scheduleJaidenReply(threadID, targetID, job, settings = {}) {
   const mode = ["extend", "queue", "ignore"].includes(settings.cooldown_mode) ? settings.cooldown_mode : "extend";
 
   if (mode === "queue") {
-    // Dedicated FIFO: one queue item per incoming target message. Do not route
-    // these jobs through the generic burst queue, which coalesces message text.
-    jaidenMessageQueue.enqueue(threadKey, { ...job, threadID: threadKey }, interval).then((result) => {
-      if (!result.accepted || !result.sent) {
-        console.warn("[JAIDEN QUEUE] Reply outcome for thread " + threadKey + ": " + (result.outcome || "not-sent"));
-      }
-    }).catch((error) => {
-      console.error("[JAIDEN QUEUE] Unexpected queue error:", error?.message || error);
-    });
+    // Use the same Banat burst queue and send path as every other Banat.
+    // The selected target and reply text are preserved on the queued job.
+    acceptBanatBurstMessage(threadKey, { ...job, threadID: threadKey });
     return true;
   }
 
