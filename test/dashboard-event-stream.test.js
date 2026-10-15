@@ -17,7 +17,7 @@ test("dashboard event stream uses actual SSE line delimiters", () => {
   assert.notEqual(healthStart, -1, "public health route should exist");
   assert.notEqual(healthEnd, -1, "public health route should have a clear end");
   const publicHealth = index.slice(healthStart, healthEnd);
-  assert.ok(publicHealth.includes("lastFailure: status.lastFailure"));
-  assert.ok(publicHealth.includes("{ code: status.lastFailure.code, at: status.lastFailure.at }"));
-  assert.ok(!publicHealth.includes("trafficGovernor: trafficSafetyStatus()"));
+  assert.ok(publicHealth.includes("uptime: Math.floor(process.uptime())"));
+  assert.ok(!publicHealth.includes("lastFailure: status.lastFailure"));
+  assert.ok(!publicHealth.includes("trafficGovernor:"));
 });

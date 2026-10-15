@@ -545,7 +545,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     log(`[AUTOMOD-PROFILE] ${actorLabel} made ${count}/${PROFILE_ABUSE_THRESHOLD} group photo/name changes in ${threadID} within 60 seconds.`);
     if (count < PROFILE_ABUSE_THRESHOLD) return;
 
-    const removal = await removeFromGroup(api, threadID, userID);
+    const removal = await removeFromGroupFn(api, threadID, userID);
     if (!removal?.ok) {
       log(`[AUTOMOD-PROFILE] kick not completed for ${actorLabel} in ${threadID}: ${String(removal?.errorMessage || removal?.errorCode || "Unknown removal failure").slice(0, 180)}`);
       return;

@@ -75,6 +75,7 @@ function makeHarness({ enabled = true, max_messages = 6, window_seconds = 8, rep
       if (adminIDs.includes(String(targetID))) {
         return { ok: false, errorCode: "TARGET_IS_GROUP_ADMIN", errorMessage: "Target is a group admin." };
       }
+      removed.push({ userID: String(targetID), threadID: String(threadID) });
       return { ok: true };
     },
   });
