@@ -309,3 +309,14 @@ test("Jaiden extend cooldown defaults to a 3-second quiet period and scopes pend
   const ordinary = source.slice(ordinaryStart, ordinaryEnd);
   assert.match(ordinary, /acceptBanatBurstMessage\(/);
 });
+
+
+test("selected dashboard target always enters Jaiden reply path even when ! mode is enabled", () => {
+  const source = read("index.js");
+  const start = source.indexOf("async function handleAutomaticBanatMessage");
+  const end = source.indexOf("// ============================================================\\n// HUMAN / BANAT WIRING", start);
+  const body = source.slice(start, end);
+  assert.match(body, /if \\(bangJaidenCommand \\|\\| senderIsDashboardTarget\\) \\{/);
+  assert.match(body, /jaiden_reply_mode === "random"/);
+  assert.match(body, /jaidenModeActive = savedBanatTarget\\?\\.bang_enabled === true/);
+});
