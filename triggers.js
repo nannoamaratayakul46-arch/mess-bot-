@@ -4,7 +4,7 @@ const { rememberBanatReply, pickBanatReply, isRecent } = require("./banat-memory
 const { pickFromBag, pickTriggerVariant } = require("./banat-randomizer");
 const { chooseSocialResponse } = require("./banat-social");
 const { isAdmin } = require("./permissions");
-const { pickJaidenTargetReply } = require("./jaiden-target-pool");
+const { pickJaidenSeparateReply } = require("./jaiden-separate-pool");
 
 // ============================================================
 // TRIGGERS / BANAT SYSTEM
@@ -2198,7 +2198,7 @@ async function getTriggerReply(
     // Dashboard-selected targeting uses its own template pool. Every entry
     // contains {{target}}, so replies don't depend on the word "Jaiden"
     // appearing in the template before substitution.
-    return pickJaidenTargetReply(
+    return pickJaidenSeparateReply(
       threadId,
       String(options?.targetName || "").trim() || "you"
     );
