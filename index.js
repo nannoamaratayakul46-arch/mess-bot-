@@ -19,6 +19,7 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
+const { createDashboardSecurity } = require("./dashboardSecurity");
 const { login } = require("ws3-fca");
 
 const db = require("./db");
@@ -3462,6 +3463,7 @@ async function checkDatabaseHealth() {
 
 
 const app = express();
+app.set("trust proxy", 1);
 
 app.use(express.json({
   limit: "32kb",
@@ -3471,55 +3473,17 @@ app.use(express.json({
     Boolean(req.is("application/json")),
 }));
 
-const DASHBOARD_API_KEY =
-  String(process.env.ECLIPSE_DASHBOARD_API_KEY || "").trim();
+const dashboardSecurity = createDashboardSecurity({
+  apiKey: process.env.ECLIPSE_DASHBOARD_API_KEY,
+  allowedOrigins: process.env.ECLIPSE_DASHBOARD_ORIGIN || "",
+});
 
 function dashboardCors(req, res, next) {
-  const origin = String(req.headers.origin || "");
-  const allowedOrigin = String(
-    process.env.ECLIPSE_DASHBOARD_ORIGIN || "*"
-  ).trim();
-
-  res.setHeader(
-    "Access-Control-Allow-Origin",
-    allowedOrigin === "*" ? "*" : origin === allowedOrigin ? origin : allowedOrigin
-  );
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-ECLIPSE-DASHBOARD-KEY");
-  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
-  res.setHeader("Vary", "Origin");
-
-  if (req.method === "OPTIONS") {
-    return res.sendStatus(204);
-  }
-
-  next();
+  return dashboardSecurity.cors(req, res, next);
 }
 
 function requireDashboardAccess(req, res, next) {
-  if (!DASHBOARD_API_KEY) {
-    return res.status(503).json({
-      ok: false,
-      error: "Dashboard API key is not configured on Render.",
-    });
-  }
-
-  const bearer = String(
-    req.headers.authorization || ""
-  ).replace(/^Bearer\s+/i, "").trim();
-
-  const provided = String(
-    req.headers["x-eclipse-dashboard-key"] ||
-      bearer
-  ).trim();
-
-  if (!provided || provided !== DASHBOARD_API_KEY) {
-    return res.status(401).json({
-      ok: false,
-      error: "Dashboard authorization required.",
-    });
-  }
-
-  next();
+  return dashboardSecurity.requireAccess(req, res, next);
 }
 
 app.use(dashboardCors);
@@ -3960,74 +3924,15 @@ app.get("/", (_req, res) => {
 });
 
 app.get("/health", async (_req, res) => {
-  const music =
-    getMusicStats();
-
-  const watchdog =
-    getWatchdogStatus();
-
-  const databaseHealthy =
-    await checkDatabaseHealth();
-
-  const healthOk =
-    watchdog.ok &&
-    databaseHealthy !== false;
-
-  res.status(
-    healthOk
-      ? 200
-      : 503
-  ).json({
-    ok:
-      healthOk,
-
-    botDisabled:
-      global.botDisabled === true,
-
-    botPaused:
-      global.botPaused === true,
-
-    uptime:
-      process.uptime(),
-
-    watchdog,
-
-    database:
-      databaseHealthy,
-
-    // The unauthenticated health endpoint exposes only summary diagnostics.
-    // Detailed error text and Messenger thread IDs remain behind dashboard auth.
-    trafficGovernor: (() => {
-      const status = trafficSafetyStatus();
-      return {
-        ...status,
-        lastFailure: status.lastFailure
-          ? { code: status.lastFailure.code, at: status.lastFailure.at }
-          : null,
-      };
-    })(),
-
-    music: {
-      activeDownloads:
-        music.activeDownloads,
-
-      globalPending:
-        music.waitingGlobal,
-
-      trackedGCs:
-        music.trackedGCs,
-
-      activeJobs:
-        music.activeJobs,
-
-      pendingJobs:
-        music.pendingJobs,
-    },
-
-    timestamp:
-      new Date().toISOString(),
+  const watchdog = getWatchdogStatus();
+  const databaseHealthy = await checkDatabaseHealth();
+  const healthOk = watchdog.ok && databaseHealthy !== false;
+  // Keep public readiness information minimal; detailed diagnostics require dashboard authentication.
+  res.status(healthOk ? 200 : 503).json({
+    ok: healthOk,
+    uptime: Math.floor(process.uptime()),
   });
-});
+
 
 const port =
   Number.parseInt(
@@ -5834,21 +5739,30 @@ function parseFacebookCookieHeader(header, source) {
     throw new Error(`${source} must be a cookie array, a wrapped cookie export, JSON text, or a cookie-header string.`);
     }
 
-function getSessionCryptoKey() {
-  const secret =
-    String(
-      process.env.ECLIPSE_SESSION_ENCRYPTION_KEY ||
-      process.env.ECLIPSE_DASHBOARD_API_KEY ||
-      process.env.DATABASE_URL ||
-      ""
-    ).trim();
+function getLegacySessionCryptoSecret() {
+  return String(process.env.ECLIPSE_DASHBOARD_API_KEY || process.env.DATABASE_URL || "").trim();
+}
 
+function getSessionCryptoSecretsForDecryption() {
+  return [...new Set([
+    process.env.ECLIPSE_SESSION_ENCRYPTION_KEY,
+    process.env.ECLIPSE_SESSION_ENCRYPTION_KEY_PREVIOUS,
+    getLegacySessionCryptoSecret(),
+  ].map(value => String(value || "").trim()).filter(Boolean))];
+}
+
+let sessionCryptoFallbackWarningLogged = false;
+
+function getSessionCryptoKey(secretOverride) {
+  const secret = secretOverride === undefined
+    ? String(process.env.ECLIPSE_SESSION_ENCRYPTION_KEY || getLegacySessionCryptoSecret()).trim()
+    : String(secretOverride || "").trim();
   if (!secret) return null;
-
-  return crypto
-    .createHash("sha256")
-    .update(secret)
-    .digest();
+  if (secretOverride === undefined && !String(process.env.ECLIPSE_SESSION_ENCRYPTION_KEY || "").trim() && !sessionCryptoFallbackWarningLogged) {
+    sessionCryptoFallbackWarningLogged = true;
+    console.warn("[SECURITY] ECLIPSE_SESSION_ENCRYPTION_KEY is unset; session encryption is using a legacy fallback. Configure a dedicated key and set ECLIPSE_SESSION_ENCRYPTION_KEY_PREVIOUS to the prior key during migration.");
+  }
+  return crypto.createHash("sha256").update(secret).digest();
 }
 
 function encryptSessionState(state) {
@@ -5872,30 +5786,25 @@ function encryptSessionState(state) {
 }
 
 function decryptSessionState(payload) {
-  const key = getSessionCryptoKey();
-  if (!key) throw new Error("No session encryption key is configured.");
-
   const [ivText, tagText, ciphertextText] = String(payload || "").split(".");
-  if (!ivText || !tagText || !ciphertextText) {
-    throw new Error("Stored session state is malformed.");
+  if (!ivText || !tagText || !ciphertextText) throw new Error("Stored session state is malformed.");
+  const secrets = getSessionCryptoSecretsForDecryption();
+  if (!secrets.length) throw new Error("No session encryption key is configured.");
+  for (const secret of secrets) {
+    try {
+      const key = getSessionCryptoKey(secret);
+      const decipher = crypto.createDecipheriv("aes-256-gcm", key, Buffer.from(ivText, "base64url"));
+      decipher.setAuthTag(Buffer.from(tagText, "base64url"));
+      const plaintext = Buffer.concat([
+        decipher.update(Buffer.from(ciphertextText, "base64url")),
+        decipher.final(),
+      ]).toString("utf8");
+      return normalizeFacebookAppState(JSON.parse(plaintext), "Stored Messenger session");
+    } catch (_) {
+      // Try the previous configured key to support safe key rotation.
+    }
   }
-
-  const decipher = crypto.createDecipheriv(
-    "aes-256-gcm",
-    key,
-    Buffer.from(ivText, "base64url")
-  );
-  decipher.setAuthTag(Buffer.from(tagText, "base64url"));
-
-  const plaintext = Buffer.concat([
-    decipher.update(Buffer.from(ciphertextText, "base64url")),
-    decipher.final(),
-  ]).toString("utf8");
-
-  return normalizeFacebookAppState(
-    JSON.parse(plaintext),
-    "Stored Messenger session"
-  );
+  throw new Error("Stored session state could not be decrypted. Check the current and previous session encryption keys.");
 }
 
 async function persistFacebookSessionState(state) {
@@ -11100,6 +11009,45 @@ function getBroadcastImageAttachment(event) {
   return candidates.find(isImage) || null;
 }
 
+const BROADCAST_IMAGE_HOST_SUFFIXES = [".facebook.com", ".fbcdn.net", ".fbsbx.com"];
+
+function assertSafeBroadcastImageUrl(value) {
+  let parsed;
+  try { parsed = new URL(value); } catch (_) { throw new Error("Broadcast image URL is invalid."); }
+  const hostname = parsed.hostname.toLowerCase();
+  const allowedHost = ["facebook.com", "fbcdn.net", "fbsbx.com"].includes(hostname) || BROADCAST_IMAGE_HOST_SUFFIXES.some(suffix => hostname.endsWith(suffix));
+  if (parsed.protocol !== "https:" || !allowedHost || parsed.username || parsed.password || (parsed.port && parsed.port !== "443")) {
+    throw new Error("Broadcast images must come from an approved HTTPS Facebook media host.");
+  }
+  return parsed;
+}
+
+async function fetchSafeBroadcastImage(value) {
+  let url = assertSafeBroadcastImageUrl(value);
+  for (let redirects = 0; redirects <= 3; redirects += 1) {
+    const response = await fetch(url, {
+      redirect: "manual",
+      signal: AbortSignal.timeout(30_000),
+      headers: { "User-Agent": "ECLIPSE Messenger Bot" },
+    });
+    if (![301, 302, 303, 307, 308].includes(response.status)) return response;
+    const location = response.headers.get("location");
+    if (!location) throw new Error("Broadcast image redirect omitted its destination.");
+    if (redirects === 3) throw new Error("Broadcast image exceeded the redirect limit.");
+    url = assertSafeBroadcastImageUrl(new URL(location, url).toString());
+  }
+  throw new Error("Broadcast image could not be downloaded.");
+}
+
+function hasAllowedImageSignature(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return false;
+  const isPng = buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const isJpeg = buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const isGif = buffer.subarray(0, 3).toString("ascii") === "GIF";
+  const isWebp = buffer.subarray(0, 4).toString("ascii") === "RIFF" && buffer.subarray(8, 12).toString("ascii") === "WEBP";
+  return isPng || isJpeg || isGif || isWebp;
+}
+
 async function stageBroadcastImage(attachment) {
   const candidates = [
     attachment?.url,
@@ -11143,16 +11091,7 @@ async function stageBroadcastImage(attachment) {
       );
     }
 
-    const response = await fetch(
-      imageUrl,
-      {
-        redirect: "follow",
-        signal: AbortSignal.timeout(30_000),
-        headers: {
-          "User-Agent": "ECLIPSE Messenger Bot",
-        },
-      }
-    );
+    const response = await fetchSafeBroadcastImage(imageUrl);
 
     if (!response.ok) {
       throw new Error(
@@ -11182,15 +11121,28 @@ async function stageBroadcastImage(attachment) {
       );
     }
 
-    const buffer = Buffer.from(
-      await response.arrayBuffer()
-    );
-
-    if (buffer.length > MAX_BROADCAST_IMAGE_BYTES) {
-      throw new Error(
-        `Broadcast image exceeded the ${Math.round(MAX_BROADCAST_IMAGE_BYTES / 1024 / 1024)} MB bandwidth safety limit.`
-      );
+    const chunks = [];
+    let totalBytes = 0;
+    const reader = response.body?.getReader();
+    if (!reader) throw new Error("Broadcast image response has no readable body.");
+    try {
+      while (true) {
+        const part = await reader.read();
+        if (part.done) break;
+        totalBytes += part.value.byteLength;
+        if (totalBytes > MAX_BROADCAST_IMAGE_BYTES) {
+          await reader.cancel().catch(() => {});
+          throw new Error("Broadcast image exceeded the configured bandwidth safety limit.");
+        }
+        chunks.push(Buffer.from(part.value));
+      }
+    } catch (error) {
+      await reader.cancel().catch(() => {});
+      throw error;
     }
+    const buffer = Buffer.concat(chunks, totalBytes);
+    if (buffer.length > MAX_BROADCAST_IMAGE_BYTES) throw new Error("Broadcast image exceeded the configured bandwidth safety limit.");
+    if (!hasAllowedImageSignature(buffer)) throw new Error("Downloaded file does not contain a supported image signature.");
 
     if (!buffer.length) {
       throw new Error(
