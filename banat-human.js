@@ -288,8 +288,20 @@ function sendBanatReplyWithTyping(
               if (sendError) {
                 console.error("[BANAT] Reply failed:", sendError);
                 if (dependencies.returnSendOutcome === true) {
-                  const code = String(sendError?.code || sendError?.name || "SEND_FAILED").slice(0, 80);
-                  const message = String(sendError?.message || "Messenger send failed.").slice(0, 240);
+                  const rawCode =
+                    sendError?.errorCode ??
+                    sendError?.code ??
+                    sendError?.cause?.errorCode ??
+                    sendError?.cause?.code ??
+                    (typeof sendError?.error === "number" || typeof sendError?.error === "string" ? sendError.error : null);
+                  const code = String(rawCode ?? sendError?.name ?? "SEND_FAILED").slice(0, 80);
+                  const message = String(
+                    sendError?.message ||
+                    sendError?.errorDescription ||
+                    sendError?.cause?.message ||
+                    (typeof sendError?.error === "string" ? sendError.error : "") ||
+                    "Messenger send failed."
+                  ).slice(0, 240);
                   // A timeout is ambiguous: Messenger may have accepted the message
                   // even though its callback did not arrive. Do not retry those.
                   const nonRetryableCodes = new Set([
