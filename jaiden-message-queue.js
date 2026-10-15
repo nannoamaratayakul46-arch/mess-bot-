@@ -27,10 +27,31 @@ function createJaidenMessageQueue(options = {}) {
           state.lastStartedAt = Date.now();
           try {
             const result = await send(item.job);
-            // False can mean a timeout after Messenger accepted the send. Never retry blindly.
-            if (result === false) item.resolve({ accepted: true, sent: false, attempts: thrownRetries + 1, outcome: "send-failed-or-unknown" });
-            else item.resolve({ accepted: true, sent: true, attempts: thrownRetries + 1 });
-            completed = true;
+            // A plain false is ambiguous and must not be retried: the remote
+            // service may have accepted the message before the local timeout.
+            if (result === false) {
+              item.resolve({ accepted: true, sent: false, attempts: thrownRetries + 1, outcome: "send-failed-or-unknown" });
+              completed = true;
+            } else if (result && typeof result === "object" && result.sent === false) {
+              if (result.retryable === true && thrownRetries < retryDelays.length) {
+                const delay = retryDelays[thrownRetries++];
+                console.warn("[JAIDEN QUEUE] Confirmed send rejection; retrying in " + delay + "ms (attempt " + (thrownRetries + 1) + "/" + (retryDelays.length + 1) + ").");
+                await wait(delay);
+              } else {
+                item.resolve({
+                  accepted: true,
+                  sent: false,
+                  attempts: thrownRetries + 1,
+                  outcome: result.outcome || (result.retryable ? "send-failed-after-retries" : "send-failed-or-unknown"),
+                  errorCode: result.code || null,
+                  errorMessage: result.message || null,
+                });
+                completed = true;
+              }
+            } else {
+              item.resolve({ accepted: true, sent: true, attempts: thrownRetries + 1 });
+              completed = true;
+            }
           } catch (error) {
             if (thrownRetries >= retryDelays.length) {
               item.resolve({ accepted: true, sent: false, attempts: thrownRetries + 1, outcome: "processor-error" });
