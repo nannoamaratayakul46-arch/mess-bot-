@@ -5,7 +5,7 @@
   "main": "index.js",
   "scripts": {
     "start": "node bootstrap.js",
-    "prestart": "node --check index.js && node --check triggers.js && node --check jaiden-target-pool.js && node --check typingIndicator.js && node --check banat-human.js && node --check banat-slash-pool.js && node --check banat-state-store.js && node --check banat-randomizer.js && node --check banat-memory.js && node --check slash-banats.js && node --check bootstrap.js && node --check dashboardModeration.js && node --check temporaryGroupAdmins.js",
+    "prestart": "node --check index.js && node --check triggers.js && node --check jaiden-target-pool.js && node --check jaiden-separate-pool.js && node --check jaiden-message-queue.js && node --check typingIndicator.js && node --check banat-human.js && node --check banat-slash-pool.js && node --check banat-state-store.js && node --check banat-randomizer.js && node --check banat-memory.js && node --check slash-banats.js && node --check bootstrap.js && node --check dashboardModeration.js && node --check temporaryGroupAdmins.js",
     "test": "node --test",
     "audit": "node scripts/audit-repo.js",
     "verify": "npm run audit && npm test && npm run check:syntax",
