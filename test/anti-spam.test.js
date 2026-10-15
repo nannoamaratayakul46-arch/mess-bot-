@@ -81,12 +81,12 @@ function makeHarness({ enabled = true, max_messages = 6, window_seconds = 8, rep
   return { detector, api, sent, removed, logs };
 }
 
-async function sendBurst(detector, api, prefix, count = 6) {
+async function sendBurst(detector, api, text, count = 6) {
   for (let i = 0; i < count; i += 1) {
     await detector.onMessage(api, {
       threadID: "group-1",
       senderID: "member-1",
-      body: prefix + "-" + i,
+      body: text,
       senderName: "Member",
     });
   }
@@ -147,7 +147,7 @@ test("automod counts sticker-only messages without changing ordinary word-spam h
         threadID: "group-1",
         senderID: "member-1",
         body: "",
-        attachments: [{ type: "sticker", ID: prefix + "-sticker-" + i }],
+        attachments: [{ type: "sticker", ID: prefix + "-sticker" }],
         senderName: "Member",
       });
     }
@@ -159,23 +159,55 @@ test("automod counts sticker-only messages without changing ordinary word-spam h
   assert.equal(removed.length, 1);
 });
 
-test("automod counts standalone reaction events using userID", async () => {
+test("reaction bursts never trigger message-spam warnings or removals", async () => {
   const { detector, api, sent, removed } = makeHarness();
-  async function reactionBurst(messagePrefix) {
-    for (let i = 0; i < 6; i += 1) {
-      await detector.onMessage(api, {
-        type: "message_reaction",
-        threadID: "group-1",
-        userID: "member-1",
-        senderID: "message-author",
-        messageID: messagePrefix + "-message-" + i,
-        reaction: "👍",
-      });
-    }
+  for (let i = 0; i < 20; i += 1) {
+    await detector.onMessage(api, {
+      type: "message_reaction",
+      threadID: "group-1",
+      userID: "member-1",
+      senderID: "message-author",
+      messageID: "message-" + i,
+      reaction: "👍",
+    });
   }
-  await reactionBurst("first");
+  assert.equal(sent.length, 0);
+  assert.equal(removed.length, 0);
+});
+
+test("fast but varied conversation messages do not trigger a spam warning", async () => {
+  const { detector, api, sent, removed } = makeHarness();
+  for (const body of [
+    "hi",
+    "hey",
+    "wya guys",
+    "hey",
+    "are u guys busy",
+    "heyyy ano ba yan",
+  ]) {
+    await detector.onMessage(api, {
+      type: "message",
+      threadID: "group-1",
+      senderID: "member-1",
+      body,
+      senderName: "Member",
+    });
+  }
+  assert.equal(sent.length, 0);
+  assert.equal(removed.length, 0);
+});
+
+test("same words with case and punctuation variations count as repeated spam", async () => {
+  const { detector, api, sent, removed } = makeHarness({ repeat_max: 4 });
+  for (const body of ["hey", "HEY!", " hey ", "Hey..."]) {
+    await detector.onMessage(api, {
+      type: "message",
+      threadID: "group-1",
+      senderID: "member-1",
+      body,
+      senderName: "Member",
+    });
+  }
   assert.equal(sent.length, 1);
   assert.equal(removed.length, 0);
-  await reactionBurst("second");
-  assert.equal(removed.length, 1);
 });

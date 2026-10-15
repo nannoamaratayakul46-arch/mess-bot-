@@ -218,6 +218,9 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const threadID = String(event?.threadID || "").trim();
     const eventType = String(event?.type || "").toLowerCase();
     const reactionEvent = ["message_reaction", "messagereactionadd", "reaction"].includes(eventType);
+    // Reactions are interactions with existing messages, not chat messages.
+    // Ignore them before they can affect either the spam counter or Raid Shield.
+    if (reactionEvent) return;
     const userID = String(
       (reactionEvent ? event?.userID ?? event?.senderID : event?.senderID ?? event?.userID) ??
       event?.authorID ?? ""
@@ -228,13 +231,11 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       String(item?.type || item?.attachmentType || "").toLowerCase() === "sticker" ||
       Boolean(item?.stickerID || item?.stickerId || item?.packID && item?.spriteUrl)
     );
-    const isReaction = ["message_reaction", "messagereactionadd", "reaction"].includes(eventType);
     const isSticker = Boolean(sticker);
-    // Keep the existing word-spam path intact. Only synthesize a signal when
-    // Messenger sends a sticker with no body or a standalone reaction event.
+    // Only text messages and sticker-only messages are spam candidates.
+    // Reactions have already been excluded above.
     const text = bodyText ||
-      (isSticker ? "[sticker:" + String(sticker?.ID ?? sticker?.id ?? sticker?.stickerID ?? sticker?.stickerId ?? "unknown") + "]" : "") ||
-      (isReaction ? "[reaction:" + String(event?.reaction ?? event?.reactionEmoji ?? event?.emoji ?? event?.reactionType ?? "like") + "]" : "");
+      (isSticker ? "[sticker:" + String(sticker?.ID ?? sticker?.id ?? sticker?.stickerID ?? sticker?.stickerId ?? "unknown") + "]" : "");
     if (!threadID || !userID || !text) return;
     if (typeof api?.getCurrentUserID === "function" && userID === String(api.getCurrentUserID())) return;
 
@@ -274,12 +275,24 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     }
 
     const burstCount = list.filter(hit => now - hit.at < windowMs).length;
-    const repeatedCount = cleanText ? list.filter(hit => hit.text === cleanText).length : 0;
-    const burst = burstCount >= cfg.max_messages;
+    // High message volume alone is normal conversation. Enforcement requires
+    // the same normalized content to recur repeatedly within the configured
+    // window; punctuation/case/spacing variations share one signature.
+    const spamSignature = cleanText
+      .replace(/[!?.,;:…]+/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    const repeatedCount = spamSignature
+      ? list.filter(hit => hit.text === spamSignature).length
+      : 0;
+    // Store the same signature used for comparison so minor formatting changes
+    // cannot evade detection, while different sentences do not accumulate.
+    list[list.length - 1].text = spamSignature;
+    hits.set(key, list);
     const repeated = repeatedCount >= cfg.repeat_max;
-    if (!burst && !repeated) return;
+    if (!repeated) return;
 
-    log(`[AUTOMOD-SPAM] threshold reached for ${userID} in ${threadID}: burst=${burstCount}/${cfg.max_messages}, repeated=${repeatedCount}/${cfg.repeat_max}`);
+    log(`[AUTOMOD-SPAM] repeated-message threshold reached for ${userID} in ${threadID}: repeated=${repeatedCount}/${cfg.repeat_max}, totalInWindow=${burstCount}`);
     hits.set(key, []);
     const warningResult = await db.query(
       "SELECT warned_at FROM automod_spam_warnings WHERE thread_id = $1 AND user_id = $2",
