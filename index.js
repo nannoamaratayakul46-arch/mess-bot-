@@ -11772,7 +11772,7 @@ async function runBanatBurstQueue(threadID) {
           job.linkUrl,
           0,
           job.incomingText || "",
-          { skipTyping: job.typingEnabled === false, returnSendOutcome: true }
+          { skipTyping: job.typingEnabled === false }
         ),
         new Promise((resolve) => {
           turnTimeout = setTimeout(() => {
@@ -12281,7 +12281,7 @@ const jaidenMessageQueue = createJaidenMessageQueue({
       job.linkUrl || null,
       undefined,
       job.incomingText || "",
-      { skipTyping: job.typingEnabled === false }
+      { skipTyping: job.typingEnabled === false, returnSendOutcome: true }
     );
   },
 });
