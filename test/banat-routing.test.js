@@ -316,7 +316,7 @@ test("selected dashboard target always enters Jaiden reply path even when ! mode
   const start = source.indexOf("async function handleAutomaticBanatMessage");
   const end = source.indexOf("// ============================================================\\n// HUMAN / BANAT WIRING", start);
   const body = source.slice(start, end);
-  assert.match(body, /if \\(bangJaidenCommand \\|\\| senderIsDashboardTarget\\) \\{/);
+  assert.ok(body.includes("if (bangJaidenCommand || senderIsDashboardTarget) {"));
   assert.match(body, /jaiden_reply_mode === "random"/);
-  assert.match(body, /jaidenModeActive = savedBanatTarget\\?\\.bang_enabled === true/);
+  assert.ok(body.includes("jaidenModeActive = savedBanatTarget?.bang_enabled === true"));
 });
