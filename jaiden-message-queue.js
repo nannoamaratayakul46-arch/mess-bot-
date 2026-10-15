@@ -93,7 +93,8 @@ function createJaidenMessageQueue(options = {}) {
     const prefix = threadID == null ? null : String(threadID || "").trim();
     let cleared = 0;
     for (const [key, state] of queues) {
-      if (prefix !== null && key !== prefix) continue;
+      // Queue keys may be thread IDs or threadID:targetID scopes.
+      if (prefix !== null && key !== prefix && !key.startsWith(prefix + ":")) continue;
       for (const item of state.jobs) { item.resolve({ accepted: false, sent: false, outcome: "cleared" }); cleared++; }
       state.jobs.length = 0;
       if (!state.running) queues.delete(key);
