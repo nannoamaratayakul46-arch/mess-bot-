@@ -1553,6 +1553,7 @@ async function trafficProcessQueue() {
                 "bodyLength=" + (typeof payloadBody === "string" ? payloadBody.length : 0),
                 "hasReplyTo=" + Boolean(job.replyToMessageID),
                 "hasAttachment=" + Boolean(job.message && typeof job.message === "object" && job.message.attachment),
+                "hasUrl=" + Boolean(job.message && typeof job.message === "object" && job.message.url),
               ].join(" | ");
               const rawDetail = ((diagnosticFields.length
                 ? diagnosticFields.map(([key, value]) => key + "=" + String(value)).join(" | ")
@@ -12214,7 +12215,12 @@ async function handleAutomaticBanatMessage({
       const queueJob = {
         api, message: triggerReply, replyToMessageID: event.messageID,
         attachMeme: banatMemeEnabled,
-        linkUrl: banatLinkEnabled ? banatProfileUrl : null,
+        // Jaiden replies are text-only by default. Historical thread_settings rows
+        // may have banat_link_enabled=true solely because the old DB default was on.
+        // Opt in explicitly with ECLIPSE_JAIDEN_INCLUDE_LINKS=true.
+        linkUrl: jaidenModeActive && process.env.ECLIPSE_JAIDEN_INCLUDE_LINKS !== "true"
+          ? null
+          : (banatLinkEnabled ? banatProfileUrl : null),
         incomingText: body, senderId, canSwitchTarget: true,
         rotationTarget: publicRotationMode,
         typingEnabled: jaidenModeActive ? savedBanatTarget?.jaiden_typing_enabled !== false : true,

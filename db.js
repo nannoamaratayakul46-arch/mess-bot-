@@ -154,7 +154,7 @@ async function connect() {
       thread_id TEXT PRIMARY KEY,
       roast_enabled BOOLEAN NOT NULL DEFAULT TRUE,
       fun_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      banat_link_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      banat_link_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       slash_pool_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       bot_enabled BOOLEAN NOT NULL DEFAULT TRUE
@@ -164,10 +164,17 @@ async function connect() {
   await pool.query(`
     ALTER TABLE thread_settings
       ADD COLUMN IF NOT EXISTS fun_enabled BOOLEAN NOT NULL DEFAULT TRUE,
-      ADD COLUMN IF NOT EXISTS banat_link_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS banat_link_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS slash_pool_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS bot_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+  `);
+
+  // Existing databases keep the old column default when ADD COLUMN IF NOT EXISTS
+  // skips it, so explicitly switch future implicit values to opt-in.
+  await pool.query(`
+    ALTER TABLE thread_settings
+      ALTER COLUMN banat_link_enabled SET DEFAULT FALSE;
   `);
 
   // Persistent dashboard-selected Banat target, independent for each GC.
@@ -3423,7 +3430,7 @@ async function getThreadSettings(threadId) {
         slash_pool_enabled,
         bot_enabled
       )
-      VALUES($1, TRUE, TRUE, TRUE, FALSE, FALSE, TRUE)
+      VALUES($1, TRUE, TRUE, FALSE, FALSE, FALSE, TRUE)
       ON CONFLICT(thread_id) DO NOTHING
       `,
       [id]
