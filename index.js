@@ -3932,7 +3932,7 @@ app.get("/health", async (_req, res) => {
     ok: healthOk,
     uptime: Math.floor(process.uptime()),
   });
-
+});
 
 const port =
   Number.parseInt(
