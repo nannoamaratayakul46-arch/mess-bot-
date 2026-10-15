@@ -920,6 +920,41 @@ function trafficRecordDeliveryOutcome(outcome, job, code = null) {
     trafficDeliveryHistory.shift();
   }
 }
+function trafficDeliverySummary() {
+  const now = Date.now();
+  const hourMs = 60 * 60 * 1000;
+  const currentHour = Math.floor(now / hourMs) * hourMs;
+  const history = Array.from({ length: 24 }, (_, index) => {
+    const start = currentHour - (23 - index) * hourMs;
+    return {
+      bucket: new Date(start).toISOString(),
+      sent: 0,
+      failed: 0,
+    };
+  });
+  const byHour = new Map(history.map((item) => [item.bucket, item]));
+  let totalSent24h = 0;
+  let totalFailed24h = 0;
+  const cutoff = now - TRAFFIC_DELIVERY_RETENTION_MS;
+
+  for (const entry of trafficDeliveryHistory) {
+    const timestamp = Date.parse(entry?.at || "");
+    if (!Number.isFinite(timestamp) || timestamp < cutoff || timestamp > now) continue;
+    const bucket = new Date(Math.floor(timestamp / hourMs) * hourMs).toISOString();
+    const target = byHour.get(bucket);
+    if (!target) continue;
+    if (entry.outcome === "sent") {
+      target.sent++;
+      totalSent24h++;
+    } else if (entry.outcome === "failed") {
+      target.failed++;
+      totalFailed24h++;
+    }
+  }
+
+  return { totalSent24h, totalFailed24h, history };
+}
+
 let trafficTotalDelayed = 0;
 let trafficTotalSuppressed = 0;
 let trafficTotalRejected = 0;
