@@ -77,6 +77,23 @@ test("Jaiden FIFO retries explicit Messenger rejections but not ambiguous timeou
   queue.stop();
 });
 
+test("clearing a thread also clears its target-scoped FIFO queues", async () => {
+  let release;
+  const blocked = new Promise((resolve) => { release = resolve; });
+  const queue = createJaidenMessageQueue({
+    send: async () => { await blocked; return true; },
+  });
+  const first = queue.enqueue("thread-clear:target-a", job("one"), 0);
+  const second = queue.enqueue("thread-clear:target-b", job("two"), 0);
+  // Let both drains begin and block inside send before clearing the thread.
+  await new Promise((resolve) => setImmediate(resolve));
+  const cleared = queue.clear("thread-clear");
+  assert.ok(cleared >= 1);
+  release();
+  await Promise.all([first, second]);
+  queue.stop();
+});
+
 test("Jaiden FIFO rejects invalid jobs and enforces its explicit queue cap", async () => {
   let release;
   const blocked = new Promise((resolve) => { release = resolve; });
