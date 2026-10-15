@@ -1515,12 +1515,36 @@ async function trafficProcessQueue() {
               trafficRecordDeliveryOutcome("sent", job);
             } else {
               trafficTotalFailed++;
-              const rawCode = String(error?.code || error?.name || "SEND_FAILED").slice(0, 80);
+              const rawCode = String(
+                error?.errorCode ||
+                error?.code ||
+                error?.cause?.errorCode ||
+                error?.cause?.code ||
+                error?.name ||
+                "SEND_FAILED"
+              ).slice(0, 80);
               trafficRecordDeliveryOutcome("failed", job, rawCode);
-              const rawDetail = String(error?.message || "Messenger send failed.")
-                .replace(/(["']?(?:password|passwd|cookie|appstate|access[_-]?token|refresh[_-]?token|authorization)["']?\s*[:=]\s*)[^,;\s}]+/gi, "$1[redacted]")
-                .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted email]")
-                .slice(0, 240);
+
+              // ws3-fca can wrap Messenger errors in generic Error objects.
+              // Preserve a small allowlist of diagnostic fields so the actual
+              // rejection can be distinguished from a session/HTTP failure.
+              // Never serialize the full error/response: it may contain cookies
+              // or request/session data.
+              const diagnosticFields = [
+                ["message", error?.message],
+                ["errorDescription", error?.errorDescription],
+                ["error", typeof error?.error === "string" || typeof error?.error === "number" ? error.error : null],
+                ["statusCode", error?.statusCode ?? error?.status],
+                ["causeCode", error?.cause?.code],
+                ["causeMessage", error?.cause?.message],
+                ["responseStatus", error?.response?.status ?? error?.response?.statusCode],
+              ].filter(([, value]) => value !== undefined && value !== null && String(value).trim());
+              const rawDetail = (diagnosticFields.length
+                ? diagnosticFields.map(([key, value]) => key + "=" + String(value)).join(" | ")
+                : "Messenger send failed.")
+                .replace(/(["']?(?:password|passwd|cookie|appstate|access[_-]?token|refresh[_-]?token|authorization)["']?\\s*[:=]\\s*)[^,;\\s}]+/gi, "$1[redacted]")
+                .replace(/\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b/gi, "[redacted email]")
+                .slice(0, 500);
               trafficLastFailure = {
                 code: rawCode,
                 detail: rawDetail,
