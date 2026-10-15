@@ -3,10 +3,8 @@
 const banatStateStore = require("./banat-state-store");
 const { renderTargetReply } = require("./targetName");
 
-// Separate Jaiden reply pool, copied from jaiden-target-pool.js.
-// It has its own saved shuffle bags so using this pool does not consume
-// replies from the original dashboard-target pool.
-const STATE_SECTION = "jaidenSeparateBags";
+// Jaiden replies use the same thread-wide no-repeat cycle as the classic slash Banat pool.
+const STATE_SECTION = "banatJaidenPool";
 
 const TEMPLATES = [
   "aaaaawagkasabiumungolsatengako?",
@@ -211,66 +209,72 @@ const TEMPLATES = [
   "mukha kang warning na huli nang lumabas"
 ];
 
-const savedBags = banatStateStore.readSection(STATE_SECTION, {});
-const bags = new Map(
-  Object.entries(savedBags).map(([threadID, bag]) => [
-    String(threadID),
-    Array.isArray(bag)
-      ? bag.filter((index, position, values) =>
-          Number.isInteger(index) &&
-          index >= 0 &&
-          index < TEMPLATES.length &&
-          values.indexOf(index) === position
-        )
-      : []
+const restoredState = banatStateStore.readSection(STATE_SECTION, {});
+const usedByThread = new Map(
+  Object.entries(restoredState.usedByThread || {}).map(([key, values]) => [
+    key,
+    new Set(Array.isArray(values) ? values.filter((value) => typeof value === "string") : []),
   ])
 );
+const lastByThread = new Map(Object.entries(restoredState.lastByThread || {}));
+const HISTORY_LIMIT = 500;
 
-function persistBags() {
-  banatStateStore.writeSection(
-    STATE_SECTION,
-    Object.fromEntries(
-      Array.from(bags.entries()).filter(([, bag]) => Array.isArray(bag) && bag.length > 0)
-    )
-  );
+function persistState() {
+  banatStateStore.writeSection(STATE_SECTION, {
+    usedByThread: Object.fromEntries(
+      Array.from(usedByThread.entries(), ([key, values]) => [key, Array.from(values)])
+    ),
+    lastByThread: Object.fromEntries(lastByThread.entries()),
+  });
 }
 
-function renderTargetTemplate(template, targetName) {
+function renderBanatJaidenTemplate(template, targetName) {
   const name = String(targetName || "").trim().slice(0, 80) || "you";
   return renderTargetReply(template, name);
 }
 
-function pickJaidenSeparateReply(threadID, targetName, options = {}) {
-  const key = String(threadID || "default");
-  const random = typeof options.random === "function" ? options.random : Math.random;
-  let bag = bags.get(key);
-
-  if (!Array.isArray(bag) || bag.length === 0) {
-    bag = TEMPLATES.map((_, index) => index);
-    for (let i = bag.length - 1; i > 0; i--) {
-      const j = Math.max(0, Math.min(i, Math.floor(random() * (i + 1))));
-      [bag[i], bag[j]] = [bag[j], bag[i]];
-    }
-    bags.set(key, bag);
-  }
-
-  const index = bag.pop();
-  persistBags();
-  return renderTargetTemplate(TEMPLATES[index], targetName);
+function rememberBounded(map, key, value) {
+  map.delete(key);
+  map.set(key, value);
+  while (map.size > HISTORY_LIMIT) map.delete(map.keys().next().value);
 }
 
-function clearJaidenSeparatePool(threadID) {
-  if (threadID == null) bags.clear();
-  else bags.delete(String(threadID || "default"));
-  persistBags();
+function pickBanatJaidenReply(threadID, targetName) {
+  const thread = String(threadID || "global");
+  const used = usedByThread.get(thread) || new Set();
+  let candidates = TEMPLATES.filter((line) => !used.has(line));
+  if (!candidates.length) {
+    used.clear();
+    candidates = TEMPLATES.slice();
+  }
+  const last = lastByThread.get(thread);
+  if (candidates.length > 1 && last) {
+    const fresh = candidates.filter((line) => line !== last);
+    if (fresh.length) candidates = fresh;
+  }
+  const selected = candidates[Math.floor(Math.random() * candidates.length)];
+  used.add(selected);
+  rememberBounded(usedByThread, thread, used);
+  rememberBounded(lastByThread, thread, selected);
+  persistState();
+  return renderBanatJaidenTemplate(selected, targetName);
+}
+
+function clearBanatJaidenPool(threadID) {
+  if (threadID == null) {
+    usedByThread.clear();
+    lastByThread.clear();
+  } else {
+    const key = String(threadID || "global");
+    usedByThread.delete(key);
+    lastByThread.delete(key);
+  }
+  persistState();
 }
 
 module.exports = {
   TEMPLATES,
-  renderTargetTemplate,
-  pickJaidenSeparateReply,
-  clearJaidenSeparatePool,
-  // Backward-compatible names used by older imports/tests.
-  pickJaidenTargetReply: pickJaidenSeparateReply,
-  clearJaidenTargetPool: clearJaidenSeparatePool
+  renderBanatJaidenTemplate,
+  pickBanatJaidenReply,
+  clearBanatJaidenPool,
 };
