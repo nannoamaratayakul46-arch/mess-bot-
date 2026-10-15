@@ -269,5 +269,8 @@ module.exports = {
   TEMPLATES,
   renderTargetTemplate,
   pickJaidenSeparateReply,
-  clearJaidenSeparatePool
+  clearJaidenSeparatePool,
+  // Backward-compatible names used by older imports/tests.
+  pickJaidenTargetReply: pickJaidenSeparateReply,
+  clearJaidenTargetPool: clearJaidenSeparatePool
 };
