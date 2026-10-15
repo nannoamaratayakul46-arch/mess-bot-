@@ -1542,8 +1542,8 @@ async function trafficProcessQueue() {
               const rawDetail = (diagnosticFields.length
                 ? diagnosticFields.map(([key, value]) => key + "=" + String(value)).join(" | ")
                 : "Messenger send failed.")
-                .replace(/(["']?(?:password|passwd|cookie|appstate|access[_-]?token|refresh[_-]?token|authorization)["']?\\s*[:=]\\s*)[^,;\\s}]+/gi, "$1[redacted]")
-                .replace(/\\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\\b/gi, "[redacted email]")
+                .replace(/(["']?(?:password|passwd|cookie|appstate|access[_-]?token|refresh[_-]?token|authorization)["']?\s*[:=]\s*)[^,;\s}]+/gi, "$1[redacted]")
+                .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\\.[A-Z]{2,}\b/gi, "[redacted email]")
                 .slice(0, 500);
               trafficLastFailure = {
                 code: rawCode,
