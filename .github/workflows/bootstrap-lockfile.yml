@@ -1,0 +1,75 @@
+name: Bootstrap dependency lockfile
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: dependency-lockfile-bootstrap
+  cancel-in-progress: false
+
+jobs:
+  create-lockfile:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+        with:
+          persist-credentials: false
+
+      - name: Setup Node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: 22
+
+      - name: Check whether the lockfile is missing
+        id: lockfile
+        run: if [ -f package-lock.json ]; then echo "missing=false" >> "$GITHUB_OUTPUT"; else echo "missing=true" >> "$GITHUB_OUTPUT"; fi
+
+      - name: Generate lockfile without running install scripts
+        if: steps.lockfile.outputs.missing == 'true'
+        run: npm install --package-lock-only --ignore-scripts
+
+      - name: Verify locked dependency tree
+        if: steps.lockfile.outputs.missing == 'true'
+        run: |
+          set -euo pipefail
+          npm ci
+          npm run audit
+          npm test
+          while IFS= read -r -d '' file; do
+            node --check "$file"
+          done < <(find . -type f -name '*.js' -not -path './node_modules/*' -not -path './.git/*' -print0)
+
+      - name: Open lockfile pull request
+        if: steps.lockfile.outputs.missing == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BASE_SHA: ${{ github.event.before }}
+        run: |
+          set -euo pipefail
+          mkdir -p /tmp/eclipse-lockfile
+          cp package-lock.json /tmp/eclipse-lockfile/package-lock.json
+          git fetch origin "$BASE_SHA"
+          branch="automation/dependency-lockfile"
+          git checkout --detach "$BASE_SHA"
+          git checkout -B "$branch"
+          cp /tmp/eclipse-lockfile/package-lock.json package-lock.json
+          git add package-lock.json
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "chore: lock Node.js dependencies"
+          gh auth setup-git
+          git push --force origin "$branch"
+          if ! gh pr list --head "$branch" --state open --json number --jq "length > 0" | grep -q true; then
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "chore: lock Node.js dependencies" \
+              --body "Generated package-lock.json and verified the exact locked dependency tree, repository audit, tests, and JavaScript syntax before opening this PR."
+          fi
