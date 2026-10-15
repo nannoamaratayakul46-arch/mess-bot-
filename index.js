@@ -23,6 +23,7 @@ const { login } = require("ws3-fca");
 
 const db = require("./db");
 const { resolveTargetName } = require("./targetName");
+const { createJaidenMessageQueue } = require("./jaiden-message-queue");
 const { registerGroupProfileRoutes, handleGroupProfileEvent } = require("./groupProfileRoutes");
 const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
 const { createLiveChat } = require("./liveChat");
@@ -11439,28 +11440,26 @@ function scheduleJaidenReply(threadID, targetID, job, settings = {}) {
   const key = threadKey + ":" + targetKey;
   const interval = Math.max(3, Math.min(120, Number(settings.interval_seconds) || 3)) * 1000;
   const mode = ["extend", "queue", "ignore"].includes(settings.cooldown_mode) ? settings.cooldown_mode : "extend";
+
+  if (mode === "queue") {
+    // Dedicated FIFO: one queue item per incoming target message. Do not route
+    // these jobs through the generic burst queue, which coalesces message text.
+    jaidenMessageQueue.enqueue(threadKey, { ...job, threadID: threadKey }, interval).then((result) => {
+      if (!result.accepted || !result.sent) {
+        console.warn("[JAIDEN QUEUE] Reply outcome for thread " + threadKey + ": " + (result.outcome || "not-sent"));
+      }
+    }).catch((error) => {
+      console.error("[JAIDEN QUEUE] Unexpected queue error:", error?.message || error);
+    });
+    return true;
+  }
+
   let state = jaidenCooldownState.get(key);
   if (!state) {
     state = { timer: null, latest: null, queue: [] };
     jaidenCooldownState.set(key, state);
   }
   if (mode === "ignore" && state.timer) return true;
-  if (mode === "queue") {
-    state.queue.push(job);
-    if (!state.timer) {
-      const drain = () => {
-        state.timer = setTimeout(() => {
-          state.timer = null;
-          const queued = state.queue.shift();
-          if (queued) acceptBanatBurstMessage(threadKey, queued);
-          if (state.queue.length) drain();
-          else jaidenCooldownState.delete(key);
-        }, interval);
-      };
-      drain();
-    }
-    return true;
-  }
   state.latest = job;
   if (state.timer) clearTimeout(state.timer);
   state.timer = setTimeout(() => {
@@ -12266,6 +12265,24 @@ async function handleAutomaticBanatMessage({
 // The human system lives in dedicated modules.
 // index.js only preserves the legacy call signatures and injects
 // the existing Traffic Governor + meme helper dependencies.
+
+const jaidenMessageQueue = createJaidenMessageQueue({
+  maxQueuePerThread: Number(process.env.ECLIPSE_JAIDEN_QUEUE_MAX || 1000),
+  retryDelays: [500, 1500],
+  send: async (job) => {
+    return sendBanatReplyWithTyping(
+      job.api,
+      job.message,
+      job.threadID,
+      job.replyToMessageID || null,
+      job.attachMeme === true,
+      job.linkUrl || null,
+      undefined,
+      job.incomingText || "",
+      { skipTyping: job.typingEnabled === false }
+    );
+  },
+});
 
 function sendBanatReplyWithTyping(
   api,
