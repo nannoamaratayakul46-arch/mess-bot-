@@ -45,7 +45,7 @@ function callbackCall(invoke, timeoutMs = 10000) {
   });
 }
 
-function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, log = () => {}, getSettings = getAutoModSettings, setEnabled = setAutoModEnabled, isBotOwnerId = isBotOwner }) {
+function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, log = () => {}, getSettings = getAutoModSettings, setEnabled = setAutoModEnabled, isBotOwnerId = isBotOwner, removeFromGroupFn = removeFromGroup }) {
   if (!db || typeof db.query !== "function") throw new TypeError("antiSpam requires the persistent db query interface");
 
   const hits = new Map();
@@ -149,7 +149,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const lastFailure = removalFailures.get(failureKey) || 0;
     if (Date.now() - lastFailure < 30000) return false;
 
-    if (typeof removeFromGroup !== "function") {
+    if (typeof removeFromGroupFn !== "function") {
       log("[AUTOMOD-SPAM] shared moderation removal helper is unavailable");
       removalFailures.set(failureKey, Date.now());
       return false;
@@ -159,7 +159,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     try {
       // Use moderation.js as the single source of truth for role checks,
       // protected-admin handling, API timeouts, and Messenger error details.
-      removal = await removeFromGroup(api, String(threadID), String(userID));
+      removal = await removeFromGroupFn(api, String(threadID), String(userID));
     } catch (error) {
       removalFailures.set(failureKey, Date.now());
       log(`[AUTOMOD-SPAM] shared removal helper failed for ${userID} in ${threadID}: ${String(error?.message || error).slice(0, 180)}`);
@@ -182,7 +182,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       try {
         await callbackCall(cb => api.changeAdminStatus(String(threadID), String(userID), false, cb), 12000);
         log(`[AUTOMOD-SPAM] Demotion request succeeded for spammer ${userID} in ${threadID}; retrying removal.`);
-        removal = await removeFromGroup(api, String(threadID), String(userID));
+        removal = await removeFromGroupFn(api, String(threadID), String(userID));
       } catch (error) {
         removalFailures.set(failureKey, Date.now());
         log(`[AUTOMOD-SPAM] admin-spammer demotion/removal failed for ${userID} in ${threadID}: ${String(error?.message || error).slice(0, 180)}`);
