@@ -287,7 +287,28 @@ function sendBanatReplyWithTyping(
             (sendError, messageInfo) => {
               if (sendError) {
                 console.error("[BANAT] Reply failed:", sendError);
-                finish(false);
+                if (dependencies.returnSendOutcome === true) {
+                  const code = String(sendError?.code || sendError?.name || "SEND_FAILED").slice(0, 80);
+                  const message = String(sendError?.message || "Messenger send failed.").slice(0, 240);
+                  // A timeout is ambiguous: Messenger may have accepted the message
+                  // even though its callback did not arrive. Do not retry those.
+                  const nonRetryableCodes = new Set([
+                    "ECLIPSE_SEND_TIMEOUT",
+                    "ECLIPSE_DUPLICATE_SUPPRESSED",
+                    "ECLIPSE_SHUTTING_DOWN",
+                    "ECLIPSE_TRAFFIC_QUEUE_FULL",
+                    "ECLIPSE_RAW_MESSENGER_API",
+                  ]);
+                  finish({
+                    sent: false,
+                    retryable: !nonRetryableCodes.has(code) && !/timed?\s*out|timeout/i.test(message),
+                    code,
+                    message,
+                    outcome: /timed?\s*out|timeout/i.test(message) ? "send-timeout-unknown" : "messenger-rejected-send",
+                  });
+                } else {
+                  finish(false);
+                }
                 return;
               }
 
