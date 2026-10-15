@@ -7,30 +7,48 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
+
+concurrency:
+  group: sync-english-vocabulary
+  cancel-in-progress: false
 
 jobs:
   sync-english:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Node
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
 
       - name: Sync dwyl/english-words
         run: npm run sync:english
 
-      - name: Commit vocabulary snapshot
+      - name: Create vocabulary update pull request
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          set -euo pipefail
           git add data/english/words.json data/english/source.json
           if git diff --cached --quiet; then
             echo "No vocabulary changes."
             exit 0
           fi
+          branch="automation/sync-english-vocabulary"
+          git checkout -B "$branch"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git commit -m "chore: sync English vocabulary"
-          git push
+          git push --force origin "$branch"
+          if ! gh pr view "$branch" --json number >/dev/null 2>&1; then
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "chore: sync English vocabulary" \
+              --body "Automated vocabulary snapshot update. Review the diff and CI checks before merging."
+          fi

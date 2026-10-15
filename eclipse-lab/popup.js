@@ -62,6 +62,34 @@ async function simulate() {
     return;
   }
 
+  let parsedApiUrl;
+  try {
+    parsedApiUrl = new URL(apiUrl);
+  } catch (_) {
+    setStatus("Enter a valid dashboard URL.");
+    return;
+  }
+  const localHttp = parsedApiUrl.protocol === "http:" && ["localhost", "127.0.0.1", "[::1]"].includes(parsedApiUrl.hostname);
+  if (parsedApiUrl.protocol !== "https:" && !localHttp) {
+    setStatus("Dashboard URL must use HTTPS (HTTP is allowed only for localhost).");
+    return;
+  }
+  if (parsedApiUrl.username || parsedApiUrl.password) {
+    setStatus("Dashboard URL must not contain embedded credentials.");
+    return;
+  }
+  const requestedOrigin = parsedApiUrl.origin + "/*";
+  try {
+    const granted = await chrome.permissions.request({ origins: [requestedOrigin] });
+    if (!granted) {
+      setStatus("Permission to contact this dashboard was not granted.");
+      return;
+    }
+  } catch (_) {
+    setStatus("Could not request access to this dashboard origin.");
+    return;
+  }
+
   await saveSettings();
   setStatus("Running Banat simulation…");
 
