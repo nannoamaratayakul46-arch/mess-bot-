@@ -328,4 +328,9 @@ test("Jaiden mode queues every selected-target message instead of extending and 
   const end = source.indexOf("// ============================================================\\n// HUMAN / BANAT WIRING", start);
   const body = source.slice(start, end);
   assert.ok(body.includes('cooldown_mode: "queue"'));
+  const schedulerStart = source.indexOf("function scheduleJaidenReply");
+  const schedulerEnd = source.indexOf("function clearJaidenCooldownState", schedulerStart);
+  const scheduler = source.slice(schedulerStart, schedulerEnd);
+  assert.match(scheduler, /jaidenMessageQueue\.enqueue\(key,/);
+  assert.doesNotMatch(scheduler, /acceptBanatBurstMessage\(threadKey, \{ \.\.\.job/);
 });
