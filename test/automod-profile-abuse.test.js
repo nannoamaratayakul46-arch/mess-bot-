@@ -60,6 +60,11 @@ function makeProfileHarness({ enabled = true, admins = ["bot-id"] } = {}) {
     getApi: () => api,
     getSettings: async () => ({ enabled }),
     setEnabled: async (_threadID, next) => ({ enabled: next }),
+    removeFromGroupFn: async (_api, _threadID, targetID) => {
+      if (!admins.includes("bot-id")) return { ok: false, errorCode: "ROLE_CHECK_UNAVAILABLE", errorMessage: "Bot admin role unavailable." };
+      if (admins.includes(String(targetID))) return { ok: false, errorCode: "TARGET_IS_GROUP_ADMIN", errorMessage: "Target is a group admin." };
+      return { ok: true };
+    },
     log: message => logs.push(message),
   });
   return { detector, api, events, removed, logs };

@@ -10,7 +10,7 @@ const { resolveMemberName, idOf } = require("./memberNameResolver");
 const DEFAULTS = Object.freeze({
   max_messages: 6,
   window_seconds: 8,
-  repeat_max: 4,
+  repeat_max: 7,
   warn_first: true,
   warn_grace_seconds: 120,
   warn_text: "{{name}}, slow down. Spamming again within 2 minutes will get you removed.",
@@ -90,7 +90,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
             thread_id TEXT PRIMARY KEY,
             max_messages INTEGER NOT NULL DEFAULT 6,
             window_seconds INTEGER NOT NULL DEFAULT 8,
-            repeat_max INTEGER NOT NULL DEFAULT 4,
+            repeat_max INTEGER NOT NULL DEFAULT 7,
             warn_first BOOLEAN NOT NULL DEFAULT TRUE,
             warn_grace_seconds INTEGER NOT NULL DEFAULT 120,
             warn_text TEXT NOT NULL DEFAULT '{{name}}, slow down. Spamming again within 2 minutes will get you removed.',
@@ -99,6 +99,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
             updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
           )
         `);
+        await db.query("ALTER TABLE automod_spam_settings ALTER COLUMN repeat_max SET DEFAULT 7");
         await db.query("ALTER TABLE automod_spam_settings ADD COLUMN IF NOT EXISTS sensitive_admin_enabled BOOLEAN NOT NULL DEFAULT TRUE");
         await db.query("ALTER TABLE automod_spam_settings ADD COLUMN IF NOT EXISTS profile_abuse_enabled BOOLEAN NOT NULL DEFAULT TRUE");
         await db.query(`
@@ -136,7 +137,8 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       "SELECT max_messages, window_seconds, repeat_max, warn_first, warn_grace_seconds, warn_text, sensitive_admin_enabled, profile_abuse_enabled FROM automod_spam_settings WHERE thread_id = $1",
       [String(threadID)],
     );
-    return { ...DEFAULTS, ...(result.rows[0] || {}) };
+    const row = result.rows[0] || {};
+    return { ...DEFAULTS, ...row, repeat_max: clamp(row.repeat_max, 7, 15, DEFAULTS.repeat_max) };
   }
 
   async function sendMessage(api, threadID, text) {
@@ -646,7 +648,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     return {
       max_messages: clamp(body.max_messages, 3, 30, DEFAULTS.max_messages),
       window_seconds: clamp(body.window_seconds, 3, 60, DEFAULTS.window_seconds),
-      repeat_max: DEFAULTS.repeat_max,
+      repeat_max: clamp(body.repeat_max, 7, 15, DEFAULTS.repeat_max),
       warn_first: body.warn_first !== false,
       warn_grace_seconds: DEFAULTS.warn_grace_seconds,
       warn_text: DEFAULTS.warn_text,

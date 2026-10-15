@@ -4,7 +4,7 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createAntiSpam } = require("../antiSpam");
 
-function makeHarness({ enabled = true, max_messages = 6, window_seconds = 8, repeat_max = 4, warn_first = true } = {}) {
+function makeHarness({ enabled = true, max_messages = 6, window_seconds = 8, repeat_max = 7, warn_first = true } = {}) {
   const warnings = new Map();
   const sent = [];
   const removed = [];
@@ -81,9 +81,10 @@ function makeHarness({ enabled = true, max_messages = 6, window_seconds = 8, rep
   return { detector, api, sent, removed, logs };
 }
 
-async function sendBurst(detector, api, text, count = 6) {
+async function sendBurst(detector, api, text, count = 7) {
   for (let i = 0; i < count; i += 1) {
     await detector.onMessage(api, {
+      type: "message",
       threadID: "group-1",
       senderID: "member-1",
       body: text,
@@ -141,13 +142,13 @@ test("automod refuses to remove a group admin", async () => {
 test("automod counts sticker-only messages without changing ordinary word-spam handling", async () => {
   const { detector, api, sent, removed } = makeHarness();
   async function stickerBurst(prefix) {
-    for (let i = 0; i < 6; i += 1) {
+    for (let i = 0; i < 7; i += 1) {
       await detector.onMessage(api, {
         type: "message",
         threadID: "group-1",
         senderID: "member-1",
         body: "",
-        attachments: [{ type: "sticker", ID: prefix + "-sticker" }],
+        attachments: [{ type: "sticker", ID: "same-sticker" }],
         senderName: "Member",
       });
     }
@@ -198,8 +199,8 @@ test("fast but varied conversation messages do not trigger a spam warning", asyn
 });
 
 test("same words with case and punctuation variations count as repeated spam", async () => {
-  const { detector, api, sent, removed } = makeHarness({ repeat_max: 4 });
-  for (const body of ["hey", "HEY!", " hey ", "Hey..."]) {
+  const { detector, api, sent, removed } = makeHarness({ repeat_max: 7 });
+  for (const body of ["hey", "HEY!", " hey ", "Hey...", "HEY", "hey!!", " hey."]) {
     await detector.onMessage(api, {
       type: "message",
       threadID: "group-1",
