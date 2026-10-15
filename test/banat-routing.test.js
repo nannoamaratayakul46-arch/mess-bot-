@@ -215,7 +215,7 @@ test("dashboard ! mode routes bang-prefixed messages to the selected Jaiden targ
   assert.match(db, /bang_enabled = COALESCE\(\$5::boolean, banat_thread_targets\.bang_enabled\)/);
   assert.match(source, /dashboardBangJaidenEnabled = target\?\.bang_enabled === true/);
   assert.match(source, /const bangJaidenCommand =/);
-  assert.match(source, /bangJaidenCommand \|\| \(senderIsDashboardTarget && savedBanatTarget\?\.bang_enabled !== true\)/);
+  assert.ok(source.includes("if (bangJaidenCommand || senderIsDashboardTarget) {"));
   assert.match(source, /bang_enabled: saved\.bang_enabled === true/);
 });
 
