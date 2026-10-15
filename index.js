@@ -176,6 +176,8 @@ const {
   clearBanatConversationTarget,
 } = require("./triggers");
 
+const { trackBanatRotation, markBanatRotationReply, clearBanatRotation } = require("./banat-rotation");
+
 // ============================================================
 // HUMAN / BANAT MODULES
 // ============================================================
@@ -8459,6 +8461,7 @@ async function handleMessage(
         settings.bot_enabled !== false &&
         (settings.roast_enabled === true || settings.slash_pool_enabled === true);
       setBanatConversationMode(threadId, anyBanatEnabled, senderId);
+      if (!anyBanatEnabled) clearBanatRotation(threadID);
 
       // A queued reply from the mode being switched off must not leak into
       // the other mode. The next incoming message will use whichever mode
@@ -11838,6 +11841,9 @@ async function runBanatBurstQueue(threadID) {
 
     if (sent) {
       state.lastSentAt = Date.now();
+      if (job.rotationTarget === true) {
+        markBanatRotationReply(key, job.senderId, state.lastSentAt);
+      }
     }
 
     console.log(
@@ -12037,21 +12043,54 @@ async function handleAutomaticBanatMessage({
     clearBanatDirectedTarget(threadId);
   }
 
+  // Public / and \\ pools share a single rotating speaker per group.
+  // A saved dashboard-selected target remains fixed and bypasses this rotation.
+  const publicRotationMode =
+    (roastEnabled || slashPoolEnabled) &&
+    !String(savedBanatTarget?.target_user_id || "").trim();
+
+  if (publicRotationMode) {
+    const rotation = trackBanatRotation(threadId, senderId);
+    if (!rotation.isTarget) {
+      console.log(
+        "[BANAT] Ignoring non-target speaker thread=" + threadID +
+        " sender=" + String(senderId || "unknown") +
+        " target=" + String(rotation.targetId || "unknown") +
+        " rotated=" + Boolean(rotation.rotated)
+      );
+      // Mark the event handled so normal message/AI handlers cannot reply
+      // to a speaker that this Banat rotation intentionally ignored.
+      return true;
+    }
+    if (rotation.rotated) {
+      console.log(
+        "[BANAT] Rotated speaker target thread=" + threadID +
+        " target=" + String(rotation.targetId || "unknown")
+      );
+    }
+  } else {
+    clearBanatRotation(threadId);
+  }
+
   const target = scoreBanatAddressContext({
     rawText: body,
     senderId,
     threadId,
     event,
     botId: eclipseUserID,
-    // Either public Banat pool should be able to react to ordinary group
-    // messages. A saved dashboard target must not silently lock / or \\ to
-    // one person while either public pool is enabled.
-    allowAnySpeaker: roastEnabled || slashPoolEnabled,
+    // The explicit rotation gate above limits public pools to one speaker.
+    // The scorer remains open for that selected speaker's ordinary messages.
+    allowAnySpeaker: publicRotationMode,
   });
 
-  // A saved dashboard target is exclusive only when both public pools are
-  // off. If / or \\ is enabled, other members can trigger that public pool;
-  // the selected target can still use Jaiden's targeted reply path below.
+  if (publicRotationMode) {
+    target.shouldRespond = true;
+    target.score = Math.max(Number(target.score || 0), 0.9);
+    target.reason = "rotation-target";
+    target.canSwitchTarget = false;
+  }
+
+  // A saved dashboard target remains exclusive and fixed when configured.
   if (savedBanatTarget?.target_user_id && !roastEnabled && !slashPoolEnabled) {
     if (String(senderId || "").trim() === String(savedBanatTarget.target_user_id).trim()) {
       target.shouldRespond = true;
@@ -12164,6 +12203,7 @@ async function handleAutomaticBanatMessage({
         attachMeme: banatMemeEnabled,
         linkUrl: banatLinkEnabled ? banatProfileUrl : null,
         incomingText: body, senderId, canSwitchTarget: true,
+        rotationTarget: publicRotationMode,
         typingEnabled: jaidenModeActive ? savedBanatTarget?.jaiden_typing_enabled !== false : true,
       };
       const accepted = jaidenModeActive
@@ -12269,6 +12309,7 @@ async function handleAutomaticBanatMessage({
         linkUrl: null,
         incomingText: body,
         senderId,
+        rotationTarget: publicRotationMode,
         canSwitchTarget: Boolean(target.canSwitchTarget),
         targetReason: target.reason,
         topicOverlap: Number(target.topicOverlap || 0),

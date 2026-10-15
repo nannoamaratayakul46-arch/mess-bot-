@@ -271,16 +271,19 @@ test("normal slash Banat can respond to a different member despite stale convers
   triggers.clearBanatConversationTarget(threadId);
 });
 
-test("normal slash open-speaker routing is enabled only by the normal pool without a saved target", () => {
+test("public Banat pools enforce a single rotating speaker and keep dashboard targets fixed", () => {
   const source = read("index.js");
   const start = source.indexOf("async function handleAutomaticBanatMessage");
   const end = source.indexOf("HUMAN / BANAT WIRING", start);
   const body = source.slice(start, end);
-  assert.match(body, /allowAnySpeaker:\s*roastEnabled \|\| slashPoolEnabled/);
-  assert.match(body, /if \(savedBanatTarget\?\.target_user_id && !roastEnabled && !slashPoolEnabled\)/);
-  assert.match(read("triggers.js"), /allowAnySpeaker === true/);
+  assert.match(body, /trackBanatRotation\(threadId, senderId\)/);
+  assert.match(body, /if \(!rotation\.isTarget\)/);
+  assert.match(body, /allowAnySpeaker: publicRotationMode/);
+  assert.match(body, /if \(publicRotationMode\) \{[\s\S]*?target\.shouldRespond = true/);
+  assert.match(body, /!String\(savedBanatTarget\?\.target_user_id \|\| ""\)\.trim\(\)/);
+  assert.match(body, /clearBanatRotation\(threadId\)/);
+  assert.match(read("banat-rotation.js"), /ROTATION_INTERVAL_MS/);
 });
-
 
 test("Jaiden preferences persist per group and validate interval/modes", () => {
   const db = read("db.js");
