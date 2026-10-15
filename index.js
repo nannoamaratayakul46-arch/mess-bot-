@@ -11772,7 +11772,7 @@ async function runBanatBurstQueue(threadID) {
           job.linkUrl,
           0,
           job.incomingText || "",
-          { skipTyping: job.typingEnabled === false }
+          { skipTyping: job.typingEnabled === false, returnSendOutcome: true }
         ),
         new Promise((resolve) => {
           turnTimeout = setTimeout(() => {
