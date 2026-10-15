@@ -30,6 +30,7 @@ const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./membe
 const { createLiveChat } = require("./liveChat");
 const { registerModerationRoutes } = require("./dashboardModeration");
 const { registerTemporaryAdminRoutes } = require("./temporaryGroupAdmins");
+const { registerDatabaseAiCenterRoutes } = require("./dashboardDatabaseAiCenter");
 
 const {
   ensureNicknameGuardTable,
@@ -3489,6 +3490,9 @@ function requireDashboardAccess(req, res, next) {
 }
 
 app.use(dashboardCors);
+
+// Authenticated, read-only Neon inspection and encrypted dashboard AI settings.
+registerDatabaseAiCenterRoutes(app, requireDashboardAccess);
 
 const liveChat = createLiveChat({
   getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,

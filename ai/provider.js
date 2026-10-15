@@ -3,6 +3,8 @@
 const GROQ_API_BASE_URL = "https://api.groq.com/openai/v1/chat/completions";
 const DEFAULT_MODEL = "openai/gpt-oss-20b";
 const REQUEST_TIMEOUT_MS = 45_000;
+const { getRuntimeAiConfig } = require("./runtime-config");
+
 const TRIGGER_REQUEST_TIMEOUT_MS = Math.max(
   4_000,
   Math.min(
@@ -113,7 +115,125 @@ function providerError(message, status, retryable = false) {
   return error;
 }
 
+async function requestConfiguredProvider(provider, settings, messages, options = {}) {
+  const apiKey = String(settings?.apiKey || "").trim();
+  if (!apiKey) throw providerError("No API key is configured for " + provider + ".", 400, false);
+
+  const defaults = {
+    groq: { endpoint: GROQ_API_BASE_URL, model: DEFAULT_MODEL },
+    openai: { endpoint: "https://api.openai.com/v1/chat/completions", model: "gpt-4o-mini" },
+    gemini: { endpoint: "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions", model: "gemini-3.8-flash" },
+    anthropic: { endpoint: "https://api.anthropic.com/v1/messages", model: "claude-haiku-4-5" },
+  };
+  const definition = defaults[provider];
+  if (!definition) throw providerError("Unsupported AI provider.", 400, false);
+
+  const timeoutMs = Number.isFinite(Number(options.timeoutMs))
+    ? Math.max(1_000, Number(options.timeoutMs))
+    : REQUEST_TIMEOUT_MS;
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  const normalizedMessages = (Array.isArray(messages) ? messages : [])
+    .map(message => ({
+      role: String(message?.role || "user").toLowerCase() === "system"
+        ? "system"
+        : String(message?.role || "user").toLowerCase() === "assistant"
+          ? "assistant"
+          : "user",
+      content: contentToText(message?.content).trim(),
+    }))
+    .filter(message => message.content);
+
+  try {
+    let response;
+    if (provider === "anthropic") {
+      const system = normalizedMessages.filter(message => message.role === "system").map(message => message.content).join("\n\n");
+      const providerMessages = normalizedMessages
+        .filter(message => message.role !== "system")
+        .map(message => ({ role: message.role, content: message.content }));
+      if (!providerMessages.length) providerMessages.push({ role: "user", content: "Reply with a short provider test." });
+      response = await fetch(definition.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": apiKey,
+          "anthropic-version": "2023-06-01",
+        },
+        body: JSON.stringify({
+          model: String(settings.model || definition.model),
+          max_tokens: options.maxCompletionTokens || 1200,
+          temperature: options.temperature ?? 0.85,
+          system: system || undefined,
+          messages: providerMessages,
+        }),
+        signal: controller.signal,
+      });
+    } else {
+      response = await fetch(definition.endpoint, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: "Bearer " + apiKey,
+        },
+        body: JSON.stringify({
+          model: String(settings.model || definition.model),
+          messages: normalizedMessages,
+          temperature: options.temperature ?? 0.85,
+          max_completion_tokens: options.maxCompletionTokens || 1200,
+          response_format: options.json ? { type: "json_object" } : undefined,
+        }),
+        signal: controller.signal,
+      });
+    }
+
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const retryable = [408, 409, 429, 500, 502, 503, 504].includes(response.status);
+      throw providerError(provider + " request failed (HTTP " + response.status + ").", response.status, retryable);
+    }
+    const text = provider === "anthropic"
+      ? (Array.isArray(data?.content) ? data.content.filter(part => part?.type === "text").map(part => part.text || "").join("\n") : "")
+      : data?.choices?.[0]?.message?.content;
+    if (typeof text !== "string" || !text.trim()) {
+      throw providerError(provider + " returned an empty response.", 502, true);
+    }
+    return text.trim();
+  } catch (error) {
+    if (error?.name === "AbortError") throw providerError(provider + " request timed out.", 408, true);
+    if (error?.status !== undefined) throw error;
+    throw providerError(provider + " network request failed.", null, true);
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 async function requestGroq(messages, options = {}) {
+  const runtime = await getRuntimeAiConfig();
+  if (runtime?.configured) {
+    if (!runtime.enabled) throw providerError("AI is disabled in dashboard settings.", 503, false);
+    const provider = String(runtime.activeProvider || "groq");
+    return requestConfiguredProvider(provider, runtime.providers?.[provider], messages, options);
+  }
+  // If Neon is temporarily unavailable or no dashboard configuration exists,
+  // preserve the original environment-based Groq behavior.
+  return requestLegacyGroq(messages, options);
+}
+
+async function testAiProvider() {
+  const runtime = await getRuntimeAiConfig({ forceRefresh: true });
+  if (!runtime?.configured) {
+    throw providerError("Save AI settings in the dashboard before testing a provider.", 400, false);
+  }
+  const provider = String(runtime.activeProvider || "groq");
+  const settings = runtime.providers?.[provider];
+  const reply = await requestConfiguredProvider(provider, settings, [
+    { role: "user", content: "Reply with exactly: ECLIPSE provider test OK" },
+  ], { maxCompletionTokens: 32, timeoutMs: 12_000, temperature: 0 });
+  if (!reply) throw providerError("Provider returned no test response.", 502, true);
+  return true;
+}
+
+async function requestLegacyGroq(messages, options = {}) {
   // Temporary kill switch: Groq stays disabled unless explicitly re-enabled
   // after the monthly quota resets. This prevents all outbound Groq requests.
   if (!/^true$/i.test(String(process.env.ECLIPSE_GROQ_ENABLED || "false").trim())) {
@@ -267,4 +387,5 @@ async function generateTriggerReply({
 module.exports = {
   generateReply,
   generateTriggerReply,
+  testAiProvider,
 };
