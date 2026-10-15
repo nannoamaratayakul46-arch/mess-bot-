@@ -11442,9 +11442,22 @@ function scheduleJaidenReply(threadID, targetID, job, settings = {}) {
   const mode = ["extend", "queue", "ignore"].includes(settings.cooldown_mode) ? settings.cooldown_mode : "extend";
 
   if (mode === "queue") {
-    // Use the same Banat burst queue and send path as every other Banat.
-    // The selected target and reply text are preserved on the queued job.
-    acceptBanatBurstMessage(threadKey, { ...job, threadID: threadKey });
+    // Keep Jaiden messages in a dedicated FIFO scoped to this thread + target.
+    // Unlike the general burst queue, this never merges or replaces messages.
+    jaidenMessageQueue.enqueue(key, { ...job, threadID: threadKey }, interval)
+      .then((result) => {
+        if (result && result.sent === false) {
+          console.error(
+            "[JAIDEN QUEUE] Reply failed for thread " + threadKey +
+            " target " + targetKey + " (" + (result.outcome || "send-failed") + ")" +
+            (result.errorCode ? " code=" + result.errorCode : "") +
+            (result.errorMessage ? ": " + result.errorMessage : "")
+          );
+        }
+      })
+      .catch((error) => {
+        console.error("[JAIDEN QUEUE] Reply processor failed:", error?.message || error);
+      });
     return true;
   }
 
