@@ -61,7 +61,8 @@ function createJaidenMessageQueue(options = {}) {
       console.error("[JAIDEN QUEUE] Queue full for thread " + threadKey + "; message was not accepted.");
       return Promise.resolve({ accepted: false, sent: false, outcome: "queue-full" });
     }
-    const safeInterval = Math.max(0, Math.min(120000, Number(intervalMs) || 3000));
+    const requestedInterval = Number(intervalMs);
+    const safeInterval = Number.isFinite(requestedInterval) ? Math.max(0, Math.min(120000, requestedInterval)) : 3000;
     const result = new Promise((resolve) => state.jobs.push({ job: { ...job }, intervalMs: safeInterval, resolve }));
     drain(threadKey, state);
     return result;
