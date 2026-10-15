@@ -215,7 +215,7 @@ test("dashboard ! mode routes bang-prefixed messages to the selected Jaiden targ
   assert.match(db, /bang_enabled = COALESCE\(\$5::boolean, banat_thread_targets\.bang_enabled\)/);
   assert.match(source, /dashboardBangJaidenEnabled = target\?\.bang_enabled === true/);
   assert.match(source, /const bangJaidenCommand =/);
-  assert.match(source, /bangJaidenCommand \|\| \(senderIsDashboardTarget && savedBanatTarget\?\.bang_enabled !== true\)/);
+  assert.ok(source.includes("if (bangJaidenCommand || senderIsDashboardTarget) {"));
   assert.match(source, /bang_enabled: saved\.bang_enabled === true/);
 });
 
@@ -308,4 +308,24 @@ test("Jaiden extend cooldown defaults to a 3-second quiet period and scopes pend
   const ordinaryEnd = source.indexOf("// HUMAN / BANAT WIRING", ordinaryStart);
   const ordinary = source.slice(ordinaryStart, ordinaryEnd);
   assert.match(ordinary, /acceptBanatBurstMessage\(/);
+});
+
+
+test("selected dashboard target always enters Jaiden reply path even when ! mode is enabled", () => {
+  const source = read("index.js");
+  const start = source.indexOf("async function handleAutomaticBanatMessage");
+  const end = source.indexOf("// ============================================================\\n// HUMAN / BANAT WIRING", start);
+  const body = source.slice(start, end);
+  assert.ok(body.includes("if (bangJaidenCommand || senderIsDashboardTarget) {"));
+  assert.match(body, /jaiden_reply_mode === "random"/);
+  assert.ok(body.includes("jaidenModeActive = savedBanatTarget?.bang_enabled === true"));
+});
+
+
+test("Jaiden mode queues every selected-target message instead of extending and replacing", () => {
+  const source = read("index.js");
+  const start = source.indexOf("async function handleAutomaticBanatMessage");
+  const end = source.indexOf("// ============================================================\\n// HUMAN / BANAT WIRING", start);
+  const body = source.slice(start, end);
+  assert.ok(body.includes('cooldown_mode: "queue"'));
 });

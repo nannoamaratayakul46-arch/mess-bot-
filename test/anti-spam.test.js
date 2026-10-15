@@ -46,6 +46,37 @@ function makeHarness({ enabled = true, max_messages = 6, window_seconds = 8, rep
     log: message => logs.push(message),
     getSettings: async () => ({ enabled }),
     setEnabled: async (_threadID, next) => ({ enabled: next }),
+    // Isolate these tests from moderation.js's singleton PostgreSQL connection.
+    // This fake preserves the production safety rule: only remove when the bot's
+    // group-admin role is verified, and never remove a group admin.
+    removeFromGroupFn: async (client, threadID, targetID) => {
+      const readInfo = method => new Promise((resolve, reject) => {
+        try {
+          method.call(client, threadID, (error, info) => error ? reject(error) : resolve(info));
+        } catch (error) {
+          reject(error);
+        }
+      });
+      let info = null;
+      try {
+        info = await readInfo(client.getThreadInfo);
+      } catch (error) {
+        if (typeof client.getThreadInfoDeprecated === "function") {
+          try {
+            info = await readInfo(client.getThreadInfoDeprecated);
+          } catch (_) {}
+        }
+      }
+      const adminIDs = Array.isArray(info?.adminIDs) ? info.adminIDs.map(String) : [];
+      const botID = String(client.getCurrentUserID?.() || "");
+      if (!info || !adminIDs.includes(botID)) {
+        return { ok: false, errorCode: "ROLE_CHECK_UNAVAILABLE", errorMessage: "Could not verify bot group-admin role." };
+      }
+      if (adminIDs.includes(String(targetID))) {
+        return { ok: false, errorCode: "TARGET_IS_GROUP_ADMIN", errorMessage: "Target is a group admin." };
+      }
+      return { ok: true };
+    },
   });
   return { detector, api, sent, removed, logs };
 }
