@@ -12277,7 +12277,9 @@ async function handleAutomaticBanatMessage({
 
 const jaidenMessageQueue = createJaidenMessageQueue({
   maxQueuePerThread: Number(process.env.ECLIPSE_JAIDEN_QUEUE_MAX || 1000),
-  retryDelays: [500, 1500],
+  // Messenger can briefly reject sends during transient session/API failures.
+  // Use bounded exponential backoff; ambiguous timeouts remain non-retryable.
+  retryDelays: [1500, 4000, 8000],
   send: async (job) => {
     return sendBanatReplyWithTyping(
       job.api,
