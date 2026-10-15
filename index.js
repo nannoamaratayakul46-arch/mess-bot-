@@ -9086,7 +9086,15 @@ async function handleMessage(
     }
   }
 
-  if (!originalText.startsWith("!") || dashboardBangJaidenEnabled) {
+  // Exact Banat control messages must reach their dedicated command
+  // handlers before automatic Banat can consume them as ordinary chat.
+  // Otherwise an active/saved Jaiden target can return handled=true and
+  // silently swallow "/" or "\\" before the toggle code runs.
+  const isBanatToggleCommand =
+    /^\/$/.test(originalText) || /^\\$/.test(originalText);
+
+  if (!isBanatToggleCommand &&
+      (!originalText.startsWith("!") || dashboardBangJaidenEnabled)) {
     const banatHandled = await handleAutomaticBanatMessage({
       api,
       event,

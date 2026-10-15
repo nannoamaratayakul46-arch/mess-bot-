@@ -114,6 +114,12 @@ function providerError(message, status, retryable = false) {
 }
 
 async function requestGroq(messages, options = {}) {
+  // Temporary kill switch: Groq stays disabled unless explicitly re-enabled
+  // after the monthly quota resets. This prevents all outbound Groq requests.
+  if (!/^true$/i.test(String(process.env.ECLIPSE_GROQ_ENABLED || "false").trim())) {
+    throw providerError("Groq is temporarily disabled (ECLIPSE_GROQ_ENABLED is not true).", 503, false);
+  }
+
   const controller = new AbortController();
   const timeoutMs = Number.isFinite(Number(options.timeoutMs))
     ? Math.max(1_000, Number(options.timeoutMs))
