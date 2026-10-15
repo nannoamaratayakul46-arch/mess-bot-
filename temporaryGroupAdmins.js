@@ -163,7 +163,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, getApi = () => null, isKn
       const nativeRows = Array.isArray(threadInfo?.adminIDs) ? threadInfo.adminIDs : [];
       const nativeIds = [...new Set(nativeRows.map(row => String(
         row?.id ?? row?.userID ?? row?.userId ?? row?.uid ?? row ?? ""
-      ).trim()).filter(id => /^\\d{6,32}$/.test(id)))];
+      ).trim()).filter(id => /^\d{6,32}$/.test(id)))];
       const nativeAdmins = nativeIds.map(user_id => ({
         user_id, role: "This group's Messenger administrator", removable: false, source: "messenger"
       }));
