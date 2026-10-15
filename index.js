@@ -1536,14 +1536,27 @@ async function trafficProcessQueue() {
                 ["message", error?.message],
                 ["errorDescription", error?.errorDescription],
                 ["error", typeof error?.error === "string" || typeof error?.error === "number" ? error.error : null],
+                ["errorValue", typeof error === "string" || typeof error === "number" ? error : null],
                 ["statusCode", error?.statusCode ?? error?.status],
                 ["causeCode", error?.cause?.code],
                 ["causeMessage", error?.cause?.message],
                 ["responseStatus", error?.response?.status ?? error?.response?.statusCode],
               ].filter(([, value]) => value !== undefined && value !== null && String(value).trim());
-              const rawDetail = (diagnosticFields.length
+              // Log only payload metadata, never message text, IDs, attachments, or raw request data.
+              // This distinguishes reply-reference failures from plain text/attachment failures.
+              const payloadBody = typeof job.message === "string" ? job.message : job.message?.body;
+              const payloadKind = job.message && typeof job.message === "object"
+                ? (job.message.attachment ? "attachment" : "object")
+                : typeof job.message;
+              const sendContext = [
+                "payloadKind=" + payloadKind,
+                "bodyLength=" + (typeof payloadBody === "string" ? payloadBody.length : 0),
+                "hasReplyTo=" + Boolean(job.replyToMessageID),
+                "hasAttachment=" + Boolean(job.message && typeof job.message === "object" && job.message.attachment),
+              ].join(" | ");
+              const rawDetail = ((diagnosticFields.length
                 ? diagnosticFields.map(([key, value]) => key + "=" + String(value)).join(" | ")
-                : "Messenger send failed.")
+                : "Messenger send failed.") + " | " + sendContext)
                 .replace(/(["']?(?:password|passwd|cookie|appstate|access[_-]?token|refresh[_-]?token|authorization)["']?\s*[:=]\s*)[^,;\s}]+/gi, "$1[redacted]")
                 .replace(/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi, "[redacted email]")
                 .slice(0, 500);
