@@ -198,17 +198,14 @@ async function getThreadInfoWithFallback(api, threadId, threadListState) {
   ));
   if (hasUsefulFields(info)) return info;
 
-  if (typeof api?.getThreadInfoDeprecated === "function") {
-    try {
-      const legacy = await withTimeout(callApi(api, "getThreadInfoDeprecated", [threadId]), 8_000);
-      if (hasUsefulFields(legacy)) return legacy;
-    } catch (error) {
-      console.warn("[PROFILE-GUARD] legacy thread info failed for " + threadId + ": " + String(error?.message || error).slice(0, 120));
-    }
-  }
+  // Do not call getThreadInfoDeprecated here. In the current ws3-fca
+  // runtime it throws internally when Messenger omits the expected Mercury
+  // payload, producing repeated errors for every protected group. Prefer the
+  // supported thread-list fallback; if it is unavailable, fail closed by
+  // skipping this pass rather than invoking the broken legacy method.
 
-  // If both thread-info methods omit the group, fetch the thread list only once
-  // per guard pass and reuse the matching group record for the remaining rows.
+  // If thread info omits the group, fetch the thread list only once per guard
+  // pass and reuse the matching group record for the remaining rows.
   if (typeof api?.getThreadList === "function") {
     try {
       if (!threadListState.promise) {

@@ -106,6 +106,53 @@ test("photo guard prefers getThreadInfo callback data over a null promise result
   );
 });
 
+test("profile guard avoids broken deprecated thread-info and uses thread-list fallback", async () => {
+  let deprecatedCalls = 0;
+  let uploads = 0;
+  const db = {
+    async query(sql) {
+      if (sql.includes("SELECT thread_id, image_data")) {
+        return { rows: [{
+          thread_id: "test-thread-list-fallback",
+          image_data: Buffer.from([0xff, 0xd8, 0xff]),
+          image_mime: "image/jpeg",
+          expected_image_url: "cdn.example.com/saved-photo",
+          last_restore_at: null,
+        }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const api = {
+    getThreadInfo(_threadId, callback) { callback(null, {}); },
+    getThreadInfoDeprecated() {
+      deprecatedCalls += 1;
+      throw new TypeError("Cannot read properties of undefined (reading 'error')");
+    },
+    getThreadList(_limit, _cursor, _tags, callback) {
+      callback(null, [{ threadID: "test-thread-list-fallback", imageSrc: "https://cdn.example.com/saved-photo" }]);
+    },
+    changeGroupImage() { uploads += 1; },
+  };
+
+  const warnings = [];
+  const originalWarn = console.warn;
+  console.warn = (...args) => warnings.push(args.join(" "));
+  try {
+    await runGuardCheck({ db, getApi: () => api });
+  } finally {
+    console.warn = originalWarn;
+  }
+
+  assert.equal(deprecatedCalls, 0, "the broken deprecated API must not be called");
+  assert.equal(uploads, 0, "matching thread-list data must not trigger restoration");
+  assert.equal(
+    warnings.some(message => message.includes("legacy thread info failed")),
+    false,
+    "the deprecated API failure should no longer be logged",
+  );
+});
+
 test("photo guard diagnostics distinguish a null thread-info response", async () => {
   let uploads = 0;
   const db = {
