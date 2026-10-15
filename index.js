@@ -11473,6 +11473,8 @@ function scheduleJaidenReply(threadID, targetID, job, settings = {}) {
 }
 
 function clearJaidenCooldownState(threadID) {
+  // Target changes/removal must also discard pending dedicated Jaiden jobs.
+  jaidenMessageQueue.clear(threadID);
   const prefix = String(threadID || "").trim() + ":";
   let cleared = false;
   for (const [key, state] of jaidenCooldownState) {
