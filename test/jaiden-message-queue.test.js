@@ -58,6 +58,25 @@ test("Jaiden FIFO does not blindly retry ambiguous send failures", async () => {
   queue.stop();
 });
 
+test("Jaiden FIFO retries explicit Messenger rejections but not ambiguous timeouts", async () => {
+  let attempts = 0;
+  const queue = createJaidenMessageQueue({
+    retryDelays: [0, 0],
+    send: async () => {
+      attempts++;
+      if (attempts < 3) {
+        return { sent: false, retryable: true, code: "1545012", message: "Temporary Messenger failure", outcome: "messenger-rejected-send" };
+      }
+      return true;
+    },
+  });
+  const result = await queue.enqueue("thread-messenger-retry", job("yo"), 0);
+  assert.equal(attempts, 3);
+  assert.equal(result.sent, true);
+  assert.equal(result.attempts, 3);
+  queue.stop();
+});
+
 test("Jaiden FIFO rejects invalid jobs and enforces its explicit queue cap", async () => {
   let release;
   const blocked = new Promise((resolve) => { release = resolve; });
