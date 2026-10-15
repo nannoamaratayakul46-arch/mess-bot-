@@ -320,3 +320,12 @@ test("selected dashboard target always enters Jaiden reply path even when ! mode
   assert.match(body, /jaiden_reply_mode === "random"/);
   assert.ok(body.includes("jaidenModeActive = savedBanatTarget?.bang_enabled === true"));
 });
+
+
+test("Jaiden mode queues every selected-target message instead of extending and replacing", () => {
+  const source = read("index.js");
+  const start = source.indexOf("async function handleAutomaticBanatMessage");
+  const end = source.indexOf("// ============================================================\\n// HUMAN / BANAT WIRING", start);
+  const body = source.slice(start, end);
+  assert.ok(body.includes('cooldown_mode: "queue"'));
+});
