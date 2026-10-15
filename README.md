@@ -56,11 +56,11 @@ public or private.
 
 ### Dashboard and session security
 
-- Set \`ECLIPSE_DASHBOARD_API_KEY\` to a high-entropy random value (at least 32 random bytes). The dashboard rejects missing keys, compares keys using a timing-safe comparison, and rate-limits repeated failed authentication attempts.
-- If the dashboard or ECLIPSE Lab browser extension runs on a different origin, set \`ECLIPSE_DASHBOARD_ORIGIN\` to the exact origin(s), comma-separated. For the extension, use its exact \`chrome-extension://...\` origin. Do not use \`*\`; same-origin requests work without this setting.
-- Configure \`ECLIPSE_SESSION_ENCRYPTION_KEY\` as a dedicated random secret. To migrate without losing the stored Messenger session, first set \`ECLIPSE_SESSION_ENCRYPTION_KEY_PREVIOUS\` to the old effective key (the prior dashboard API key if set, otherwise the prior database URL), then set the new dedicated key. Keep the previous key until the saved session has been successfully decrypted and re-persisted with the new key.
-- Broadcast-image downloads now accept only HTTPS Facebook media/CDN hosts, revalidate each redirect, stream with a hard byte limit, and verify image signatures. \`MAX_BROADCAST_IMAGE_BYTES\` defaults to 2 MiB and is capped at 10 MiB.
-- The public \`/health\` endpoint now returns only readiness and uptime. Use authenticated dashboard diagnostics for operational detail.
+- Set `ECLIPSE_DASHBOARD_API_KEY` to a high-entropy random value (at least 32 random bytes). The dashboard rejects missing keys, compares keys using a timing-safe comparison, and rate-limits repeated failed authentication attempts.
+- If the dashboard or ECLIPSE Lab browser extension runs on a different origin, set `ECLIPSE_DASHBOARD_ORIGIN` to the exact origin(s), comma-separated. For the extension, use its exact `chrome-extension://...` origin. Do not use `*`; same-origin requests work without this setting.
+- Configure `ECLIPSE_SESSION_ENCRYPTION_KEY` as a dedicated random secret. To migrate without losing the stored Messenger session, first set `ECLIPSE_SESSION_ENCRYPTION_KEY_PREVIOUS` to the old effective key (the prior dashboard API key if set, otherwise the prior database URL), then set the new dedicated key. Keep the previous key until the saved session has been successfully decrypted and re-persisted with the new key.
+- Broadcast-image downloads now accept only HTTPS Facebook media/CDN hosts, revalidate each redirect, stream with a hard byte limit, and verify image signatures. `MAX_BROADCAST_IMAGE_BYTES` defaults to 2 MiB and is capped at 10 MiB.
+- The public `/health` endpoint now returns only readiness and uptime. Use authenticated dashboard diagnostics for operational detail.
 
 ## Commands built in
 
