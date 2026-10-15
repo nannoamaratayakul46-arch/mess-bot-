@@ -263,8 +263,12 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const windowMs = cfg.window_seconds * 1000;
     const list = (hits.get(key) || []).filter(hit => now - hit.at < windowMs * 2);
     const cleanText = norm(text);
+    const spamSignature = cleanText
+      .replace(/[!?.,;:…]+/g, "")
+      .replace(/\\s+/g, " ")
+      .trim();
 
-    list.push({ at: now, text: cleanText });
+    list.push({ at: now, text: spamSignature });
     hits.set(key, list);
 
     // Emit a low-volume breadcrumb when a member starts a fresh spam window,
@@ -278,16 +282,9 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     // High message volume alone is normal conversation. Enforcement requires
     // the same normalized content to recur repeatedly within the configured
     // window; punctuation/case/spacing variations share one signature.
-    const spamSignature = cleanText
-      .replace(/[!?.,;:…]+/g, "")
-      .replace(/\s+/g, " ")
-      .trim();
     const repeatedCount = spamSignature
       ? list.filter(hit => hit.text === spamSignature).length
       : 0;
-    // Store the same signature used for comparison so minor formatting changes
-    // cannot evade detection, while different sentences do not accumulate.
-    list[list.length - 1].text = spamSignature;
     hits.set(key, list);
     const repeated = repeatedCount >= cfg.repeat_max;
     if (!repeated) return;
