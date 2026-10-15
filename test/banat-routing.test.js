@@ -276,7 +276,8 @@ test("normal slash open-speaker routing is enabled only by the normal pool witho
   const start = source.indexOf("async function handleAutomaticBanatMessage");
   const end = source.indexOf("HUMAN / BANAT WIRING", start);
   const body = source.slice(start, end);
-  assert.match(body, /allowAnySpeaker:\s*roastEnabled && !savedBanatTarget\?\.target_user_id/);
+  assert.match(body, /allowAnySpeaker:\s*roastEnabled \|\| slashPoolEnabled/);
+  assert.match(body, /if \(savedBanatTarget\?\.target_user_id && !roastEnabled && !slashPoolEnabled\)/);
   assert.match(read("triggers.js"), /allowAnySpeaker === true/);
 });
 

@@ -12019,16 +12019,16 @@ async function handleAutomaticBanatMessage({
     threadId,
     event,
     botId: eclipseUserID,
-    // The normal slash pool is meant to participate in group chat, not
-    // stay locked to whoever last owned a conversation turn. Keep dashboard
-    // targeting exclusive and leave the backslash pool behavior independent.
-    allowAnySpeaker: roastEnabled && !savedBanatTarget?.target_user_id,
+    // Either public Banat pool should be able to react to ordinary group
+    // messages. A saved dashboard target must not silently lock / or \\ to
+    // one person while either public pool is enabled.
+    allowAnySpeaker: roastEnabled || slashPoolEnabled,
   });
 
-  // Manual dashboard target takes precedence over the short-lived
-  // conversation target: only the selected person's messages can open a
-  // Banat turn while a manual target is active.
-  if (savedBanatTarget?.target_user_id) {
+  // A saved dashboard target is exclusive only when both public pools are
+  // off. If / or \\ is enabled, other members can trigger that public pool;
+  // the selected target can still use Jaiden's targeted reply path below.
+  if (savedBanatTarget?.target_user_id && !roastEnabled && !slashPoolEnabled) {
     if (String(senderId || "").trim() === String(savedBanatTarget.target_user_id).trim()) {
       target.shouldRespond = true;
       target.score = Math.max(Number(target.score || 0), 0.9);
