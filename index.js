@@ -1399,6 +1399,8 @@ function trafficSafetyStatus() {
       trafficTotalSent,
     totalFailed:
       trafficTotalFailed,
+    delivery24h:
+      trafficDeliverySummary(),
     lastFailure:
       trafficLastFailure,
     totalDelayed:
