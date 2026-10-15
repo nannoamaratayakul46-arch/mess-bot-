@@ -12311,6 +12311,7 @@ function sendBanatReplyWithTyping(
       trafficSendMessage,
       getRandomMemePath,
       skipTyping: options.skipTyping === true,
+      returnSendOutcome: options.returnSendOutcome === true,
     }
   );
 }
