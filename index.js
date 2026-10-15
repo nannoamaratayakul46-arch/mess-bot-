@@ -12054,7 +12054,7 @@ async function handleAutomaticBanatMessage({
       savedBanatTarget?.bang_enabled === true &&
       /^!/.test(String(body || "")) &&
       !isRecognizedBangCommand(body);
-    if (bangJaidenCommand || (senderIsDashboardTarget && savedBanatTarget?.bang_enabled !== true)) {
+    if (bangJaidenCommand || senderIsDashboardTarget) {
       if (savedBanatTarget?.bang_enabled === true && savedBanatTarget?.jaiden_reply_mode === "random" && Math.random() >= 0.5) {
         console.log("[BANAT] Jaiden random reply mode skipped this turn in " + threadID);
         return true;
