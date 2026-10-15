@@ -160,7 +160,43 @@ function registerTemporaryAdminRoutes(app, { auth, db, getApi = () => null, isKn
           } catch { finish({}); }
         });
       }
-      const nativeRows = Array.isArray(threadInfo?.adminIDs) ? threadInfo.adminIDs : [];
+      // ws3-fca's legacy getThreadInfo can fail when Messenger returns no
+      // Mercury payload (the current Render logs show that exact failure).
+      // Fall back to the GraphQL-backed thread list, whose formatter exposes
+      // each thread's native admins as adminIDs.
+      let nativeRows = Array.isArray(threadInfo?.adminIDs) ? threadInfo.adminIDs : [];
+      if (!nativeRows.length && api && typeof api.getThreadList === "function") {
+        try {
+          const threads = await new Promise((resolve) => {
+            let settled = false;
+            const finish = (rows) => {
+              if (settled) return;
+              settled = true;
+              clearTimeout(timer);
+              resolve(Array.isArray(rows) ? rows : []);
+            };
+            const timer = setTimeout(() => finish([]), 9000);
+            try {
+              const result = api.getThreadList(1000, null, [], (error, rows) => finish(error ? [] : rows));
+              if (result && typeof result.then === "function") {
+                result.then(rows => finish(rows), () => finish([]));
+              } else if (Array.isArray(result)) {
+                finish(result);
+              }
+            } catch {
+              finish([]);
+            }
+          });
+          const listedThread = threads.find(item =>
+            String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? "") === threadId
+          );
+          if (Array.isArray(listedThread?.adminIDs)) {
+            nativeRows = listedThread.adminIDs;
+          }
+        } catch {
+          // Keep the endpoint responsive and clearly mark native roles unavailable.
+        }
+      }
       const nativeIds = [...new Set(nativeRows.map(row => String(
         row?.id ?? row?.userID ?? row?.userId ?? row?.uid ?? row ?? ""
       ).trim()).filter(id => /^\d{6,32}$/.test(id)))];
