@@ -23,6 +23,7 @@ const { createDashboardSecurity } = require("./dashboardSecurity");
 const { login } = require("ws3-fca");
 
 const db = require("./db");
+const trafficDeliveryStore = require("./trafficDeliveryHistory");
 const { resolveTargetName } = require("./targetName");
 const { createJaidenMessageQueue } = require("./jaiden-message-queue");
 const { registerGroupProfileRoutes, handleGroupProfileEvent } = require("./groupProfileRoutes");
@@ -904,13 +905,14 @@ const TRAFFIC_DELIVERY_RETENTION_MS = 24 * 60 * 60 * 1000;
 
 function trafficRecordDeliveryOutcome(outcome, job, code = null) {
   const now = Date.now();
-  trafficDeliveryHistory.push({
+  const entry = {
     at: new Date(now).toISOString(),
     outcome,
     code: code ? String(code).slice(0, 80) : null,
     elapsed_ms: Math.max(0, now - Number(job?.enqueuedAt || now)),
     attachment: Boolean(job?.message && typeof job.message === "object" && job.message.attachment),
-  });
+  };
+  trafficDeliveryHistory.push(entry);
 
   const cutoff = now - TRAFFIC_DELIVERY_RETENTION_MS;
   while (trafficDeliveryHistory.length && Date.parse(trafficDeliveryHistory[0].at) < cutoff) {
@@ -919,6 +921,9 @@ function trafficRecordDeliveryOutcome(outcome, job, code = null) {
   while (trafficDeliveryHistory.length > TRAFFIC_DELIVERY_HISTORY_LIMIT) {
     trafficDeliveryHistory.shift();
   }
+
+  // Persist sanitized outcomes asynchronously so send callbacks never wait on PostgreSQL.
+  trafficDeliveryStore.record(outcome, job, code);
 }
 function trafficDeliverySummary() {
   const now = Date.now();
@@ -4111,12 +4116,25 @@ function buildTrafficDeliveryAnalytics(hours = 24) {
 app.get(
   "/api/dashboard/delivery-analytics",
   requireDashboardAccess,
-  (req, res) => {
+  async (req, res) => {
     const hours = Math.min(
       24,
       Math.max(1, Number.parseInt(String(req.query.hours || "24"), 10) || 24)
     );
-    return res.json({ ok: true, analytics: buildTrafficDeliveryAnalytics(hours) });
+    try {
+      const analytics = await trafficDeliveryStore.getAnalytics(hours, {
+        sent: trafficTotalSent,
+        failed: trafficTotalFailed,
+      });
+      return res.json({ ok: true, analytics });
+    } catch (error) {
+      console.warn("[DASHBOARD] Persistent delivery analytics unavailable:", error?.message || error);
+      const analytics = buildTrafficDeliveryAnalytics(hours);
+      analytics.available = false;
+      analytics.source = "process-memory-fallback";
+      analytics.note = "Persistent delivery history is unavailable right now. This fallback covers only the current process and may reset on restart.";
+      return res.json({ ok: true, analytics, warning: "Persistent delivery history is temporarily unavailable." });
+    }
   }
 );
 
