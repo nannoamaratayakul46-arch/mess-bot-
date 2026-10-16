@@ -12,7 +12,7 @@ test("delivery analytics records successful and failed Messenger sends", () => {
   assert.match(source, /trafficRecordDeliveryOutcome\("failed", job, rawCode\)/);
 });
 
-test("delivery history is bounded and retained only in process memory", () => {
+test("delivery history is bounded in memory and persisted in PostgreSQL", () => {
   assert.match(source, /const trafficDeliveryHistory = \[\]/);
   assert.match(source, /TRAFFIC_DELIVERY_HISTORY_LIMIT = 5000/);
   assert.match(source, /TRAFFIC_DELIVERY_RETENTION_MS = 24 \* 60 \* 60 \* 1000/);
@@ -31,6 +31,8 @@ test("delivery analytics endpoint is protected by dashboard access", () => {
     /app\.get\(\s*"\/api\/dashboard\/delivery-analytics",\s*requireDashboardAccess,/
   );
   assert.match(source, /failure_codes: failureCodes/);
+  assert.match(source, /trafficDeliveryStore\.getAnalytics\(hours/);
+  assert.match(source, /recent_failures/);
   assert.match(source, /hourly,/);
   assert.match(source, /success_rate:/);
 });
