@@ -16,6 +16,14 @@ test("delivery history is bounded in memory and persisted in PostgreSQL", () => 
   assert.match(source, /const trafficDeliveryHistory = \[\]/);
   assert.match(source, /TRAFFIC_DELIVERY_HISTORY_LIMIT = 5000/);
   assert.match(source, /TRAFFIC_DELIVERY_RETENTION_MS = 24 \* 60 \* 60 \* 1000/);
+  assert.match(source, /trafficDeliveryStore\.record\(outcome, job, code\)/);
+  const store = fs.readFileSync(path.join(__dirname, "..", "trafficDeliveryHistory.js"), "utf8");
+  assert.match(store, /CREATE TABLE IF NOT EXISTS/);
+  assert.match(store, /RETENTION_DAYS = 7/);
+  assert.match(store, /MAX_ROWS = 5000/);
+  assert.match(store, /jsonb_to_recordset/);
+  assert.ok(!store.includes("message.body"), "message body must not be persisted");
+  assert.ok(!store.includes("error.message"), "raw error messages must not be persisted");
   const start = source.indexOf("function trafficRecordDeliveryOutcome(");
   const end = source.indexOf("\n}\n", start);
   assert.notEqual(start, -1, "delivery recorder should exist");
