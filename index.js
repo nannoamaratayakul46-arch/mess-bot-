@@ -12,6 +12,47 @@ const UNAUTHORIZED_SLASH_MAX_REPLIES = Math.max(
   Number(process.env.ECLIPSE_BANAT_UNAUTHORIZED_MAX_REPLIES || 1)
 );
 
+// Dashboard-controlled reaction engine. Kept in memory for fast message-path
+// checks, with the canonical value persisted in PostgreSQL.
+const DEFAULT_REACTION_CONFIG = Object.freeze({
+  owner_messages: true,
+  eclipse_messages: true,
+  reaction: "😆",
+});
+let dashboardReactionConfig = { ...DEFAULT_REACTION_CONFIG };
+
+function normalizeReactionConfig(value = {}) {
+  const reaction = String(value.reaction || DEFAULT_REACTION_CONFIG.reaction).trim();
+  const allowedReactions = new Set(["😆", "😂", "🤣", "😭", "💀", "❤️", "🔥", "👍", "😮", "😢", "😡"]);
+  return {
+    owner_messages: value.owner_messages !== false,
+    eclipse_messages: value.eclipse_messages !== false,
+    reaction: allowedReactions.has(reaction) ? reaction : DEFAULT_REACTION_CONFIG.reaction,
+  };
+}
+
+async function loadDashboardReactionConfig() {
+  try {
+    await db.connect();
+    await db.query(
+      `CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
+        preference_key TEXT PRIMARY KEY,
+        preference_value JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`
+    );
+    const { rows } = await db.query(
+      "SELECT preference_value FROM eclipse_dashboard_preferences WHERE preference_key = $1 LIMIT 1",
+      ["reaction_engine"]
+    );
+    dashboardReactionConfig = normalizeReactionConfig(rows[0]?.preference_value || DEFAULT_REACTION_CONFIG);
+  } catch (error) {
+    console.warn("[BANAT] Could not load dashboard reaction settings; using defaults:", error?.message || error);
+  }
+  return dashboardReactionConfig;
+}
+
+
 
 const fs = require("fs");
 const fsp = require("fs/promises");
@@ -5579,6 +5620,57 @@ app.post(
 );
 
 app.get(
+  "/api/dashboard/preferences/reaction",
+  requireDashboardAccess,
+  async (_req, res) => {
+    try {
+      const { rows } = await db.query(
+        "SELECT preference_value, updated_at FROM eclipse_dashboard_preferences WHERE preference_key = $1 LIMIT 1",
+        ["reaction_engine"]
+      );
+      const reaction = normalizeReactionConfig(rows[0]?.preference_value || DEFAULT_REACTION_CONFIG);
+      dashboardReactionConfig = reaction;
+      return res.json({ ok: true, reaction, updated_at: rows[0]?.updated_at || null });
+    } catch (error) {
+      console.error("[DASHBOARD] Reaction preference read failed:", error);
+      return res.status(503).json({ ok: false, error: "Reaction settings are temporarily unavailable." });
+    }
+  }
+);
+
+app.put(
+  "/api/dashboard/preferences/reaction",
+  requireDashboardAccess,
+  async (req, res) => {
+    const value = req.body?.reaction || {};
+    const reaction = normalizeReactionConfig(value);
+    try {
+      await db.query(
+        `CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
+          preference_key TEXT PRIMARY KEY,
+          preference_value JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )`
+      );
+      const { rows } = await db.query(
+        `INSERT INTO eclipse_dashboard_preferences (preference_key, preference_value, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (preference_key)
+         DO UPDATE SET preference_value = EXCLUDED.preference_value, updated_at = NOW()
+         RETURNING updated_at`,
+        ["reaction_engine", JSON.stringify(reaction)]
+      );
+      dashboardReactionConfig = reaction;
+      pushDashboardEvent("preferences", "Reaction engine preferences updated.");
+      return res.json({ ok: true, reaction, updated_at: rows[0]?.updated_at || new Date().toISOString() });
+    } catch (error) {
+      console.error("[DASHBOARD] Reaction preference save failed:", error);
+      return res.status(503).json({ ok: false, error: "Could not save reaction settings." });
+    }
+  }
+);
+
+app.get(
   "/api/dashboard/preferences/appearance",
   requireDashboardAccess,
   async (_req, res) => {
@@ -8112,8 +8204,8 @@ async function handleMessage(
   // ==========================================================
 
   const reactionSenderAllowed =
-    senderId === eclipseUserID ||
-    isOwner(senderId);
+    (dashboardReactionConfig.eclipse_messages && senderId === eclipseUserID) ||
+    (dashboardReactionConfig.owner_messages && isOwner(senderId));
 
   if (
     reactionSenderAllowed &&
@@ -8154,7 +8246,8 @@ async function handleMessage(
         // Messenger sessions.
         if (typeof api.setMessageReaction === "function") {
           api.setMessageReaction(
-            "😆",
+            dashboardReactionConfig.reaction,
+
             messageID,
             reactionCallback,
             true
@@ -8165,7 +8258,8 @@ async function handleMessage(
           // supported by this adapter.
           try {
             api.setMessageReactionMqtt(
-              "😆",
+              dashboardReactionConfig.reaction,
+
               messageID,
               threadId,
               reactionCallback
@@ -8176,7 +8270,7 @@ async function handleMessage(
               mqttError?.message || mqttError
             );
             api.setMessageReactionMqtt(
-              "😆",
+              dashboardReactionConfig.reaction,
               messageID,
               reactionCallback
             );
