@@ -8148,18 +8148,39 @@ async function handleMessage(
           }
         };
 
+        // ws3-fca's native reaction API uses the fourth argument as the
+        // "force" flag. Keep it enabled so the reaction is actually written
+        // to the target message instead of being silently ignored on some
+        // Messenger sessions.
         if (typeof api.setMessageReaction === "function") {
           api.setMessageReaction(
             "😆",
             messageID,
-            reactionCallback
+            reactionCallback,
+            true
           );
         } else if (typeof api.setMessageReactionMqtt === "function") {
-          api.setMessageReactionMqtt(
-            "😆",
-            messageID,
-            reactionCallback
-          );
+          // MQTT adapters use the same target message ID but may expose
+          // a thread-aware signature. Prefer the explicit thread ID when
+          // supported by this adapter.
+          try {
+            api.setMessageReactionMqtt(
+              "😆",
+              messageID,
+              threadId,
+              reactionCallback
+            );
+          } catch (mqttError) {
+            console.warn(
+              "[BANAT] Thread-aware reaction call failed; retrying legacy MQTT signature:",
+              mqttError?.message || mqttError
+            );
+            api.setMessageReactionMqtt(
+              "😆",
+              messageID,
+              reactionCallback
+            );
+          }
         }
       }
     } catch (reactionError) {
