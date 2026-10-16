@@ -185,7 +185,7 @@ function getCachedSummary() {
 const timer = setInterval(() => {
   flush().catch((error) => {
     // Database may be temporarily unavailable during startup; buffered data is retried.
-    if (process.env.NODE_ENV !== "test") console.warn("[TRAFFIC HISTORY] Persistent delivery history flush deferred:", error && error.message || error);
+    if (process.env.NODE_ENV !== "test") console.warn("[TRAFFIC HISTORY] Persistent delivery history flush deferred; PostgreSQL may be unavailable.");
   });
 }, FLUSH_INTERVAL_MS);
 timer.unref && timer.unref();
