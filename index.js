@@ -6000,6 +6000,7 @@ async function persistFacebookSessionState(state) {
 async function loadPersistedFacebookSessionState() {
   try {
     await db.connect();
+    await loadDashboardReactionConfig();
 
     const encrypted = await db.getMessengerSessionState();
     if (!encrypted) {
