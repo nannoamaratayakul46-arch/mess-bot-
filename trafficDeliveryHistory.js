@@ -9,6 +9,7 @@ const RETENTION_DAYS = 7;
 const MAX_ROWS = 5000;
 const MAX_BUFFER = 1000;
 const FLUSH_INTERVAL_MS = 5000;
+const SUMMARY_REFRESH_INTERVAL_MS = 60_000;
 const CLEANUP_INTERVAL_MS = 30 * 60 * 1000;
 
 let pending = [];
@@ -188,5 +189,12 @@ const timer = setInterval(() => {
   });
 }, FLUSH_INTERVAL_MS);
 timer.unref && timer.unref();
+
+const summaryTimer = setInterval(() => {
+  getAnalytics(24).catch(() => {
+    // Summary stays explicitly unavailable until PostgreSQL responds.
+  });
+}, SUMMARY_REFRESH_INTERVAL_MS);
+summaryTimer.unref && summaryTimer.unref();
 
 module.exports = { record, flush, getAnalytics, getCachedSummary };
