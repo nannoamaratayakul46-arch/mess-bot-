@@ -1404,8 +1404,30 @@ function trafficSafetyStatus() {
       trafficTotalSent,
     totalFailed:
       trafficTotalFailed,
-    delivery24h:
-      trafficDeliverySummary(),
+    delivery24h: (() => {
+      const persisted = trafficDeliveryStore.getCachedSummary();
+      if (persisted && persisted.available) {
+        return {
+          available: true,
+          source: persisted.source,
+          totalSent24h: persisted.sent,
+          totalFailed24h: persisted.failed,
+          history: (persisted.hourly || []).map((bucket) => ({
+            bucket: bucket.hour,
+            sent: bucket.sent,
+            failed: bucket.failed,
+          })),
+          failure_codes: persisted.failure_codes || {},
+          recent_failures: persisted.recent_failures || [],
+          last_failure: persisted.last_failure || null,
+        };
+      }
+      return {
+        ...trafficDeliverySummary(),
+        available: false,
+        source: "process-memory",
+      };
+    })(),
     lastFailure:
       trafficLastFailure,
     totalDelayed:
