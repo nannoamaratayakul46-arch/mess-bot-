@@ -4572,15 +4572,21 @@ app.get(
     if (!threadID || !dashboardKnownGroups.has(threadID)) return res.status(400).json({ ok: false, error: "Choose a group in the refreshed group list." });
     if (!activeMessengerApi || activeListenerGeneration <= 0) return res.status(409).json({ ok: false, error: "Messenger is not connected." });
     try {
-      let { members, diagnostics } = await resolveGroupMembers(activeMessengerApi, threadID);
-
-      // Some FCA builds expose real member names in getThreadList().userInfo
-      // even when getThreadInfo() and getUserInfo() return generic placeholders.
-      // Merge those official profile records before attempting further lookups.
+      // Fetch thread metadata once and share the same payload with the resolver
+      // and the compatibility name-merging pass. The previous order called
+      // getThreadInfo/getThreadList in both places, multiplying API traffic.
       const [profileThreadInfo, profileThreadList] = await Promise.all([
         dashboardGetThreadInfo(activeMessengerApi, threadID).catch(() => ({})),
         dashboardGetThreadList(activeMessengerApi).catch(() => []),
       ]);
+      let { members, diagnostics } = await resolveGroupMembers(activeMessengerApi, threadID, {
+        threadInfo: profileThreadInfo,
+        threadList: profileThreadList,
+      });
+
+      // Some FCA builds expose real member names in getThreadList().userInfo
+      // even when getThreadInfo() and getUserInfo() return generic placeholders.
+      // Merge those already-fetched official profile records before further lookups.
       const profileListedThread = profileThreadList.find(item =>
         String(item?.threadID || item?.threadId || item?.thread_id || "") === threadID
       );
@@ -4679,32 +4685,19 @@ app.get(
         const resolvedRows = await Promise.all(batch.map(async member => {
           const userID = String(member.user_id);
           try {
-            // First use the normal payload lookup, matching the dashboard's existing path.
-            const userRows = await dashboardGetUserInfo(
+            // resolveGroupMembers already tried the normal /chat/user_info
+            // path. Avoid repeating that request for every unresolved member;
+            // use only the distinct profile-page fallback here.
+            const profileRows = await dashboardGetUserInfo(
               activeMessengerApi,
               [userID],
-              3500
+              4500,
+              false,
+              false
             );
-            let row = dashboardGetUserInfoRow(userRows, userID) ||
-              (userRows && typeof userRows === "object" && !Array.isArray(userRows) &&
-                dashboardMemberDisplayName(userRows) ? userRows : null);
-            let name = dashboardMemberDisplayName(row);
-
-            // ws3-fca returns a literal "Facebook User" placeholder when its
-            // /chat/user_info payload has no profile. Retry via its documented
-            // profile-page path (usePayload=false) rather than accepting that placeholder.
-            if (!name) {
-              const profileRows = await dashboardGetUserInfo(
-                activeMessengerApi,
-                [userID],
-                4500,
-                false,
-                false
-              );
-              row = dashboardGetUserInfoRow(profileRows, userID) ||
-                (Array.isArray(profileRows) ? profileRows[0] : null);
-              name = dashboardMemberDisplayName(row);
-            }
+            const row = dashboardGetUserInfoRow(profileRows, userID) ||
+              (Array.isArray(profileRows) ? profileRows[0] : null);
+            const name = dashboardMemberDisplayName(row);
             return { member, name };
           } catch (lookupError) {
             console.warn("[MEMBERS] Profile-page name retry failed:", String(lookupError?.message || lookupError).slice(0, 120));

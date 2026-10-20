@@ -219,7 +219,12 @@ function collectParticipants(info) {
 
 async function resolveGroupMembers(api, threadID, options = {}) {
   const timeoutMs = Math.max(1000, Math.min(10000, Number(options.timeoutMs) || 4500));
-  const threadInfo = await callApi(api, "getThreadInfo", [String(threadID)], timeoutMs);
+  // Routes may pass data they already fetched for this request. Reuse it rather
+  // than issuing a second getThreadInfo/getThreadList call against Messenger.
+  const hasSuppliedThreadInfo = Object.prototype.hasOwnProperty.call(options, "threadInfo");
+  const threadInfo = hasSuppliedThreadInfo
+    ? options.threadInfo
+    : await callApi(api, "getThreadInfo", [String(threadID)], timeoutMs);
   let info = threadInfo && typeof threadInfo === "object" ? threadInfo : null;
   let source = "threadInfo";
 
@@ -232,7 +237,9 @@ async function resolveGroupMembers(api, threadID, options = {}) {
   ].some(part => Array.isArray(part) ? part.length > 0 : part && typeof part === "object" && Object.keys(part).length > 0));
   if (!hasParticipantData(info) && typeof api?.getThreadList === "function") {
     try {
-      const threads = await getCachedThreadList(api, timeoutMs);
+      const threads = Array.isArray(options.threadList)
+        ? options.threadList
+        : await getCachedThreadList(api, timeoutMs);
       const matching = (Array.isArray(threads) ? threads : []).find(item =>
         String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? item?.id ?? "").trim() === String(threadID)
       );
