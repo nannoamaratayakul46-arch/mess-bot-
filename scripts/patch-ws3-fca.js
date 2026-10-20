@@ -23,7 +23,14 @@ function patchDirectory(directory) {
       // A 1-second MQTT reconnect loop can amplify Messenger 1675004 rate
       // limits into a reconnect storm. Back off reconnects to 30 seconds.
       if (entry.name === "listenMqtt.js") {
-        updated = updated.replace(/reconnectPeriod\s*:\s*1000\b/g, "reconnectPeriod: 30000");
+        // Match any simple numeric/expression value, not only the literal 1000.
+        const reconnectPatched = updated.replace(/reconnectPeriod\s*:\s*[^,\r\n}]+/g, "reconnectPeriod: 30000");
+        if (reconnectPatched !== updated) {
+          console.log("[postinstall] Added 30-second MQTT reconnect backoff in listenMqtt.js");
+        } else {
+          console.warn("[postinstall] listenMqtt.js has no recognizable reconnectPeriod option; inspect the installed source.");
+        }
+        updated = reconnectPatched;
       }
       if (updated !== source) {
         fs.writeFileSync(file, updated, "utf8");
