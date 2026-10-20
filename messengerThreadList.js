@@ -31,7 +31,12 @@ function describeError(value, seen = new Set(), depth = 0) {
 }
 
 function isRateLimit(error) {
-  return /1675004|rate[\s_-]*limit|too many requests/i.test(describeError(error));
+  const description = describeError(error);
+  // ws3-fca@2.0.1 can wrap Messenger's rate-limit object as Error("[object Object]"),
+  // dropping its code/message. Treat that opaque wrapper conservatively as a
+  // rate limit so callers do not keep hammering the same endpoint.
+  return /1675004|rate[\s_-]*limit|too many requests/i.test(description) ||
+    /\[object Object\]/i.test(description);
 }
 
 function getThreadList(api, options = {}) {
