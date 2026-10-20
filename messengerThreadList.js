@@ -62,7 +62,9 @@ function logOpaqueErrorShape(error) {
       String(e?.message || e).slice(0, 120)
     );
   }
-}function getThreadList(api, options = {}) {
+}
+
+function getThreadList(api, options = {}) {
   if (!api || (typeof api !== "object" && typeof api !== "function") ||
       typeof api.getThreadList !== "function") {
     return Promise.resolve([]);
