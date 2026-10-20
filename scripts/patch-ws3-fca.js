@@ -19,11 +19,21 @@ function patchDirectory(directory) {
     if (entry.isDirectory()) changed += patchDirectory(file);
     else if (entry.isFile() && entry.name.endsWith(".js")) {
       const source = fs.readFileSync(file, "utf8");
-      const updated = source.replace(target, "new Error(");
+      let updated = source.replace(target, "new Error(");
+      // A 1-second MQTT reconnect loop can amplify Messenger 1675004 rate
+      // limits into a reconnect storm. Back off reconnects to 30 seconds.
+      if (entry.name === "listenMqtt.js") {
+        updated = updated.replace(/reconnectPeriod\s*:\s*1000\b/g, "reconnectPeriod: 30000");
+      }
       if (updated !== source) {
         fs.writeFileSync(file, updated, "utf8");
         changed++;
-        console.log("[postinstall] Patched ws3-fca error constructor in " + path.relative(root, file));
+        if (source !== source.replace(target, "new Error(")) {
+          console.log("[postinstall] Patched ws3-fca error constructor in " + path.relative(root, file));
+        }
+        if (entry.name === "listenMqtt.js" && source !== updated) {
+          console.log("[postinstall] Added 30-second MQTT reconnect backoff in listenMqtt.js");
+        }
       }
     }
   }

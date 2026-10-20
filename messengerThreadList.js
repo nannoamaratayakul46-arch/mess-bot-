@@ -8,11 +8,30 @@ const DEFAULT_CACHE_MS = 60_000;
 const DEFAULT_COOLDOWN_MS = 30_000;
 const RATE_LIMIT_COOLDOWN_MS = 5 * 60_000;
 
+function describeError(value, seen = new Set(), depth = 0) {
+  if (value == null || depth > 5) return "";
+  if (typeof value === "string" || typeof value === "number") return String(value);
+  if (typeof value !== "object" || seen.has(value)) return "";
+  seen.add(value);
+  const parts = [];
+  for (const key of ["message", "error", "errorDescription", "errorSummary", "errorCode", "code", "cause", "data", "response"]) {
+    try {
+      if (value[key] != null) parts.push(key + " " + describeError(value[key], seen, depth + 1));
+    } catch {}
+  }
+  try {
+    for (const [key, item] of Object.entries(value)) {
+      if (!["message", "error", "errorDescription", "errorSummary", "errorCode", "code", "cause", "data", "response"].includes(key)) {
+        parts.push(key + " " + describeError(item, seen, depth + 1));
+      }
+    }
+  } catch {}
+  try { parts.push(JSON.stringify(value)); } catch {}
+  return parts.join(" ");
+}
+
 function isRateLimit(error) {
-  let text = "";
-  try { text = JSON.stringify(error); } catch {}
-  text += " " + String(error?.message || error || "");
-  return /1675004|rate[\s_-]*limit|too many requests/i.test(text);
+  return /1675004|rate[\s_-]*limit|too many requests/i.test(describeError(error));
 }
 
 function getThreadList(api, options = {}) {
