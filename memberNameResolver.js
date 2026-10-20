@@ -16,6 +16,40 @@ const LEARN_MAX = 10000;
 const cache = new Map();
 const learned = new Map();
 
+// getThreadList is expensive and Facebook may rate-limit it. Share one result
+// and one in-flight request per API session across all member-picker requests.
+const threadLists = new WeakMap();
+async function getCachedThreadList(api, timeoutMs) {
+  if (!api || (typeof api !== "object" && typeof api !== "function")) return null;
+  let state = threadLists.get(api);
+  if (!state) {
+    state = { value: null, expiresAt: 0, failedUntil: 0, promise: null };
+    threadLists.set(api, state);
+  }
+  const now = Date.now();
+  if (state.value && now < state.expiresAt) return state.value;
+  if (state.promise) return state.promise;
+  if (now < state.failedUntil) return null;
+
+  state.promise = callApi(api, "getThreadList", [1000, null, []], timeoutMs)
+    .then(value => {
+      if (Array.isArray(value) && value.length) {
+        state.value = value;
+        state.expiresAt = Date.now() + 60_000;
+        state.failedUntil = 0;
+        return value;
+      }
+      state.failedUntil = Date.now() + 15_000;
+      return state.value || null;
+    })
+    .catch(() => {
+      state.failedUntil = Date.now() + 15_000;
+      return state.value || null;
+    })
+    .finally(() => { state.promise = null; });
+  return state.promise;
+}
+
 function idOf(value) {
   const raw = value && typeof value === "object"
     ? (value.userID ?? value.userId ?? value.id ?? value.uid ?? value.user_id ??
@@ -197,7 +231,7 @@ async function resolveGroupMembers(api, threadID, options = {}) {
   ].some(part => Array.isArray(part) ? part.length > 0 : part && typeof part === "object" && Object.keys(part).length > 0));
   if (!hasParticipantData(info) && typeof api?.getThreadList === "function") {
     try {
-      const threads = await callApi(api, "getThreadList", [1000, null, []], timeoutMs);
+      const threads = await getCachedThreadList(api, timeoutMs);
       const matching = (Array.isArray(threads) ? threads : []).find(item =>
         String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? item?.id ?? "").trim() === String(threadID)
       );

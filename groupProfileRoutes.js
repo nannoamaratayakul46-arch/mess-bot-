@@ -10,7 +10,7 @@ const express = require("express");
 const COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_IMAGE_BYTES = 1024 * 1024;
 const API_TIMEOUT_MS = 25_000;
-const GUARD_INTERVAL_MS = Math.max(5_000, Math.min(60_000, Number(process.env.ECLIPSE_PROFILE_GUARD_INTERVAL_MS || 15_000)));
+const GUARD_INTERVAL_MS = Math.max(15_000, Math.min(120_000, Number(process.env.ECLIPSE_PROFILE_GUARD_INTERVAL_MS || 60_000)));
 const RESTORE_RETRY_MS = Math.max(15_000, Math.min(5 * 60_000, Number(process.env.ECLIPSE_PROFILE_RESTORE_RETRY_MS || 30_000)));
 const lastChange = new Map();
 const lastRestoreAttempt = new Map();
@@ -183,6 +183,39 @@ async function restoreSavedPhoto(api, db, row) {
   console.log("[PHOTO-GUARD] Restored saved group photo for " + threadId + (url ? "" : " (photo URL not yet available)"));
 }
 
+// Share thread-list results across guard passes. A failed request is also
+// cooled down so a Messenger outage/rate limit cannot trigger a request storm.
+const sharedThreadLists = new WeakMap();
+async function getSharedThreadList(api) {
+  if (!api || (typeof api !== "object" && typeof api !== "function")) return null;
+  let state = sharedThreadLists.get(api);
+  if (!state) {
+    state = { value: null, expiresAt: 0, failedUntil: 0, promise: null };
+    sharedThreadLists.set(api, state);
+  }
+  const now = Date.now();
+  if (state.value && now < state.expiresAt) return state.value;
+  if (state.promise) return state.promise;
+  if (now < state.failedUntil) return state.value;
+  state.promise = withTimeout(callApi(api, "getThreadList", [1000, null, []]), 10_000)
+    .then(value => {
+      if (Array.isArray(value) && value.length) {
+        state.value = value;
+        state.expiresAt = Date.now() + 60_000;
+        state.failedUntil = 0;
+        return value;
+      }
+      state.failedUntil = Date.now() + 15_000;
+      return state.value;
+    })
+    .catch(error => {
+      state.failedUntil = Date.now() + 30_000;
+      throw error;
+    })
+    .finally(() => { state.promise = null; });
+  return state.promise;
+}
+
 async function getThreadInfoWithFallback(api, threadId, threadListState) {
   let info = null;
   try {
@@ -209,7 +242,7 @@ async function getThreadInfoWithFallback(api, threadId, threadListState) {
   if (typeof api?.getThreadList === "function") {
     try {
       if (!threadListState.promise) {
-        threadListState.promise = withTimeout(callApi(api, "getThreadList", [1000, null, []]), 10_000);
+        threadListState.promise = getSharedThreadList(api);
       }
       const threads = await threadListState.promise;
       if (Array.isArray(threads)) {
