@@ -76,6 +76,7 @@ function getThreadList(api, options = {}) {
       clearTimeout(timer);
 
       if (error) {
+        logOpaqueErrorShape(error);
         const rateLimited = isRateLimit(error);
         state.blockedUntil = Date.now() + (rateLimited ? RATE_LIMIT_COOLDOWN_MS : DEFAULT_COOLDOWN_MS);
         if (Date.now() - state.lastErrorLogAt > 30_000) {
@@ -96,6 +97,7 @@ function getThreadList(api, options = {}) {
         resolve(threads);
       } else {
         state.blockedUntil = Date.now() + DEFAULT_COOLDOWN_MS;
+        console.warn("[THREAD-LIST-GATE] Empty thread list returned; holding for 30s.");
         resolve(state.value || []);
       }
     };
