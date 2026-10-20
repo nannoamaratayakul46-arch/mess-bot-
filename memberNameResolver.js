@@ -3,6 +3,7 @@
 // Shared member-name resolver for dashboard member pickers and moderation logs.
 // Numeric Facebook IDs are identity keys; names are display-only and are never
 // passed to removeUserFromGroup.
+const { getThreadList: getSharedThreadList } = require("./messengerThreadList");
 const ID_RE = /^\d{6,32}$/;
 const NAME_FIELDS = [
   "name", "fullName", "full_name", "displayName", "display_name",
@@ -31,7 +32,7 @@ async function getCachedThreadList(api, timeoutMs) {
   if (state.promise) return state.promise;
   if (now < state.failedUntil) return null;
 
-  state.promise = callApi(api, "getThreadList", [1000, null, []], timeoutMs)
+  state.promise = getSharedThreadList(api, { timeoutMs })
     .then(value => {
       if (Array.isArray(value) && value.length) {
         state.value = value;

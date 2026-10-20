@@ -6,6 +6,7 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
+const { getThreadList: getGatedThreadList } = require("./messengerThreadList");
 
 const COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_IMAGE_BYTES = 1024 * 1024;
@@ -197,7 +198,7 @@ async function getSharedThreadList(api) {
   if (state.value && now < state.expiresAt) return state.value;
   if (state.promise) return state.promise;
   if (now < state.failedUntil) return state.value;
-  state.promise = withTimeout(callApi(api, "getThreadList", [1000, null, []]), 10_000)
+  state.promise = getGatedThreadList(api, { timeoutMs: 10_000 })
     .then(value => {
       if (Array.isArray(value) && value.length) {
         state.value = value;

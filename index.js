@@ -69,6 +69,7 @@ const { resolveTargetName } = require("./targetName");
 const { createJaidenMessageQueue } = require("./jaiden-message-queue");
 const { registerGroupProfileRoutes, handleGroupProfileEvent } = require("./groupProfileRoutes");
 const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
+const { getThreadList: getSharedThreadList } = require("./messengerThreadList");
 const { createLiveChat } = require("./liveChat");
 const { registerModerationRoutes } = require("./dashboardModeration");
 const { registerTemporaryAdminRoutes } = require("./temporaryGroupAdmins");
@@ -4960,44 +4961,49 @@ app.delete(
   }
 );
 
+function dashboardFetchThreadList(api, timeoutMs = 8000) {
+  return getSharedThreadList(api, { timeoutMs });
+}
+
+const dashboardThreadLists = new WeakMap();
+
 function dashboardGetThreadList(api, timeoutMs = 8000) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let timer = null;
-    const done = (error, threads) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      if (error) reject(error);
-      else resolve(Array.isArray(threads) ? threads : []);
-    };
-    if (typeof api?.getThreadList !== "function") {
-      reject(new Error("Messenger thread list is unavailable."));
-      return;
-    }
+  if (!api || (typeof api !== "object" && typeof api !== "function")) {
+    return Promise.reject(new Error("Messenger API is unavailable."));
+  }
+  let state = dashboardThreadLists.get(api);
+  if (!state) {
+    state = { value: null, expiresAt: 0, failedUntil: 0, promise: null };
+    dashboardThreadLists.set(api, state);
+  }
+  const now = Date.now();
+  if (Array.isArray(state.value) && now < state.expiresAt) return Promise.resolve(state.value);
+  if (state.promise) return state.promise;
+  if (now < state.failedUntil) return Promise.resolve(state.value || []);
 
-    // Some ws3-fca calls never invoke their callback after an upstream API
-    // failure. Return an empty list after a bounded wait so dashboard jobs
-    // can report a useful no-targets/fallback result instead of hanging.
-    timer = setTimeout(() => {
-      if (settled) return;
-      settled = true;
-      console.warn("[THREAD-LIST] Lookup timed out; no fallback thread list is available.");
-      resolve([]);
-    }, Math.max(1000, Number(timeoutMs) || 8000));
-    timer.unref?.();
-
-    try {
-      const result = api.getThreadList(1000, null, [], done);
-      if (result && typeof result.then === "function") {
-        result.then((threads) => {
-          if (threads != null) done(null, threads);
-        }).catch(done);
+  state.promise = dashboardFetchThreadList(api, timeoutMs)
+    .then(threads => {
+      if (Array.isArray(threads) && threads.length) {
+        state.value = threads;
+        state.expiresAt = Date.now() + 60_000;
+        state.failedUntil = 0;
+        return threads;
       }
-    } catch (error) {
-      done(error);
-    }
-  });
+      state.failedUntil = Date.now() + 15_000;
+      // Preserve the last good inbox list instead of replacing it with an
+      // empty response during a temporary Messenger outage or rate limit.
+      return state.value || [];
+    })
+    .catch(error => {
+      state.failedUntil = Date.now() + 30_000;
+      if (Array.isArray(state.value)) {
+        console.warn("[THREAD-LIST] Messenger lookup failed; serving cached thread list during cooldown.");
+        return state.value;
+      }
+      throw error;
+    })
+    .finally(() => { state.promise = null; });
+  return state.promise;
 }
 
 function dashboardOwnerId() {
