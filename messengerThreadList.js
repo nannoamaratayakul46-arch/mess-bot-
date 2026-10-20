@@ -32,7 +32,7 @@ function describeError(value, seen = new Set(), depth = 0) {
 
 function isRateLimit(error) {
   const description = describeError(error);
-  return /\\b1675004\\b|rate[\\s_-]*limit|too many requests/i.test(description);
+  return /\b1675004\b|rate[\s_-]*limit|too many requests/i.test(description);
 }
 
 const loggedOpaqueErrors = new WeakSet();
@@ -40,7 +40,7 @@ const loggedOpaqueErrors = new WeakSet();
 function logOpaqueErrorShape(error) {
   if (!error || typeof error !== "object" || loggedOpaqueErrors.has(error)) return;
   const message = String(error?.message || "");
-  if (!/\\[object Object\\]/i.test(message)) return;
+  if (!/\[object Object\]/i.test(message)) return;
   loggedOpaqueErrors.add(error);
   try {
     console.warn("[THREAD-LIST-GATE] Opaque error shape:", Object.keys(error));
