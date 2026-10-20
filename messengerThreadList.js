@@ -39,14 +39,30 @@ const loggedOpaqueErrors = new WeakSet();
 
 function logOpaqueErrorShape(error) {
   if (!error || typeof error !== "object" || loggedOpaqueErrors.has(error)) return;
+
   const message = String(error?.message || "");
   if (!/\[object Object\]/i.test(message)) return;
+
   loggedOpaqueErrors.add(error);
+
   try {
-    console.warn("[THREAD-LIST-GATE] Opaque error shape:", Object.keys(error));
-  } catch {}
-}
-function getThreadList(api, options = {}) {
+    const names = Object.getOwnPropertyNames(error);
+    console.warn("[THREAD-LIST-GATE] Opaque error props:", names);
+    console.warn(
+      "[THREAD-LIST-GATE] Opaque error stack:",
+      String(error.stack || "").split("\n").slice(0, 4).join(" | ")
+    );
+    console.warn(
+      "[THREAD-LIST-GATE] Opaque error JSON:",
+      JSON.stringify(error, names).slice(0, 400)
+    );
+  } catch (e) {
+    console.warn(
+      "[THREAD-LIST-GATE] Could not inspect error:",
+      String(e?.message || e).slice(0, 120)
+    );
+  }
+}function getThreadList(api, options = {}) {
   if (!api || (typeof api !== "object" && typeof api !== "function") ||
       typeof api.getThreadList !== "function") {
     return Promise.resolve([]);
