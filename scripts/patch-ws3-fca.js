@@ -60,7 +60,7 @@ function patchDirectory(directory) {
         // and error cleanup.
         if (!updated.includes("ECLIPSE_MQTT_CLOSE_RECOVERY")) {
           const closeHandlerPattern = /((?:mqttClient|client)\.on\(\s*[\'"]close[\'"]\s*,\s*function\s*\(\s*\)\s*\{)([\s\S]*?)(\}\s*\);)/;
-          if (closeHandlerPattern.test(updated) && /globalCallback/.test(updated) && /var mqttClient = ctx\\.mqttClient\\s*;/.test(updated) && /function stopListening\\(\\)\\s*\\{/.test(updated)) {
+          if (closeHandlerPattern.test(updated) && /globalCallback/.test(updated) && /var mqttClient = ctx\.mqttClient\s*;/.test(updated) && /function stopListening\(\)\s*\{/.test(updated)) {
             updated = updated.replace(closeHandlerPattern, (_match, opening, _body, closing) =>
               opening +
               "\n    // ECLIPSE_MQTT_CLOSE_RECOVERY: unexpected socket closes must reach the app.\n" +
