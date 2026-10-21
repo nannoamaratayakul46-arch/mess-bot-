@@ -67,6 +67,7 @@ const db = require("./db");
 const trafficDeliveryStore = require("./trafficDeliveryHistory");
 const { resolveTargetName } = require("./targetName");
 const { createJaidenMessageQueue } = require("./jaiden-message-queue");
+const { createJaidenTargetCountdown } = require("./jaiden-target-countdown");
 const { registerGroupProfileRoutes, handleGroupProfileEvent } = require("./groupProfileRoutes");
 const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
 const { getThreadList: getSharedThreadList } = require("./messengerThreadList");
@@ -1491,7 +1492,7 @@ function trafficSafetyStatus() {
   };
 }
 
-function trafficQueueSend(api, message, threadID, callback, replyToMessageID = null) {
+function trafficQueueSend(api, message, threadID, callback, replyToMessageID = null, options = {}) {
   if (trafficShuttingDown) {
     trafficTotalRejected++;
 
@@ -1540,6 +1541,7 @@ function trafficQueueSend(api, message, threadID, callback, replyToMessageID = n
     threadID: String(threadID),
     callback,
     replyToMessageID: replyToMessageID || null,
+    shouldSend: typeof options.shouldSend === "function" ? options.shouldSend : null,
     enqueuedAt: trafficNow(),
   });
 
@@ -1569,6 +1571,18 @@ async function trafficProcessQueue() {
     while (trafficSendQueue.length) {
       const job =
         trafficSendQueue[0];
+
+      if (job.shouldSend && !job.shouldSend()) {
+        trafficSendQueue.shift();
+        const cancelledError = new Error("Queued Messenger send was cancelled before delivery.");
+        cancelledError.code = "ECLIPSE_SEND_CANCELLED";
+        if (typeof job.callback === "function") {
+          try { job.callback(cancelledError); } catch (error) {
+            console.error("[TRAFFIC] Cancelled-send callback failed:", error?.message || error);
+          }
+        }
+        continue;
+      }
 
       const decision =
         trafficCanSendNow(
@@ -2113,14 +2127,16 @@ function trafficSendMessage(
   message,
   threadID,
   callback,
-  replyToMessageID = null
+  replyToMessageID = null,
+  options = {}
 ) {
   return trafficQueueSend(
     api,
     message,
     threadID,
     callback,
-    replyToMessageID
+    replyToMessageID,
+    options
   );
 }
 
@@ -7069,6 +7085,24 @@ async function handleMessage(
   const threadId =
     String(threadID || "");
 
+  // Check archive state once for this event, and track target activity even
+  // when the incoming message has no text body (for example, a sticker/photo).
+  const countdownArchiveCheck = threadId
+    ? isDashboardGroupArchived(threadId)
+    : Promise.resolve(false);
+  if (threadId) {
+    void countdownArchiveCheck.then((archived) => {
+      if (archived) return;
+      return jaidenTargetCountdown.onMessage({
+        api,
+        threadId,
+        senderId: String(senderID || "").trim(),
+      });
+    }).catch((error) => {
+      console.error("[JAIDEN COUNTDOWN] Activity tracker failed:", error?.message || error);
+    });
+  }
+
   const hasBroadcastImage =
     Boolean(
       getBroadcastImageAttachment(event)
@@ -7122,7 +7156,7 @@ async function handleMessage(
 
   // Archived GCs are intentionally ignored by all bot features until restored
   // from the dashboard, including commands, Banat, games, and automod.
-  if (await isDashboardGroupArchived(threadId)) return;
+  if (await countdownArchiveCheck) return;
 
   // Keep spam monitoring independent of owner presence and the normal bot toggle.
   // The detector serializes events per member and uses persistent group settings.
@@ -12590,6 +12624,15 @@ async function handleAutomaticBanatMessage({
 // The human system lives in dedicated modules.
 // index.js only preserves the legacy call signatures and injects
 // the existing Traffic Governor + meme helper dependencies.
+
+const jaidenTargetCountdown = createJaidenTargetCountdown({
+  getTarget: (threadId) => db.getBanatThreadTarget(threadId),
+  send: (api, message, threadID, shouldSend) => new Promise((resolve) => {
+    trafficSendMessage(api, message, threadID, (error, messageInfo) => {
+      resolve(error ? { sent: false, code: error.code || null } : { sent: true, messageInfo });
+    }, null, { shouldSend });
+  }),
+});
 
 const jaidenMessageQueue = createJaidenMessageQueue({
   maxQueuePerThread: Number(process.env.ECLIPSE_JAIDEN_QUEUE_MAX || 1000),

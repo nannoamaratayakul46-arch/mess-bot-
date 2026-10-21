@@ -31,7 +31,7 @@ const listenerErrorBlock = indexSource.slice(
   listenerErrorBlockStart + 1200
 );
 assert(!listenerErrorBlock.includes("watchdogSetMessengerConnected(false)"));
-assert(listenerErrorBlock.includes("ws3-fca owns its reconnect/relogin"));
+assert(listenerErrorBlock.includes("Recover a dead listener through one controlled fresh login"));
 
 // Dashboard reconnect/start must not race ws3-fca just because the watchdog
 // temporarily observed a listener error.
