@@ -6772,10 +6772,9 @@ function attemptLogin() {
           }
 
           if (listenError) {
-            // A listener/MQTT hiccup is not the same thing as a Facebook
-            // authentication failure. ws3-fca owns its reconnect/relogin
-            // path, so keep the known-good session marked connected and do
-            // not start a competing login loop.
+            // ws3-fca's MQTT error path may call mqttClient.end() before
+            // invoking this callback. In that state, leaving activeMessengerApi
+            // marked connected prevents our own login recovery from running.
             listenFailureCount++;
 
             const listenErrorSummary = {
@@ -6787,19 +6786,68 @@ function attemptLogin() {
               arrayLength: Array.isArray(listenError) ? listenError.length : undefined,
             };
             console.error("[LISTENER] Structured error summary:", JSON.stringify(listenErrorSummary));
+            console.error("[LISTENER] ws3-fca reported a listener error:", listenError);
 
-            console.error(
-              "[LISTENER] ws3-fca reported a listener error " +
-                "(failure " +
-                listenFailureCount +
-                "):",
-              listenError
-            );
+            const listenerErrorText = [
+              listenErrorSummary.name,
+              listenErrorSummary.message,
+              listenErrorSummary.code,
+              getFacebookLoginErrorMessage(listenError),
+            ].filter(Boolean).join(" ");
+            const authRejected = /checkpoint|two.factor|2fa|invalid cookie|cookie.*(?:invalid|expired|rejected)|session.*(?:expired|invalid|rejected)|not logged in|login required|authentication failed|account disabled|confirm your identity/i.test(listenerErrorText);
+            const rateLimited = /1675004|rate.?limit|too many requests/i.test(listenerErrorText);
 
-            console.warn(
-              "[AUTH] ECLIPSE will not start a second login loop; " +
-                "ws3-fca owns listener/session recovery."
-            );
+            // Invalidate this listener generation before detaching the API so
+            // late callbacks from the dead MQTT client cannot process messages.
+            if (thisGeneration === activeListenerGeneration) {
+              activeListenerGeneration = 0;
+              listenerGeneration++;
+              watchdogSetMessengerConnected(false);
+              dashboardLastDisconnectedAt = new Date().toISOString();
+
+              try {
+                if (typeof api.stopListenMqtt === "function") {
+                  api.stopListenMqtt();
+                }
+              } catch (stopError) {
+                console.warn("[LISTENER] Could not stop failed MQTT listener cleanly:", stopError?.message || stopError);
+              }
+
+              if (activeMessengerApi === api || activeMessengerApi === rawApiForListener) {
+                activeMessengerApi = null;
+              }
+            }
+
+            if (authRejected) {
+              dashboardLoginError = getFacebookLoginErrorMessage(listenError);
+              pushDashboardEvent("login-failed", "Messenger listener stopped because Facebook rejected the session. Reconnect the account from the dashboard.", {
+                detail: String(dashboardLoginError || "Facebook session rejected").slice(0, 240),
+              });
+              console.error("[AUTH] Listener error looks like a session/auth rejection. Automatic retries are paused; reconnect from the dashboard.");
+              return;
+            }
+
+            // Recover a dead listener through one controlled fresh login. A
+            // rate-limit response gets a longer cool-off to avoid hammering
+            // Facebook; ordinary socket/server failures wait 30 seconds.
+            if (!loginRetryTimer) {
+              const recoveryDelayMs = rateLimited ? 120_000 : 30_000;
+              dashboardLoginError = rateLimited
+                ? "Messenger was rate-limited; waiting 2 minutes before reconnecting."
+                : "Messenger listener dropped; retrying the saved session in 30 seconds.";
+              pushDashboardEvent("messenger", "Messenger listener failed; a controlled reconnect has been scheduled.", {
+                detail: String(dashboardLoginError).slice(0, 240),
+                retry_after_ms: recoveryDelayMs,
+              });
+              console.warn("[LISTENER] Scheduling fresh Messenger login in " + recoveryDelayMs + "ms (rateLimited=" + rateLimited + ").");
+
+              loginRetryTimer = setTimeout(() => {
+                loginRetryTimer = null;
+                if (!watchdogShuttingDown && !activeMessengerApi && activeListenerGeneration <= 0) {
+                  attemptLogin();
+                }
+              }, recoveryDelayMs);
+            }
 
             return;
           }

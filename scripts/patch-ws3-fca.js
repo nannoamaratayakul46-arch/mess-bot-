@@ -52,6 +52,34 @@ function patchDirectory(directory) {
           console.warn("[postinstall] listenMqtt.js has no recognizable reconnectPeriod option; inspect the installed source.");
         }
         updated = reconnectPatched;
+
+        // Some ws3-fca builds end up with a closed MQTT socket but never call
+        // the app's listenMqtt callback. Surface that close so index.js can
+        // invalidate the dead API and run its controlled session recovery.
+        // Preserve the existing close-handler body and append one guarded
+        // callback. The app's listener-generation check suppresses duplicate
+        // callbacks when an error is followed by close.
+        if (
+          /globalCallback/.test(updated) &&
+          !updated.includes("ECLIPSE_MQTT_CLOSE_RECOVERY") &&
+          /(?:const|let|var)\s+mqttClient\s*=\s*ctx\.mqttClient/.test(updated)
+        ) {
+          const closeHandlerPattern = /(mqttClient\.on\(\s*['"]close['"]\s*,\s*function\s*\([^)]*\)\s*\{)([\s\S]*?)(\}\s*\);)/;
+          if (closeHandlerPattern.test(updated)) {
+            updated = updated.replace(closeHandlerPattern, (_match, opening, body, closing) =>
+              opening + body +
+              '\n    // ECLIPSE_MQTT_CLOSE_RECOVERY: report a closed socket to the app.\n' +
+              '    if (typeof globalCallback === "function") {\n' +
+              '      globalCallback(new Error("Messenger MQTT connection closed"), null);\n' +
+              '    }\n  ' + closing
+            );
+            console.log("[postinstall] Added MQTT close-event recovery callback in listenMqtt.js");
+          } else {
+            console.warn("[postinstall] Could not safely match the listenMqtt.js close handler; silent socket closes may not trigger recovery.");
+          }
+        } else if (!updated.includes("ECLIPSE_MQTT_CLOSE_RECOVERY")) {
+          console.warn("[postinstall] listenMqtt.js does not match the known mqttClient/globalCallback shape; close-event recovery was not patched.");
+        }
       }
       if (updated !== source) {
         fs.writeFileSync(file, updated, "utf8");
