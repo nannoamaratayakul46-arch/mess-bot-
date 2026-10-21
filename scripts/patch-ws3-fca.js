@@ -53,36 +53,12 @@ function patchDirectory(directory) {
         }
         updated = reconnectPatched;
 
-        // Some ws3-fca 2.x builds have an empty close handler. Report an
-        // unexpected socket close through the existing callback so index.js
-        // can use its single, rate-limited recovery path. Do not report closes
-        // initiated by stopListening(), which is used during normal shutdown
-        // and error cleanup.
-        if (!updated.includes("ECLIPSE_MQTT_CLOSE_RECOVERY")) {
-          const closeHandlerPattern = /((?:mqttClient|client)\.on\(\s*[\'"]close[\'"]\s*,\s*function\s*\(\s*\)\s*\{)([\s\S]*?)(\}\s*\);)/;
-          if (closeHandlerPattern.test(updated) && /globalCallback/.test(updated) && /var mqttClient = ctx\.mqttClient\s*;/.test(updated) && /function stopListening\(\)\s*\{/.test(updated)) {
-            updated = updated.replace(closeHandlerPattern, (_match, opening, _body, closing) =>
-              opening +
-              "\n    // ECLIPSE_MQTT_CLOSE_RECOVERY: unexpected socket closes must reach the app.\n" +
-              "    if (!eclipseIntentionalStop && !eclipseCloseReported && typeof globalCallback === \"function\") {\n" +
-              "      eclipseCloseReported = true;\n" +
-              "      globalCallback(new Error(\"Messenger MQTT connection closed\"), null);\n" +
-              "    }\n  " + closing
-            );
-            // Add closure-local flags and mark explicit stop calls as intentional.
-            updated = updated.replace(
-              /var mqttClient = ctx\.mqttClient\s*;/,
-              "var mqttClient = ctx.mqttClient;\n  var eclipseIntentionalStop = false;\n  var eclipseCloseReported = false;"
-            );
-            updated = updated.replace(
-              /function stopListening\(\)\s*\{/,
-              "function stopListening() {\n    eclipseIntentionalStop = true;"
-            );
-            console.log("[postinstall] Added guarded MQTT close-event recovery callback.");
-          } else {
-            console.warn("[postinstall] Installed listenMqtt.js close-handler shape is unknown; no close-handler rewrite was made.");
-          }
-        }
+        // Do not treat every MQTT "close" event as a fatal listener failure.
+        // MQTT.js emits close during ordinary reconnect cycles too. Reporting
+        // each close through globalCallback makes index.js stop the client and
+        // start a fresh Facebook login, potentially defeating MQTT auto-retry
+        // and amplifying Facebook rate limits. Keep recovery in the existing
+        // listener error path; use reconnectPeriod backoff for transient drops.
       }
       if (updated !== source) {
         fs.writeFileSync(file, updated, "utf8");
