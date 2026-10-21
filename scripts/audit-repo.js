@@ -86,16 +86,16 @@ if (listenInstallations !== 1) {
 
 // 2a. Preserve conservative Messenger recovery safeguards.
 const listenerRecoveryChecks = [
-  [/const WATCHDOG_LISTENER_STALE_ENABLED =\\s*\\/\\^\\(1\\|true\\|yes\\|on\\)\\$\\/i\\.test\\(/, "listener stale detection must remain explicitly opt-in"],
-  [/const recoveryDelayMs = rateLimited \\? 120_000 : 30_000/, "rate limits must use a longer reconnect cool-off"],
-  [/if \\(authRejected\\) \\{[\\s\\S]{0,700}Automatic retries are paused/, "rejected sessions must pause automatic retries"],
+  [/const WATCHDOG_LISTENER_STALE_ENABLED =\s*\/\^\(1\|true\|yes\|on\)\$\/i\.test\(/, "listener stale detection must remain explicitly opt-in"],
+  [/const recoveryDelayMs = rateLimited \? 120_000 : 30_000/, "rate limits must use a longer reconnect cool-off"],
+  [/if \(authRejected\) \{[\s\S]{0,700}Automatic retries are paused/, "rejected sessions must pause automatic retries"],
   [/thisGeneration !== activeListenerGeneration/, "stale listener generations must be ignored"],
-  [/watchdogMessengerConnected \\? now - watchdogLastListenerActivityAt : 0/, "listener inactivity must only be measured while connected"],
+  [/watchdogMessengerConnected\s*\?\s*now\s*-\s*watchdogLastListenerActivityAt\s*:\s*0/, "listener inactivity must only be measured while connected"],
 ];
 for (const [pattern, message] of listenerRecoveryChecks) {
   if (!pattern.test(index)) fail("Messenger recovery invariant missing: " + message + ".");
 }
-if (!/WATCHDOG_LISTENER_STALE_ENABLED[\\s\\S]{0,120}process\\.env\\.ECLIPSE_WATCHDOG_LISTENER_STALE_ENABLED/.test(index)) {
+if (!/WATCHDOG_LISTENER_STALE_ENABLED[\s\S]{0,120}process\.env\.ECLIPSE_WATCHDOG_LISTENER_STALE_ENABLED/.test(index)) {
   fail("Listener-staleness watchdog must remain explicitly configurable rather than silently enabled.");
 }
 
