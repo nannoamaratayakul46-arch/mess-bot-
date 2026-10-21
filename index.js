@@ -3755,6 +3755,43 @@ app.post(
   }
 );
 
+
+app.get(
+  "/api/dashboard/jaiden-target-countdown/settings",
+  requireDashboardAccess,
+  async (_req, res) => {
+    try {
+      const settings = await db.getJaidenTargetCountdownSettings();
+      return res.json({ ok: true, settings });
+    } catch (error) {
+      console.error("[JAIDEN COUNTDOWN] Could not load dashboard settings:", error?.message || error);
+      return res.status(500).json({ ok: false, error: "Could not load countdown settings." });
+    }
+  }
+);
+
+app.put(
+  "/api/dashboard/jaiden-target-countdown/settings",
+  requireDashboardAccess,
+  async (req, res) => {
+    const template = typeof req.body?.template === "string" ? req.body.template : "";
+    const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
+    if (!template.trim() || template.length > 4000) {
+      return res.status(400).json({ ok: false, error: "Message template must be between 1 and 4000 characters." });
+    }
+    if (reason.length > 2000) {
+      return res.status(400).json({ ok: false, error: "Reason must be 2000 characters or fewer." });
+    }
+    try {
+      const settings = await db.setJaidenTargetCountdownSettings({ template, reason });
+      return res.json({ ok: true, settings });
+    } catch (error) {
+      console.error("[JAIDEN COUNTDOWN] Could not save dashboard settings:", error?.message || error);
+      return res.status(500).json({ ok: false, error: error?.message || "Could not save countdown settings." });
+    }
+  }
+);
+
 app.get(
   "/api/dashboard/status",
   requireDashboardAccess,
@@ -12627,6 +12664,11 @@ async function handleAutomaticBanatMessage({
 
 const jaidenTargetCountdown = createJaidenTargetCountdown({
   getTarget: (threadId) => db.getBanatThreadTarget(threadId),
+  getResultsSettings: () => db.getJaidenTargetCountdownSettings(),
+  getTargetName: async ({ threadId, targetId, savedName, api }) => {
+    const resolved = await resolveTargetName(api, threadId, targetId, { savedName });
+    return resolved?.name || "";
+  },
   send: (api, message, threadID, shouldSend) => new Promise((resolve) => {
     trafficSendMessage(api, message, threadID, (error, messageInfo) => {
       resolve(error ? { sent: false, code: error.code || null } : { sent: true, messageInfo });

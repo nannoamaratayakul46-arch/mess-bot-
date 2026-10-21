@@ -2,11 +2,15 @@
 
 const INACTIVITY_MS = 5 * 60 * 1000;
 const COUNT_DELAY_MS = 2 * 1000;
-const COMPLETION_PHRASE = "D.O SI TABA AAAAAA DI MAKATAGOS SA BOSS OMA NIYA";
+const DEFAULT_RESULT_TEMPLATE = "WIN: {{WIN}}\nLOSE: {{LOSE}}\nREASON: {{REASON}}\nSTART: {{START}}\nEND: {{END}}";
+const DEFAULT_RESULT_REASON = "DI TUMAGOS SA HEV CHALLENGE, NA-OUTPLAY SA COUNTDOWN 😭";
 
 function createJaidenTargetCountdown(options = {}) {
   const getTarget = options.getTarget;
   const send = options.send;
+  const getTargetName = options.getTargetName;
+  const getResultsSettings = options.getResultsSettings;
+  const timeZone = options.timeZone || "Asia/Manila";
   const inactivityMs = Number.isFinite(options.inactivityMs) ? Math.max(1, options.inactivityMs) : INACTIVITY_MS;
   const countDelayMs = Number.isFinite(options.countDelayMs) ? Math.max(0, options.countDelayMs) : COUNT_DELAY_MS;
   const states = new Map();
@@ -25,6 +29,28 @@ function createJaidenTargetCountdown(options = {}) {
     clearTimer(state);
     state.counting = false;
     return true;
+  };
+
+  const formatTime = (timestamp) => new Intl.DateTimeFormat("en-PH", {
+    timeZone,
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(new Date(timestamp));
+
+  const buildResultsMessage = (targetName, startedAt, endedAt, settings = {}) => {
+    const values = {
+      WIN: "HEV",
+      LOSE: String(targetName || "").trim().toLocaleUpperCase("en-US") || "UNKNOWN TARGET",
+      REASON: typeof settings.reason === "string" ? settings.reason : DEFAULT_RESULT_REASON,
+      START: formatTime(startedAt),
+      END: formatTime(endedAt),
+    };
+    const template = typeof settings.template === "string" && settings.template.trim()
+      ? settings.template
+      : DEFAULT_RESULT_TEMPLATE;
+    return template.replace(/\{\{\s*(WIN|LOSE|REASON|START|END)\s*\}\}/gi, (_match, key) => values[String(key).toUpperCase()]);
   };
 
   const wait = (ms) => new Promise((resolve) => {
@@ -66,6 +92,7 @@ function createJaidenTargetCountdown(options = {}) {
   async function runCountdown(threadId, state, generation) {
     if (stopped || state.generation !== generation || state.counting) return;
     state.counting = true;
+    const startedAt = Date.now();
     try {
       for (let number = 1; number <= 100; number += 1) {
         if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
@@ -87,10 +114,37 @@ function createJaidenTargetCountdown(options = {}) {
         }
       }
       if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
+      const endedAt = Date.now();
       if (!(await verifySelectedTarget(threadId, state, generation))) return;
-      const result = await send(state.api, COMPLETION_PHRASE, threadId, () => !stopped && state.generation === generation && states.get(threadId) === state);
+      let targetName = state.targetName || "";
+      if (typeof getTargetName === "function") {
+        try {
+          targetName = await getTargetName({
+            threadId,
+            targetId: state.targetId,
+            savedName: targetName,
+            api: state.api,
+          }) || targetName;
+        } catch (error) {
+          console.warn("[JAIDEN COUNTDOWN] Could not resolve target name for thread " + threadId + ":", error?.message || error);
+        }
+      }
+      // A target can return while the async name lookup is running. Never post
+      // a results message for a cancelled generation.
+      if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
+      let resultsSettings = {};
+      if (typeof getResultsSettings === "function") {
+        try {
+          resultsSettings = await getResultsSettings() || {};
+        } catch (error) {
+          console.warn("[JAIDEN COUNTDOWN] Could not load custom results settings; using defaults:", error?.message || error);
+        }
+      }
+      if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
+      const resultsMessage = buildResultsMessage(targetName, startedAt, endedAt, resultsSettings);
+      const result = await send(state.api, resultsMessage, threadId, () => !stopped && state.generation === generation && states.get(threadId) === state);
       if (result === false || (result && result.sent === false)) {
-        console.warn("[JAIDEN COUNTDOWN] Completion phrase send failed for thread " + threadId + ".");
+        console.warn("[JAIDEN COUNTDOWN] Results message send failed for thread " + threadId + ".");
         if (!stopped && state.generation === generation && states.get(threadId) === state) {
           state.counting = false;
           scheduleInactivity(threadId, state, generation);
@@ -150,10 +204,11 @@ function createJaidenTargetCountdown(options = {}) {
     }
     if (senderKey !== targetId) return;
     if (!state) {
-      state = { targetId, timer: null, generation: 0, counting: false, api };
+      state = { targetId, targetName: String(target?.target_name || "").trim(), timer: null, generation: 0, counting: false, api };
       states.set(threadKey, state);
     }
     state.api = api;
+    state.targetName = String(target?.target_name || state.targetName || "").trim();
     state.generation += 1;
     state.counting = false;
     scheduleInactivity(threadKey, state, state.generation);
@@ -175,6 +230,7 @@ function createJaidenTargetCountdown(options = {}) {
 module.exports = {
   INACTIVITY_MS,
   COUNT_DELAY_MS,
-  COMPLETION_PHRASE,
+  DEFAULT_RESULT_TEMPLATE,
+  DEFAULT_RESULT_REASON,
   createJaidenTargetCountdown,
 };

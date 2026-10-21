@@ -234,7 +234,8 @@ test("dashboard archive and leave endpoints persist ignored groups", () => {
   assert.match(source, /app\.post\(\s*"\/api\/dashboard\/groups\/:thread_id\/archive"/);
   assert.match(source, /app\.post\(\s*"\/api\/dashboard\/groups\/:thread_id\/leave"/);
   assert.match(source, /removeUserFromGroup\(currentUserID, threadID, done\)/);
-  assert.match(source, /const countdownArchiveCheck = threadId[\s\S]*?isDashboardGroupArchived\(threadId\)/);\n  assert.match(source, /if \(await countdownArchiveCheck\) return/);
+  assert.match(source, /const countdownArchiveCheck = threadId[\s\S]*?isDashboardGroupArchived\(threadId\)/);
+  assert.match(source, /if \(await countdownArchiveCheck\) return/);
   assert.match(source, /archivedDashboardGroups\.add\(threadID\)/);
   assert.match(source, /archivedDashboardGroups\.delete\(threadID\)/);
 });

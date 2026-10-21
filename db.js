@@ -4060,6 +4060,59 @@ async function getDashboardAnalytics(hours = 24) {
   };
 }
 
+
+const DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS = {
+  template: "WIN: {{WIN}}\nLOSE: {{LOSE}}\nREASON: {{REASON}}\nSTART: {{START}}\nEND: {{END}}",
+  reason: "DI TUMAGOS SA HEV CHALLENGE, NA-OUTPLAY SA COUNTDOWN 😭",
+};
+let jaidenTargetCountdownSettingsTableReady = null;
+
+async function ensureJaidenTargetCountdownSettingsTable() {
+  if (!jaidenTargetCountdownSettingsTableReady) {
+    jaidenTargetCountdownSettingsTableReady = requireConn().query(`
+      CREATE TABLE IF NOT EXISTS jaiden_target_countdown_settings (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        template TEXT NOT NULL,
+        reason TEXT NOT NULL,
+        updated_at BIGINT NOT NULL
+      )
+    `).catch(error => {
+      jaidenTargetCountdownSettingsTableReady = null;
+      throw error;
+    });
+  }
+  await jaidenTargetCountdownSettingsTableReady;
+}
+
+async function getJaidenTargetCountdownSettings() {
+  await ensureJaidenTargetCountdownSettingsTable();
+  const { rows } = await requireConn().query(
+    "SELECT template, reason FROM jaiden_target_countdown_settings WHERE id = 1"
+  );
+  const row = rows[0];
+  return {
+    template: typeof row?.template === "string" ? row.template : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.template,
+    reason: typeof row?.reason === "string" ? row.reason : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.reason,
+  };
+}
+
+async function setJaidenTargetCountdownSettings(settings = {}) {
+  const current = await getJaidenTargetCountdownSettings();
+  const template = typeof settings.template === "string" ? settings.template : current.template;
+  const reason = typeof settings.reason === "string" ? settings.reason : current.reason;
+  if (!template.trim() || template.length > 4000) throw new Error("Countdown message template must be between 1 and 4000 characters.");
+  if (reason.length > 2000) throw new Error("Countdown reason must be 2000 characters or fewer.");
+  await requireConn().query(`
+    INSERT INTO jaiden_target_countdown_settings (id, template, reason, updated_at)
+    VALUES (1, $1, $2, $3)
+    ON CONFLICT (id) DO UPDATE SET
+      template = EXCLUDED.template,
+      reason = EXCLUDED.reason,
+      updated_at = EXCLUDED.updated_at
+  `, [template, reason, Date.now()]);
+  return { template, reason };
+}
+
 // ╔══════════════════════════════════════════════════════════╗
 // ║                         EXPORTS                          ║
 // ╚══════════════════════════════════════════════════════════╝
@@ -4077,6 +4130,8 @@ module.exports = {
   getDashboardSnapshot,
   getDashboardUser,
   getDashboardAnalytics,
+  getJaidenTargetCountdownSettings,
+  setJaidenTargetCountdownSettings,
 
   // Users
   getUser,
