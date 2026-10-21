@@ -275,6 +275,8 @@ const ACTIVE_THREAD_EXPIRY_MS =
 const lastRandomRoastByThread = new Map();
 const activeThreads = new Map();
 const dashboardKnownGroups = new Map();
+// Avoid repeating the same automatic Jaiden Target nickname write for every message.
+const jaidenTargetNicknameApplied = new Map();
 const dashboardSetNNJobs = new Map();
 const dashboardRemoveNNJobs = new Map();
 let dashboardSharedLocation = null;
@@ -12529,6 +12531,25 @@ async function handleAutomaticBanatMessage({
           : "",
       });
       const dashboardTargetName = resolvedTarget.name || "";
+
+      // Keep the selected Jaiden Target's group nickname synced with their
+      // resolved name. Do this only on the existing target-reply path, and
+      // suppress duplicate writes to avoid Messenger nickname rate limits.
+      if (dashboardTargetName && typeof api?.changeNickname === "function") {
+        const nicknameKey = String(threadID) + ":" + String(dashboardTargetId);
+        const nicknameValue = dashboardTargetName.trim();
+        if (nicknameValue && jaidenTargetNicknameApplied.get(nicknameKey) !== nicknameValue) {
+          try {
+            await changeNicknameAsync(api, nicknameValue, threadID, dashboardTargetId);
+            jaidenTargetNicknameApplied.set(nicknameKey, nicknameValue);
+            console.log("[JAIDEN TARGET] Synced target nickname in " + threadID +
+              " for " + dashboardTargetId + " -> " + JSON.stringify(nicknameValue));
+          } catch (nicknameError) {
+            console.warn("[JAIDEN TARGET] Could not sync target nickname in " + threadID +
+              " for " + dashboardTargetId + ":", nicknameError?.message || nicknameError);
+          }
+        }
+      }
 
       console.log(
         "[BANAT] Jaiden target resolved: target=" + dashboardTargetId +
