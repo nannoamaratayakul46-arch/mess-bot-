@@ -137,7 +137,7 @@ const TEMPLATES = [
   "kei moka ka kanal",
   "kei moka ka imburnal",
   "kei moka ka poste",
-  "kei moka ka pader",
+  "kei moka ka sirang pader",
   "kei moka ka bakod",
   "kei moka ka bridge",
   "kei moka ka tulay",
