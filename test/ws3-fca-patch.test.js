@@ -9,9 +9,9 @@ const root = path.resolve(__dirname, "..");
 const patchScript = fs.readFileSync(path.join(root, "scripts", "patch-ws3-fca.js"), "utf8");
 
 test("ws3-fca postinstall patch guards missing sendMessage payload actions", () => {
-  assert.match(patchScript, /const sendResponsePattern = \/const messageInfo = resData\\\.payload\\\.actions\\\.reduce\\s\*\\\(/);
-  assert.match(patchScript, /Array\.isArray\(resData\.payload\.actions\)/);
-  assert.match(patchScript, /updated = updated\.replace\(sendResponsePattern, sendResponseGuard\)/);
+  assert.ok(patchScript.includes("const sendResponsePattern ="));
+  assert.ok(patchScript.includes("Array.isArray(resData.payload.actions)"));
+  assert.ok(patchScript.includes("updated = updated.replace(sendResponsePattern, (_match, indent) =>"));
 
   const source = "const messageInfo = resData.payload.actions.reduce((p, v) => p || v, null);";
   const pattern = /const messageInfo = resData\.payload\.actions\.reduce\s*\(/;

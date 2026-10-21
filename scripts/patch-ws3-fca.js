@@ -22,18 +22,23 @@ function patchDirectory(directory) {
       let updated = source.replace(target, "new Error(");
       // Guard malformed send responses returned during auth/rate-limit failures.
       // This preserves the underlying failure instead of crashing on undefined.reduce.
-      if (entry.name === "sendMessage.js") {
-        const sendResponsePattern = /const messageInfo = resData\.payload\.actions\.reduce\s*\(/;
-        const sendResponseGuard =
-          'if (!resData || !resData.payload || !Array.isArray(resData.payload.actions)) {\n' +
-          '        throw new Error("Messenger send response missing payload.actions (possible session, permission, or rate-limit response).");\n' +
-          '      }\n' +
-          '      const messageInfo = resData.payload.actions.reduce(';
-        if (sendResponsePattern.test(updated)) {
-          updated = updated.replace(sendResponsePattern, sendResponseGuard);
-          console.log("[postinstall] Guarded ws3-fca sendMessage response payload");
-        } else if (/const messageInfo\s*=/.test(updated) && /payload\.actions\.reduce/.test(updated)) {
-          console.warn("[postinstall] sendMessage.js response shape differs; send guard was not applied.");
+      // Match by source content, not filename: ws3-fca versions/forks may
+      // place the send implementation in differently named API files.
+      const sendResponsePattern = /(^[ \t]*)(?:const|let|var)\s+messageInfo\s*=\s*resData\.payload\.actions\.reduce\s*\(/m;
+      if (/resData\.payload\.actions\.reduce\s*\(/.test(updated)) {
+        if (updated.includes("Messenger send response missing payload.actions")) {
+          // Already patched; keep postinstall idempotent.
+        } else if (sendResponsePattern.test(updated)) {
+          updated = updated.replace(sendResponsePattern, (_match, indent) =>
+            indent +
+            'if (!resData || !resData.payload || !Array.isArray(resData.payload.actions)) {\n' +
+            indent + '  throw new Error("Messenger send response missing payload.actions (possible session, permission, or rate-limit response).");\n' +
+            indent + '}\n' +
+            indent + 'const messageInfo = resData.payload.actions.reduce('
+          );
+          console.log("[postinstall] Guarded ws3-fca send response in " + path.relative(root, file));
+        } else {
+          console.warn("[postinstall] Found payload.actions.reduce in " + path.relative(root, file) + " but could not safely match the messageInfo declaration.");
         }
       }
       // A 1-second MQTT reconnect loop can amplify Messenger 1675004 rate
