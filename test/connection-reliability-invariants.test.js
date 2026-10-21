@@ -29,5 +29,5 @@ test("rejected Facebook sessions pause retries instead of hammering login", () =
 test("stale listener generations cannot process events or attach duplicate listeners", () => {
   assert.match(index, /thisGeneration !== activeListenerGeneration/);
   assert.match(index, /listenerStartedApis\.has\(rawApiForListener\)/);
-  assert.match(index, /const listenInstallations = \(index\.match\(\/\\bapi\\.listenMqtt\\s\*\\\(\/g\) \|\| \[\]\)\.length/);
+  assert.equal((index.match(/\bapi\.listenMqtt\s*\(/g) || []).length, 1);
 });
