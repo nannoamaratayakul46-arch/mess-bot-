@@ -44,41 +44,44 @@ function patchDirectory(directory) {
       // A 1-second MQTT reconnect loop can amplify Messenger 1675004 rate
       // limits into a reconnect storm. Back off reconnects to 30 seconds.
       if (entry.name === "listenMqtt.js") {
-        // Match any simple numeric/expression value, not only the literal 1000.
-        const reconnectPatched = updated.replace(/reconnectPeriod\s*:\s*[^,\r\n}]+/g, "reconnectPeriod: 30000");
+        const reconnectPattern = /reconnectPeriod\s*:\s*[^,\r\n}]+/g;
+        const reconnectPatched = updated.replace(reconnectPattern, "reconnectPeriod: 30000");
         if (reconnectPatched !== updated) {
-          console.log("[postinstall] Added 30-second MQTT reconnect backoff in listenMqtt.js");
-        } else {
-          console.warn("[postinstall] listenMqtt.js has no recognizable reconnectPeriod option; inspect the installed source.");
+          console.log("[postinstall] Set ws3-fca MQTT reconnect backoff to 30 seconds.");
+        } else if (!/reconnectPeriod\s*:\s*30000\b/.test(updated)) {
+          console.warn("[postinstall] Could not identify the MQTT reconnectPeriod setting in listenMqtt.js.");
         }
         updated = reconnectPatched;
 
-        // Some ws3-fca builds end up with a closed MQTT socket but never call
-        // the app's listenMqtt callback. Surface that close so index.js can
-        // invalidate the dead API and run its controlled session recovery.
-        // Preserve the existing close-handler body and append one guarded
-        // callback. The app's listener-generation check suppresses duplicate
-        // callbacks when an error is followed by close.
-        if (
-          /globalCallback/.test(updated) &&
-          !updated.includes("ECLIPSE_MQTT_CLOSE_RECOVERY") &&
-          /(?:const|let|var)\s+mqttClient\s*=\s*ctx\.mqttClient/.test(updated)
-        ) {
-          const closeHandlerPattern = /(mqttClient\.on\(\s*['"]close['"]\s*,\s*function\s*\([^)]*\)\s*\{)([\s\S]*?)(\}\s*\);)/;
-          if (closeHandlerPattern.test(updated)) {
-            updated = updated.replace(closeHandlerPattern, (_match, opening, body, closing) =>
-              opening + body +
-              '\n    // ECLIPSE_MQTT_CLOSE_RECOVERY: report a closed socket to the app.\n' +
-              '    if (typeof globalCallback === "function") {\n' +
-              '      globalCallback(new Error("Messenger MQTT connection closed"), null);\n' +
-              '    }\n  ' + closing
+        // Some ws3-fca 2.x builds have an empty close handler. Report an
+        // unexpected socket close through the existing callback so index.js
+        // can use its single, rate-limited recovery path. Do not report closes
+        // initiated by stopListening(), which is used during normal shutdown
+        // and error cleanup.
+        if (!updated.includes("ECLIPSE_MQTT_CLOSE_RECOVERY")) {
+          const closeHandlerPattern = /((?:mqttClient|client)\.on\(\s*[\'"]close[\'"]\s*,\s*function\s*\(\s*\)\s*\{)([\s\S]*?)(\}\s*\);)/;
+          if (closeHandlerPattern.test(updated) && /globalCallback/.test(updated)) {
+            updated = updated.replace(closeHandlerPattern, (_match, opening, _body, closing) =>
+              opening +
+              "\n    // ECLIPSE_MQTT_CLOSE_RECOVERY: unexpected socket closes must reach the app.\n" +
+              "    if (!eclipseIntentionalStop && !eclipseCloseReported && typeof globalCallback === \"function\") {\n" +
+              "      eclipseCloseReported = true;\n" +
+              "      globalCallback(new Error(\"Messenger MQTT connection closed\"), null);\n" +
+              "    }\n  " + closing
             );
-            console.log("[postinstall] Added MQTT close-event recovery callback in listenMqtt.js");
+            // Add closure-local flags and mark explicit stop calls as intentional.
+            updated = updated.replace(
+              /var mqttClient = ctx\.mqttClient\s*;/,
+              "var mqttClient = ctx.mqttClient;\n  var eclipseIntentionalStop = false;\n  var eclipseCloseReported = false;"
+            );
+            updated = updated.replace(
+              /function stopListening\(\)\s*\{/,
+              "function stopListening() {\n    eclipseIntentionalStop = true;"
+            );
+            console.log("[postinstall] Added guarded MQTT close-event recovery callback.");
           } else {
-            console.warn("[postinstall] Could not safely match the listenMqtt.js close handler; silent socket closes may not trigger recovery.");
+            console.warn("[postinstall] Installed listenMqtt.js close-handler shape is unknown; no close-handler rewrite was made.");
           }
-        } else if (!updated.includes("ECLIPSE_MQTT_CLOSE_RECOVERY")) {
-          console.warn("[postinstall] listenMqtt.js does not match the known mqttClient/globalCallback shape; close-event recovery was not patched.");
         }
       }
       if (updated !== source) {
