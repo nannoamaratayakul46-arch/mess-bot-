@@ -5459,6 +5459,66 @@ app.post(
   }
 );
 
+const DEFAULT_MASS_SETNN_COMPLETION_MESSAGE = "wagpaletnnmgataba";
+
+async function getMassSetNNCompletionMessage() {
+  await db.query(`CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
+    preference_key TEXT PRIMARY KEY,
+    preference_value JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  )`);
+  const { rows } = await db.query(
+    "SELECT preference_value FROM eclipse_dashboard_preferences WHERE preference_key = $1 LIMIT 1",
+    ["mass_setnn_completion_message"]
+  );
+  const value = rows[0]?.preference_value;
+  return typeof value === "string" ? value : DEFAULT_MASS_SETNN_COMPLETION_MESSAGE;
+}
+
+app.get(
+  "/api/dashboard/setnn/completion-message",
+  requireDashboardAccess,
+  async (_req, res) => {
+    try {
+      const message = await getMassSetNNCompletionMessage();
+      return res.json({ ok: true, settings: { message } });
+    } catch (error) {
+      console.error("[DASHBOARD SETNN] Could not load completion message:", error?.message || error);
+      return res.status(500).json({ ok: false, error: "Could not load Mass SetNN completion message." });
+    }
+  }
+);
+
+app.put(
+  "/api/dashboard/setnn/completion-message",
+  requireDashboardAccess,
+  async (req, res) => {
+    const message = typeof req.body?.message === "string" ? req.body.message : "";
+    if (!message.trim() || message.length > 500 || /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/.test(message)) {
+      return res.status(400).json({ ok: false, error: "Completion message must be 1–500 printable characters." });
+    }
+    try {
+      await db.query(`CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
+        preference_key TEXT PRIMARY KEY,
+        preference_value JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`);
+      await db.query(
+        `INSERT INTO eclipse_dashboard_preferences(preference_key, preference_value, updated_at)
+         VALUES($1, $2::jsonb, NOW())
+         ON CONFLICT(preference_key) DO UPDATE SET
+           preference_value = EXCLUDED.preference_value,
+           updated_at = NOW()`,
+        ["mass_setnn_completion_message", JSON.stringify(message.trim())]
+      );
+      return res.json({ ok: true, settings: { message: message.trim() } });
+    } catch (error) {
+      console.error("[DASHBOARD SETNN] Could not save completion message:", error?.message || error);
+      return res.status(500).json({ ok: false, error: "Could not save Mass SetNN completion message." });
+    }
+  }
+);
+
 app.post(
   "/api/dashboard/setnn/start",
   requireDashboardAccess,
@@ -5508,9 +5568,22 @@ app.post(
       senderID: ownerId,
       body: ".setnn " + interval + " " + nickname,
       isGroup: true,
-    }).then(() => {
+    }).then(async () => {
       job.status = dashboardSetNNStopRequests.has(threadID) ? "stopped" : "completed";
       job.finished_at = new Date().toISOString();
+      if (job.status === "completed") {
+        try {
+          const completionMessage = await getMassSetNNCompletionMessage();
+          if (completionMessage.trim()) {
+            await sendMessengerMessage(activeMessengerApi, completionMessage, threadID);
+            pushDashboardEvent("setnn", "Mass SetNN completion message sent for group " + threadID + ".");
+          }
+        } catch (completionError) {
+          // The nickname job succeeded even if its optional final message fails.
+          console.error("[DASHBOARD SETNN] Completion message send failed:", completionError?.message || completionError);
+          pushDashboardEvent("error", "Mass SetNN completed, but its completion message could not be sent.");
+        }
+      }
       pushDashboardEvent("setnn", "SetNN job " + job.status + " for group " + threadID + ".");
     }).catch((error) => {
       job.status = "failed";
