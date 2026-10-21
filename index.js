@@ -12669,6 +12669,25 @@ const jaidenTargetCountdown = createJaidenTargetCountdown({
     const resolved = await resolveTargetName(api, threadId, targetId, { savedName });
     return resolved?.name || "";
   },
+  onComplete: async ({ threadId, targetId }) => {
+    // Only clear the target that actually completed. If an admin selected a
+    // different target while the results message was in flight, preserve it.
+    const targetKey = String(targetId || "").trim();
+    if (!targetKey) return;
+    // Use one conditional DELETE so a target change in the dashboard cannot
+    // race between a separate read and delete.
+    const cleared = await db.query(
+      "DELETE FROM banat_thread_targets WHERE thread_id = $1 AND target_user_id = $2",
+      [String(threadId || "").trim(), targetKey]
+    );
+    if (!cleared?.rowCount) return;
+    clearJaidenCooldownState(threadId);
+    clearBanatDirectedTarget(threadId);
+    clearBanatConversationTarget(threadId);
+    clearBanatBurstState(threadId);
+    pushDashboardEvent("banat-target", "Jaiden Target automatically cleared after countdown results for group " + threadId + ".");
+    console.log("[JAIDEN COUNTDOWN] Completed target cleared for thread " + threadId + ".");
+  },
   send: (api, message, threadID, shouldSend) => new Promise((resolve) => {
     trafficSendMessage(api, message, threadID, (error, messageInfo) => {
       resolve(error ? { sent: false, code: error.code || null } : { sent: true, messageInfo });

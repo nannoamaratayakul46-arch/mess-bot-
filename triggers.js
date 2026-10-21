@@ -1227,7 +1227,7 @@ function banatReplyFamily(reply) {
   return "general";
 }
 
-function banatContextPrompt(threadId) {
+function banatContextPrompt(threadId, currentSpeakerId = null) {
   const state = getBanatConversationContext(threadId);
   if (!state) return "";
 
@@ -1244,6 +1244,40 @@ function banatContextPrompt(threadId) {
         : "speaker:unknown";
       lines.push(`- ${speaker}: ${String(item.text || "").slice(0, 300)}`);
     }
+  }
+
+  // Adapt to the person currently being answered using only their recent,
+  // in-memory messages. Learn their register and shorthand without copying
+  // full sentences or pretending to be them.
+  const speakerKey = String(currentSpeakerId || "").trim();
+  const speakerMessages = speakerKey
+    ? recentMessages
+        .filter(item => String(item?.senderId || "").trim() === speakerKey)
+        .map(item => String(item?.text || "").trim())
+        .filter(Boolean)
+        .slice(-5)
+    : [];
+  if (speakerMessages.length) {
+    const combined = speakerMessages.join(" ");
+    const lowercaseRatio = speakerMessages.filter(text => text === text.toLowerCase()).length / speakerMessages.length;
+    const averageWords = Math.round(
+      speakerMessages.reduce((sum, text) => sum + text.split(/\s+/).filter(Boolean).length, 0) / speakerMessages.length
+    );
+    const shortForms = ["js", "abt", "rn", "n", "u", "ur", "wdym", "ngl", "idk", "bc", "medj", "HAHAHA", "😭", "😂", "🤣", "💀"]
+      .filter(token => token.length > 2 && /[A-Z]/.test(token)
+        ? combined.includes(token)
+        : new RegExp(`(^|\\s)${escapeRegExp(token)}(?=\\s|$|[,.!?])`, "i").test(combined));
+    const languageSignals = ["Taglish/Filipino", "English"];
+    const taglishCount = ["ano", "bakit", "kasi", "naman", "yung", "yan", "ako", "ikaw", "mo", "ko", "teka", "hala"]
+      .filter(word => new RegExp(`(^|\\s)${escapeRegExp(word)}(?=\\s|$|[,.!?])`, "i").test(combined)).length;
+    lines.push(
+      "CURRENT SPEAKER WORDING STYLE (adapt lightly; do not impersonate or copy whole messages):",
+      `- lowercase/casual tendency: ${lowercaseRatio >= 0.6 ? "mostly lowercase/casual" : "mixed casing"}`,
+      `- typical message length: about ${averageWords} words per message`,
+      `- language mix: ${taglishCount >= 2 ? languageSignals[0] : "follow the language mix used in their latest message"}`,
+      `- recognizable shorthand/emoji: ${shortForms.slice(0, 8).join(", ") || "use only what naturally fits"}`,
+      "- Match their level of formality, language mix, pacing, and a few recurring slang/emoji cues when natural. Respond to their meaning; never paste or closely reproduce an entire message."
+    );
   }
 
   if (state.intent) lines.push("CURRENT MESSAGE INTENT: " + state.intent);
@@ -2301,7 +2335,7 @@ async function getTriggerReply(
             incomingText: rawText,
             fallback: selectedFallback,
             replyTargetName,
-            conversationContext: banatContextPrompt(threadId),
+            conversationContext: banatContextPrompt(threadId, senderId),
           });
 
           if (typeof aiReply === "string" && aiReply.trim()) {
@@ -3172,7 +3206,7 @@ async function getBanatConversationReply(
         fallback: defenseFallback,
         replyTargetName: "Jammy",
         conversationContext:
-          banatContextPrompt(threadId) +
+          banatContextPrompt(threadId, senderId) +
           (activeDefense
             ? "\n\nACTIVE JAMMY DEFENSE EXCHANGE:" +
               "\nAttacker: " +
@@ -3221,7 +3255,7 @@ async function getBanatConversationReply(
       incomingText: rawText,
       fallback,
       replyTargetName,
-      conversationContext: banatContextPrompt(threadId),
+      conversationContext: banatContextPrompt(threadId, senderId),
     });
 
     if (typeof aiReply === "string" && aiReply.trim()) {

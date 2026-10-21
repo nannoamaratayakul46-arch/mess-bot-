@@ -131,3 +131,44 @@ test("uses the custom dashboard template and reason", async () => {
   assert.match(sends[100], /^🏆 HEV\n💀 ANA SANTOS\nREASON: Custom result reason\nStarted \d{1,2}:\d{2}:\d{2} [AP]M \/ ended \d{1,2}:\d{2}:\d{2} [AP]M$/);
   tracker.stop();
 });
+
+
+test("clears the selected target only after the results message sends successfully", async () => {
+  const sends = [];
+  const completed = [];
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 5,
+    countDelayMs: 0,
+    getTarget: async () => ({ target_user_id: "target-1", target_name: "Ana Santos" }),
+    getTargetName: async () => "Ana Santos",
+    onComplete: async (target) => { completed.push(target); },
+    send: async (_api, message) => {
+      sends.push(message);
+      return { sent: true };
+    },
+  });
+  await tracker.onMessage({ api: {}, threadId: "gc-autoclear", senderId: "target-1" });
+  await sleep(500);
+  assert.equal(sends.length, 101);
+  assert.deepEqual(completed, [{ threadId: "gc-autoclear", targetId: "target-1" }]);
+  tracker.stop();
+});
+
+test("does not clear the selected target when the results message fails", async () => {
+  const completed = [];
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 5,
+    countDelayMs: 0,
+    getTarget: async () => ({ target_user_id: "target-1", target_name: "Ana Santos" }),
+    getTargetName: async () => "Ana Santos",
+    onComplete: async (target) => { completed.push(target); },
+    send: async (_api, message) => {
+      if (String(message).startsWith("WIN: HEV")) return { sent: false };
+      return { sent: true };
+    },
+  });
+  await tracker.onMessage({ api: {}, threadId: "gc-autoclear-fail", senderId: "target-1" });
+  await sleep(500);
+  assert.deepEqual(completed, []);
+  tracker.stop();
+});

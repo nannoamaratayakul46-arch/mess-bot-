@@ -10,6 +10,7 @@ function createJaidenTargetCountdown(options = {}) {
   const send = options.send;
   const getTargetName = options.getTargetName;
   const getResultsSettings = options.getResultsSettings;
+  const onComplete = options.onComplete;
   const timeZone = options.timeZone || "Asia/Manila";
   const inactivityMs = Number.isFinite(options.inactivityMs) ? Math.max(1, options.inactivityMs) : INACTIVITY_MS;
   const countDelayMs = Number.isFinite(options.countDelayMs) ? Math.max(0, options.countDelayMs) : COUNT_DELAY_MS;
@@ -152,8 +153,19 @@ function createJaidenTargetCountdown(options = {}) {
         return;
       }
       if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
+
+      // A successful results post completes this target's run. Remove local
+      // tracking first so no timer can restart while persistent cleanup runs.
       state.counting = false;
-      scheduleInactivity(threadId, state, generation);
+      clearTimer(state);
+      states.delete(threadId);
+      if (typeof onComplete === "function") {
+        try {
+          await onComplete({ threadId, targetId: state.targetId });
+        } catch (error) {
+          console.error("[JAIDEN COUNTDOWN] Could not clear completed target for thread " + threadId + ":", error?.message || error);
+        }
+      }
     } catch (error) {
       console.error("[JAIDEN COUNTDOWN] Failed for thread " + threadId + ":", error?.message || error);
       if (!stopped && state.generation === generation && states.get(threadId) === state) {
