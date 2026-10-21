@@ -60,7 +60,7 @@ function patchDirectory(directory) {
         // and error cleanup.
         if (!updated.includes("ECLIPSE_MQTT_CLOSE_RECOVERY")) {
           const closeHandlerPattern = /((?:mqttClient|client)\.on\(\s*[\'"]close[\'"]\s*,\s*function\s*\(\s*\)\s*\{)([\s\S]*?)(\}\s*\);)/;
-          if (closeHandlerPattern.test(updated) && /globalCallback/.test(updated)) {
+          if (closeHandlerPattern.test(updated) && /globalCallback/.test(updated) && /var mqttClient = ctx\\.mqttClient\\s*;/.test(updated) && /function stopListening\\(\\)\\s*\\{/.test(updated)) {
             updated = updated.replace(closeHandlerPattern, (_match, opening, _body, closing) =>
               opening +
               "\n    // ECLIPSE_MQTT_CLOSE_RECOVERY: unexpected socket closes must reach the app.\n" +
@@ -101,5 +101,5 @@ function patchDirectory(directory) {
 
 const changed = patchDirectory(root);
 if (!changed) {
-  console.warn("[postinstall] No utils.CustomError constructor calls found; verify ws3-fca source if the error persists.");
+  console.log("[postinstall] No ws3-fca source changes were needed; compatibility markers may already be present.");
 }
