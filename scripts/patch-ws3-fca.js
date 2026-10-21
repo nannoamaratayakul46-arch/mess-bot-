@@ -20,6 +20,22 @@ function patchDirectory(directory) {
     else if (entry.isFile() && entry.name.endsWith(".js")) {
       const source = fs.readFileSync(file, "utf8");
       let updated = source.replace(target, "new Error(");
+      // Guard malformed send responses returned during auth/rate-limit failures.
+      // This preserves the underlying failure instead of crashing on undefined.reduce.
+      if (entry.name === "sendMessage.js") {
+        const sendResponsePattern = /const messageInfo = resData\.payload\.actions\.reduce\s*\(/;
+        const sendResponseGuard =
+          'if (!resData || !resData.payload || !Array.isArray(resData.payload.actions)) {\n' +
+          '        throw new Error("Messenger send response missing payload.actions (possible session, permission, or rate-limit response).");\n' +
+          '      }\n' +
+          '      const messageInfo = resData.payload.actions.reduce(';
+        if (sendResponsePattern.test(updated)) {
+          updated = updated.replace(sendResponsePattern, sendResponseGuard);
+          console.log("[postinstall] Guarded ws3-fca sendMessage response payload");
+        } else if (/const messageInfo\s*=/.test(updated) && /payload\.actions\.reduce/.test(updated)) {
+          console.warn("[postinstall] sendMessage.js response shape differs; send guard was not applied.");
+        }
+      }
       // A 1-second MQTT reconnect loop can amplify Messenger 1675004 rate
       // limits into a reconnect storm. Back off reconnects to 30 seconds.
       if (entry.name === "listenMqtt.js") {

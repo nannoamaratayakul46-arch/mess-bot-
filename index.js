@@ -6778,6 +6778,16 @@ function attemptLogin() {
             // not start a competing login loop.
             listenFailureCount++;
 
+            const listenErrorSummary = {
+              type: Array.isArray(listenError) ? "array" : typeof listenError,
+              name: typeof listenError?.name === "string" ? listenError.name : null,
+              message: typeof listenError?.message === "string" ? listenError.message.slice(0, 300) : null,
+              code: listenError?.code ?? listenError?.errorCode ?? null,
+              keys: listenError && typeof listenError === "object" ? Object.keys(listenError).slice(0, 12) : [],
+              arrayLength: Array.isArray(listenError) ? listenError.length : undefined,
+            };
+            console.error("[LISTENER] Structured error summary:", JSON.stringify(listenErrorSummary));
+
             console.error(
               "[LISTENER] ws3-fca reported a listener error " +
                 "(failure " +
@@ -6824,6 +6834,20 @@ function attemptLogin() {
           // Calling it once for diagnostics and again for the real filter would
           // mark the event as seen on the first call, then suppress it on the second.
           const passesIncomingFilter = shouldProcessIncomingEvent(event);
+          if (["message", "message_reply"].includes(event?.type) && typeof event?.body === "string") {
+            const trimmedBody = event.body.trim();
+            const commandPrefix = trimmedBody[0];
+            if (["!", "/", ".", "\\"].includes(commandPrefix)) {
+              console.info("[MESSAGE ROUTER] Command-like Messenger event received:", JSON.stringify({
+                eventType: event.type,
+                threadPresent: Boolean(event?.threadID),
+                senderPresent: Boolean(event?.senderID),
+                prefix: commandPrefix,
+                bodyLength: trimmedBody.length,
+                passesIncomingFilter,
+              }));
+            }
+          }
           if (event?.type === "event" && String(event?.logMessageType || "").startsWith("log:")) {
             const diagnosticData = event?.logMessageData && typeof event.logMessageData === "object"
               ? event.logMessageData
@@ -6910,7 +6934,12 @@ function attemptLogin() {
             void handleMessage(
               api,
               event
-            );
+            ).catch((error) => {
+              console.error(
+                "[MESSAGE ROUTER] Unhandled command/message handler failure:",
+                error?.stack || error?.message || error
+              );
+            });
           }
         }
       );
