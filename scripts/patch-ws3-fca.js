@@ -67,7 +67,7 @@ function patchDirectory(directory) {
           console.log("[postinstall] Patched ws3-fca error constructor in " + path.relative(root, file));
         }
         if (entry.name === "listenMqtt.js" && source !== updated) {
-          console.log("[postinstall] Added 30-second MQTT reconnect backoff in listenMqtt.js");
+          console.log("[postinstall] Updated ws3-fca MQTT reconnect settings in listenMqtt.js");
         }
       }
     }
