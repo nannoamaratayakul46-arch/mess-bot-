@@ -12,8 +12,8 @@ function read(file) {
   return fs.readFileSync(path.join(root, file), "utf8");
 }
 
-test("Banat Jaiden pool has 200 non-empty replies and renders optional placeholders", () => {
-  assert.equal(pool.TEMPLATES.length, 200);
+test("Banat Jaiden pool has 400 non-empty replies and renders optional placeholders", () => {
+  assert.equal(pool.TEMPLATES.length, 400);
   for (const template of pool.TEMPLATES) {
     assert.equal(typeof template, "string");
     assert.ok(template.trim().length > 0);

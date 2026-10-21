@@ -6,9 +6,9 @@ const fs = require("node:fs");
 const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 
-test("Banat Jaiden pool contains 200 non-empty replies", () => {
+test("Banat Jaiden pool contains 400 non-empty replies", () => {
   const pool = require("../banat-jaiden");
-  assert.equal(pool.TEMPLATES.length, 200);
+  assert.equal(pool.TEMPLATES.length, 400);
   assert.ok(pool.TEMPLATES.every((line) => typeof line === "string" && line.trim().length > 0));
 });
 

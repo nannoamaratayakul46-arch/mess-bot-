@@ -44,42 +44,21 @@ function patchDirectory(directory) {
       // A 1-second MQTT reconnect loop can amplify Messenger 1675004 rate
       // limits into a reconnect storm. Back off reconnects to 30 seconds.
       if (entry.name === "listenMqtt.js") {
-        // Match any simple numeric/expression value, not only the literal 1000.
-        const reconnectPatched = updated.replace(/reconnectPeriod\s*:\s*[^,\r\n}]+/g, "reconnectPeriod: 30000");
+        const reconnectPattern = /reconnectPeriod\s*:\s*[^,\r\n}]+/g;
+        const reconnectPatched = updated.replace(reconnectPattern, "reconnectPeriod: 30000");
         if (reconnectPatched !== updated) {
-          console.log("[postinstall] Added 30-second MQTT reconnect backoff in listenMqtt.js");
-        } else {
-          console.warn("[postinstall] listenMqtt.js has no recognizable reconnectPeriod option; inspect the installed source.");
+          console.log("[postinstall] Set ws3-fca MQTT reconnect backoff to 30 seconds.");
+        } else if (!/reconnectPeriod\s*:\s*30000\b/.test(updated)) {
+          console.warn("[postinstall] Could not identify the MQTT reconnectPeriod setting in listenMqtt.js.");
         }
         updated = reconnectPatched;
 
-        // Some ws3-fca builds end up with a closed MQTT socket but never call
-        // the app's listenMqtt callback. Surface that close so index.js can
-        // invalidate the dead API and run its controlled session recovery.
-        // Preserve the existing close-handler body and append one guarded
-        // callback. The app's listener-generation check suppresses duplicate
-        // callbacks when an error is followed by close.
-        if (
-          /globalCallback/.test(updated) &&
-          !updated.includes("ECLIPSE_MQTT_CLOSE_RECOVERY") &&
-          /(?:const|let|var)\s+mqttClient\s*=\s*ctx\.mqttClient/.test(updated)
-        ) {
-          const closeHandlerPattern = /(mqttClient\.on\(\s*['"]close['"]\s*,\s*function\s*\([^)]*\)\s*\{)([\s\S]*?)(\}\s*\);)/;
-          if (closeHandlerPattern.test(updated)) {
-            updated = updated.replace(closeHandlerPattern, (_match, opening, body, closing) =>
-              opening + body +
-              '\n    // ECLIPSE_MQTT_CLOSE_RECOVERY: report a closed socket to the app.\n' +
-              '    if (typeof globalCallback === "function") {\n' +
-              '      globalCallback(new Error("Messenger MQTT connection closed"), null);\n' +
-              '    }\n  ' + closing
-            );
-            console.log("[postinstall] Added MQTT close-event recovery callback in listenMqtt.js");
-          } else {
-            console.warn("[postinstall] Could not safely match the listenMqtt.js close handler; silent socket closes may not trigger recovery.");
-          }
-        } else if (!updated.includes("ECLIPSE_MQTT_CLOSE_RECOVERY")) {
-          console.warn("[postinstall] listenMqtt.js does not match the known mqttClient/globalCallback shape; close-event recovery was not patched.");
-        }
+        // Do not treat every MQTT "close" event as a fatal listener failure.
+        // MQTT.js emits close during ordinary reconnect cycles too. Reporting
+        // each close through globalCallback makes index.js stop the client and
+        // start a fresh Facebook login, potentially defeating MQTT auto-retry
+        // and amplifying Facebook rate limits. Keep recovery in the existing
+        // listener error path; use reconnectPeriod backoff for transient drops.
       }
       if (updated !== source) {
         fs.writeFileSync(file, updated, "utf8");
@@ -88,7 +67,7 @@ function patchDirectory(directory) {
           console.log("[postinstall] Patched ws3-fca error constructor in " + path.relative(root, file));
         }
         if (entry.name === "listenMqtt.js" && source !== updated) {
-          console.log("[postinstall] Added 30-second MQTT reconnect backoff in listenMqtt.js");
+          console.log("[postinstall] Updated ws3-fca MQTT reconnect settings in listenMqtt.js");
         }
       }
     }
@@ -98,5 +77,5 @@ function patchDirectory(directory) {
 
 const changed = patchDirectory(root);
 if (!changed) {
-  console.warn("[postinstall] No utils.CustomError constructor calls found; verify ws3-fca source if the error persists.");
+  console.log("[postinstall] No ws3-fca source changes were needed; compatibility markers may already be present.");
 }
