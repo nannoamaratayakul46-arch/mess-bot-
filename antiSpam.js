@@ -378,8 +378,16 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       }
       try {
         await callbackCall(cb => api.addUserToGroup(removedID, threadID, cb), 12000);
-        log(`[AUTOMOD-SENSITIVE] Re-add request sent for ${ownerRemoved ? "bot owner" : "trusted group admin"} to ${threadID} after removal event.`);
-        try { await sendMessage(api, threadID, "Sensitive AutoMod: a trusted administrator was removed. A re-add request was sent."); } catch (_) {}
+        log(`[AUTOMOD-SENSITIVE] Membership re-add request succeeded for ${ownerRemoved ? "bot owner" : "trusted group admin"} in ${threadID}.`);
+        if (trustedRemoved && typeof api.changeAdminStatus === "function") {
+          try {
+            await callbackCall(cb => api.changeAdminStatus(threadID, removedID, true, cb), 12000);
+            log(`[AUTOMOD-SENSITIVE] Trusted admin promotion request succeeded after re-add in ${threadID}.`);
+          } catch (error) {
+            log(`[AUTOMOD-SENSITIVE] Trusted admin promotion after re-add failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+          }
+        }
+        try { await sendMessage(api, threadID, "Sensitive AutoMod: a protected administrator was removed; the bot attempted to restore their membership and admin status."); } catch (_) {}
       } catch (error) {
         log(`[AUTOMOD-SENSITIVE] Could not re-add trusted administrator to ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
       }
@@ -407,16 +415,16 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       log("[AUTOMOD-SENSITIVE] Restoration skipped: remove_admin event has no actor ID.");
       return;
     }
-    if (!isBotOwnerId(targetID)) {
-      log("[AUTOMOD-SENSITIVE] Restoration skipped: removed admin does not match configured ADMIN_IDS owner (targetIsConfiguredOwner=false). Check ADMIN_IDS and the account ID being demoted.");
+    if (actorID === targetID || isBotOwnerId(actorID)) {
+      log("[AUTOMOD-SENSITIVE] Trusted-admin enforcement skipped: actor is target or configured bot owner.");
       return;
     }
-    if (actorID === targetID) {
-      log("[AUTOMOD-SENSITIVE] Restoration skipped: actor and target are the same account.");
-      return;
-    }
-    if (isBotOwnerId(actorID)) {
-      log("[AUTOMOD-SENSITIVE] Restoration skipped: event actor matches configured bot owner.");
+
+    const { isGroupTrustedAdmin } = require("./permissions");
+    const targetIsOwner = Boolean(isBotOwnerId(targetID));
+    const targetIsGroupTrusted = Boolean(isGroupTrustedAdmin(targetID, threadID));
+    if (!targetIsOwner && !targetIsGroupTrusted) {
+      log("[AUTOMOD-SENSITIVE] Restoration skipped: target is neither a configured owner nor a trusted admin in this group.");
       return;
     }
 
@@ -430,45 +438,45 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       log(`[AUTOMOD-SENSITIVE] Restoration skipped in ${threadID}: sensitive_admin_enabled is not true.`);
       return;
     }
-    log(`[AUTOMOD-SENSITIVE] Restoration checks passed in ${threadID}; proceeding to verify bot admin status and restore owner.`);
-    const actorName = await resolveMemberName(api, threadID, actorID);
-    const actorLabel = actorName ? actorName + " (" + actorID + ")" : actorID;
 
-    // This is a targeted remove_admin event for the configured owner. Avoid
-    // getThreadInfo/getThreadInfoDeprecated here: ws3-fca currently throws
-    // inside those lookups, and reading thread lists would add expensive API work.
-    // Request promotion directly; Messenger will reject it if the bot lacks
-    // permission or the owner is no longer a participant.
+    // Restore the targeted trusted admin (or configured owner) in this group.
+    // Only use the IDs supplied by the Messenger remove_admin event.
+    let promoted = false;
     try {
       if (!api || typeof api.changeAdminStatus !== "function") {
-        log("[AUTOMOD-SENSITIVE] Cannot restore owner admin status: changeAdminStatus is unavailable.");
+        log("[AUTOMOD-SENSITIVE] Cannot restore admin status: changeAdminStatus is unavailable.");
       } else {
         await callbackCall(cb => api.changeAdminStatus(threadID, targetID, true, cb), 12000);
-        log(`[AUTOMOD-SENSITIVE] Owner admin restoration request succeeded in ${threadID}.`);
+        promoted = true;
+        log(`[AUTOMOD-SENSITIVE] Admin restoration request succeeded for ${targetIsOwner ? "owner" : "trusted group admin"} in ${threadID}.`);
       }
     } catch (error) {
-      log(`[AUTOMOD-SENSITIVE] Owner admin restoration failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+      log(`[AUTOMOD-SENSITIVE] Admin restoration failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
     }
 
-    // Optional, narrowly scoped enforcement: demote only the verified event
-    // actor in this same group, and never the configured owner or the target.
-    // This is opt-in via sensitive_admin_demote_actor_enabled.
-    if (
-      String(config?.sensitive_admin_demote_actor_enabled ?? process.env.SENSITIVE_ADMIN_DEMOTE_ACTOR_ENABLED ?? "").toLowerCase() === "true" &&
-      actorID &&
-      actorID !== targetID &&
-      !isBotOwnerId(actorID) &&
-      api &&
-      typeof api.changeAdminStatus === "function"
-    ) {
+    // Remove the verified actor from this GC after they demote a protected admin.
+    // Never target the trusted admin or configured owner, and never act cross-group.
+    if (targetIsGroupTrusted && actorID !== targetID && !isBotOwnerId(actorID)) {
       try {
-        await callbackCall(cb => api.changeAdminStatus(threadID, actorID, false, cb), 12000);
-        log(`[AUTOMOD-SENSITIVE] Event actor demotion request succeeded in ${threadID}.`);
+        if (typeof api?.removeUserFromGroup === "function") {
+          await callbackCall(cb => api.removeUserFromGroup(actorID, threadID, cb), 12000);
+          log(`[AUTOMOD-SENSITIVE] Verified remover removal request succeeded in ${threadID}.`);
+        } else if (typeof removeFromGroupFn === "function") {
+          const removal = await removeFromGroupFn(api, threadID, actorID);
+          if (!removal?.ok) throw new Error(removal?.errorMessage || removal?.message || "shared removal helper rejected the action");
+          log(`[AUTOMOD-SENSITIVE] Verified remover removal request succeeded in ${threadID}.`);
+        } else {
+          log("[AUTOMOD-SENSITIVE] Cannot remove verified remover: no supported group-removal API.");
+        }
       } catch (error) {
-        log(`[AUTOMOD-SENSITIVE] Event actor demotion failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+        log(`[AUTOMOD-SENSITIVE] Verified remover removal failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
       }
-    } else {
-      log("[AUTOMOD-SENSITIVE] Actor demotion skipped: opt-in is disabled or actor safeguards did not pass.");
+    }
+
+    // A removed trusted admin may also need to rejoin before promotion can succeed.
+    // Promotion is retried after addUserToGroup succeeds in the unsubscribe handler.
+    if (!promoted && targetIsGroupTrusted) {
+      log(`[AUTOMOD-SENSITIVE] Trusted admin ${targetID} may need membership restored before promotion in ${threadID}.`);
     }
 
     // No cross-thread scans; all actions remain limited to this event's group.
