@@ -363,23 +363,25 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         data.leftParticipantId ?? data.removedParticipantFbId ?? data.removedParticipantFBID ??
         data.removedParticipantID ?? data.removedParticipantId ?? data.TARGET_ID ?? data.target_id ?? ""
       ).trim();
-      if (!threadID || !removedID || !isBotOwnerId(removedID)) return;
+      if (!threadID || !removedID) return;
+      const { isGroupTrustedAdmin } = require("./permissions");
+      const ownerRemoved = Boolean(isBotOwnerId(removedID));
+      const trustedRemoved = Boolean(isGroupTrustedAdmin(removedID, threadID));
+      if (!ownerRemoved && !trustedRemoved) return;
       const settings = await getSettings(threadID);
       if (settings?.enabled !== true) return;
       const config = await getConfig(threadID);
       if (config.sensitive_admin_enabled !== true) return;
       if (typeof api?.addUserToGroup !== "function") {
-        log("[AUTOMOD-SENSITIVE] Owner was removed, but addUserToGroup is unavailable; cannot attempt rejoin.");
+        log("[AUTOMOD-SENSITIVE] Trusted administrator was removed, but addUserToGroup is unavailable; cannot attempt rejoin.");
         return;
       }
       try {
         await callbackCall(cb => api.addUserToGroup(removedID, threadID, cb), 12000);
-        log(`[AUTOMOD-SENSITIVE] Re-add request sent for bot owner ${removedID} to ${threadID} after removal event.`);
-        try {
-          await sendMessage(api, threadID, "Sensitive AutoMod: the bot owner was removed. A re-add request was sent.");
-        } catch (_) {}
+        log(`[AUTOMOD-SENSITIVE] Re-add request sent for ${ownerRemoved ? "bot owner" : "trusted group admin"} to ${threadID} after removal event.`);
+        try { await sendMessage(api, threadID, "Sensitive AutoMod: a trusted administrator was removed. A re-add request was sent."); } catch (_) {}
       } catch (error) {
-        log(`[AUTOMOD-SENSITIVE] Could not re-add bot owner to ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+        log(`[AUTOMOD-SENSITIVE] Could not re-add trusted administrator to ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
       }
       return;
     }
