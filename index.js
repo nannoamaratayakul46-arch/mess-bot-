@@ -6705,7 +6705,6 @@ function attemptLogin() {
 
       if (previousApi && previousApi !== api) {
         activeListenerGeneration = 0;
-        listenerGeneration++;
         try {
           if (typeof previousApi.stopListenMqtt === "function") {
             previousApi.stopListenMqtt();
