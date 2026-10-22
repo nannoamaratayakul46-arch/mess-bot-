@@ -1645,6 +1645,11 @@ async function trafficProcessQueue() {
               const rawCode = String(
                 error?.errorCode ||
                 error?.code ||
+                error?.error?.errorCode ||
+                error?.error?.code ||
+                error?.error ||
+                error?.errorDescription?.errorCode ||
+                error?.errorDescription?.code ||
                 error?.cause?.errorCode ||
                 error?.cause?.code ||
                 error?.name ||
@@ -1657,10 +1662,26 @@ async function trafficProcessQueue() {
               // rejection can be distinguished from a session/HTTP failure.
               // Never serialize the full error/response: it may contain cookies
               // or request/session data.
+              const safeErrorObject = (value) => {
+                if (!value || typeof value !== "object" || Array.isArray(value)) return value;
+                const allowedKeys = new Set([
+                  "code", "errorCode", "type", "message", "error_description",
+                  "errorDescription", "error_user_title", "error_user_msg",
+                  "error_subcode", "errorSubcode", "status", "statusCode",
+                ]);
+                const safe = {};
+                for (const [key, item] of Object.entries(value)) {
+                  if (
+                    allowedKeys.has(key) &&
+                    (typeof item === "string" || typeof item === "number" || typeof item === "boolean")
+                  ) safe[key] = String(item).slice(0, 240);
+                }
+                return Object.keys(safe).length ? JSON.stringify(safe) : "[object with no safe diagnostic fields]";
+              };
               const diagnosticFields = [
                 ["message", error?.message],
-                ["errorDescription", error?.errorDescription],
-                ["error", typeof error?.error === "string" || typeof error?.error === "number" ? error.error : null],
+                ["errorDescription", safeErrorObject(error?.errorDescription)],
+                ["error", safeErrorObject(error?.error)],
                 ["errorValue", typeof error === "string" || typeof error === "number" ? error : null],
                 ["statusCode", error?.statusCode ?? error?.status],
                 ["causeCode", error?.cause?.code],
