@@ -27,7 +27,7 @@ function createJaidenTargetCountdown(options = {}) {
       await persistState({
         threadId, targetId: state.targetId, targetName: state.targetName || "",
         lockedAt: state.lockedAt, lastActivityAt: state.lastActivityAt,
-        nextNumber: state.nextNumber || 1, status: state.counting ? "counting" : "waiting",
+        countdownStartedAt: state.countdownStartedAt || null, nextNumber: state.nextNumber || 1, status: state.counting ? "counting" : "waiting",
       });
     } catch (error) {
       console.error("[JAIDEN COUNTDOWN] Could not persist state for thread " + threadId + ":", error?.message || error);
@@ -120,7 +120,9 @@ function createJaidenTargetCountdown(options = {}) {
   async function runCountdown(threadId, state, generation) {
     if (stopped || state.generation !== generation || state.counting) return;
     state.counting = true;
-    const startedAt = Date.now();
+    const startedAt = Number(state.countdownStartedAt) || Date.now();
+    state.countdownStartedAt = startedAt;
+    await persist(threadId, state);
     try {
       for (let number = Math.max(1, Number(state.nextNumber) || 1); number <= 100; number += 1) {
         if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
@@ -255,7 +257,7 @@ function createJaidenTargetCountdown(options = {}) {
         if (saved && String(saved.targetId) === targetId) {
           state = { targetId, targetName: String(saved.targetName || target?.target_name || ''),
             lockedAt: Number(saved.lockedAt) || Date.now(), lastActivityAt: Number(saved.lastActivityAt) || Date.now(),
-            nextNumber: Math.max(1, Number(saved.nextNumber) || 1), timer: null, generation: 0,
+            countdownStartedAt: Number(saved.countdownStartedAt) || null, nextNumber: Math.max(1, Number(saved.nextNumber) || 1), timer: null, generation: 0,
             counting: false, api, };
           states.set(threadKey, state);
         }
@@ -296,7 +298,7 @@ function createJaidenTargetCountdown(options = {}) {
       }
       const state = { targetId, targetName: String(saved.targetName || currentTarget?.target_name || ''),
         lockedAt: Number(saved.lockedAt) || Date.now(), lastActivityAt: Number(saved.lastActivityAt) || Date.now(),
-        nextNumber: Math.max(1, Number(saved.nextNumber) || 1), timer: null, generation: 0, counting: false, api };
+        countdownStartedAt: Number(saved.countdownStartedAt) || null, nextNumber: Math.max(1, Number(saved.nextNumber) || 1), timer: null, generation: 0, counting: false, api };
       states.set(threadId, state);
       scheduleInactivity(threadId, state, state.generation);
       console.log('[JAIDEN COUNTDOWN] Restored saved target lock for thread ' + threadId + ' at ' + new Date(state.lockedAt).toISOString());
