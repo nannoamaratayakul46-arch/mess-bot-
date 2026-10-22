@@ -6815,6 +6815,13 @@ function attemptLogin() {
         );
       }
 
+      // Restore unfinished Jaiden Target countdowns from PostgreSQL.
+      try {
+        await jaidenTargetCountdown.restore(api);
+      } catch (error) {
+        console.error("[JAIDEN COUNTDOWN] Startup restore failed:", error?.message || error);
+      }
+
       // ========================================================
       // LAST CHAMBER
       // Restores any open table after a restart.
@@ -12802,6 +12809,10 @@ async function handleAutomaticBanatMessage({
 // the existing Traffic Governor + meme helper dependencies.
 
 const jaidenTargetCountdown = createJaidenTargetCountdown({
+  persistState: (state) => db.saveJaidenTargetCountdownState(state),
+  loadState: (threadId) => db.getJaidenTargetCountdownState(threadId),
+  loadAllStates: () => db.listJaidenTargetCountdownStates(),
+  deleteState: (threadId, targetId) => db.deleteJaidenTargetCountdownState(threadId, targetId),
   getTarget: (threadId) => db.getBanatThreadTarget(threadId),
   getResultsSettings: () => db.getJaidenTargetCountdownSettings(),
   getTargetName: async ({ threadId, targetId, savedName, api }) => {
