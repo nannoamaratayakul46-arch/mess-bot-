@@ -4157,6 +4157,7 @@ async function deleteJaidenTargetCountdownState(threadId, targetId = null) {
 const DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS = {
   template: "WIN: {{WIN}}\nLOSE: {{LOSE}}\nREASON: {{REASON}}\nSTART: {{START}}\nEND: {{END}}",
   reason: "DI TUMAGOS SA HEV CHALLENGE, NA-OUTPLAY SA COUNTDOWN 😭",
+  customNickname: "",
 };
 let jaidenTargetCountdownSettingsTableReady = null;
 
