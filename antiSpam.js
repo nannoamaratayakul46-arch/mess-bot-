@@ -454,27 +454,41 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       log(`[AUTOMOD-SENSITIVE] Admin restoration failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
     }
 
-    // Remove the verified actor from this GC after they demote a protected admin.
-    // Never target the trusted admin or configured owner, and never act cross-group.
+    // Preserve the legacy owner-removal safeguard, but use the requested stronger
+    // kick behavior only for a group-specific trusted admin.
+    if (targetIsOwner && String(process.env.SENSITIVE_ADMIN_DEMOTE_ACTOR_ENABLED || "").toLowerCase() === "true") {
+      if (!promoted) {
+        log("[AUTOMOD-SENSITIVE] Actor demotion skipped because owner restoration failed.");
+      } else if (typeof api?.changeAdminStatus === "function") {
+        try {
+          await callbackCall(cb => api.changeAdminStatus(threadID, actorID, false, cb), 12000);
+          log(`[AUTOMOD-SENSITIVE] Event actor demotion request succeeded in ${threadID}.`);
+        } catch (error) {
+          log(`[AUTOMOD-SENSITIVE] Event actor demotion failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+        }
+      }
+    }
+
+    // For a trusted group admin, remove the verified demoter from this GC.
+    // Never target the protected admin or configured owner, and never act cross-group.
     if (targetIsGroupTrusted && actorID !== targetID && !isBotOwnerId(actorID)) {
       try {
-        if (typeof api?.removeUserFromGroup === "function") {
+        let removal;
+        if (typeof removeFromGroupFn === "function") {
+          removal = await removeFromGroupFn(api, threadID, actorID);
+        } else if (typeof api?.removeUserFromGroup === "function") {
           await callbackCall(cb => api.removeUserFromGroup(actorID, threadID, cb), 12000);
-          log(`[AUTOMOD-SENSITIVE] Verified remover removal request succeeded in ${threadID}.`);
-        } else if (typeof removeFromGroupFn === "function") {
-          const removal = await removeFromGroupFn(api, threadID, actorID);
-          if (!removal?.ok) throw new Error(removal?.errorMessage || removal?.message || "shared removal helper rejected the action");
-          log(`[AUTOMOD-SENSITIVE] Verified remover removal request succeeded in ${threadID}.`);
+          removal = { ok: true };
         } else {
-          log("[AUTOMOD-SENSITIVE] Cannot remove verified remover: no supported group-removal API.");
+          throw new Error("no supported group-removal API");
         }
+        if (!removal?.ok) throw new Error(removal?.errorMessage || removal?.message || "group-removal API rejected the action");
+        log(`[AUTOMOD-SENSITIVE] Verified remover removal request succeeded in ${threadID}.`);
       } catch (error) {
         log(`[AUTOMOD-SENSITIVE] Verified remover removal failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
       }
     }
 
-    // A removed trusted admin may also need to rejoin before promotion can succeed.
-    // Promotion is retried after addUserToGroup succeeds in the unsubscribe handler.
     if (!promoted && targetIsGroupTrusted) {
       log(`[AUTOMOD-SENSITIVE] Trusted admin ${targetID} may need membership restored before promotion in ${threadID}.`);
     }
