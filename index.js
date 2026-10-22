@@ -3598,6 +3598,7 @@ app.use(express.json({
   // Let the profile endpoint use its own bounded parser for image data URLs.
   type: req =>
     !/^\/api\/dashboard\/groups\/[^/]+\/profile$/.test(req.path) &&
+    !/^\/api\/dashboard\/auto-welcome(?:\/|$)/.test(req.path) &&
     Boolean(req.is("application/json")),
 }));
 
