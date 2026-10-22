@@ -4117,7 +4117,7 @@ async function getJaidenTargetCountdownState(threadId) {
 async function listJaidenTargetCountdownStates() {
   await ensureJaidenCountdownStateTable();
   const { rows } = await requireConn().query(
-    "SELECT thread_id, target_user_id, target_name, locked_at, last_activity_at, next_number, status FROM jaiden_target_countdown_state WHERE status IN ('waiting','counting')"
+    "SELECT thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, next_number, status FROM jaiden_target_countdown_state WHERE status IN ('waiting','counting')"
   );
   return (rows || []).map(row => ({ threadId: row.thread_id, targetId: row.target_user_id,
     targetName: row.target_name, lockedAt: Number(row.locked_at), lastActivityAt: Number(row.last_activity_at), countdownStartedAt: row.countdown_started_at == null ? null : Number(row.countdown_started_at),
