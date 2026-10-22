@@ -213,3 +213,24 @@ test("persists target lock and resumes countdown progress with original timestam
   assert.equal(sendsAfterRestart[0], String(checkpoint.nextNumber));
   second.stop();
 });
+
+
+test("syncs the bot nickname to the resolved target when countdown begins", async () => {
+  const nicknameSyncs = [];
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 5,
+    countDelayMs: 1000,
+    getTarget: async () => ({ target_user_id: "target-nick", target_name: "Target Display Name" }),
+    getTargetName: async () => "Target Display Name",
+    syncTargetNickname: async (details) => { nicknameSyncs.push(details); },
+    send: async () => ({ sent: true }),
+  });
+  await tracker.onMessage({ api: {}, threadId: "gc-nickname", senderId: "target-nick" });
+  await sleep(30);
+  assert.equal(nicknameSyncs.length, 1);
+  assert.equal(nicknameSyncs[0].threadId, "gc-nickname");
+  assert.equal(nicknameSyncs[0].targetId, "target-nick");
+  assert.equal(nicknameSyncs[0].savedName, "Target Display Name");
+  assert.ok(nicknameSyncs[0].countdownStartedAt > 0);
+  tracker.stop();
+});
