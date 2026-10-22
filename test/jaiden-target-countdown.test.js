@@ -172,3 +172,65 @@ test("does not clear the selected target when the results message fails", async 
   assert.deepEqual(completed, []);
   tracker.stop();
 });
+
+
+test("persists target lock and resumes countdown progress with original timestamps after restart", async () => {
+  const saved = new Map();
+  const sendsBeforeRestart = [];
+  const sendsAfterRestart = [];
+  const persistState = async (state) => saved.set(state.threadId, { ...state });
+  const loadState = async (threadId) => saved.get(threadId) || null;
+  const loadAllStates = async () => [...saved.values()];
+  const deleteState = async (threadId) => saved.delete(threadId);
+  const target = async () => ({ target_user_id: "target-persist", target_name: "Target" });
+  const first = createJaidenTargetCountdown({
+    inactivityMs: 5, countDelayMs: 100,
+    getTarget: target, persistState, loadState, loadAllStates, deleteState,
+    send: async (_api, message) => { sendsBeforeRestart.push(message); return { sent: true }; },
+  });
+  await first.onMessage({ api: {}, threadId: "gc-persist", senderId: "target-persist" });
+  await sleep(30);
+  const checkpoint = saved.get("gc-persist");
+  assert.ok(checkpoint);
+  assert.ok(checkpoint.lockedAt > 0);
+  assert.ok(checkpoint.lastActivityAt > 0);
+  assert.ok(checkpoint.countdownStartedAt > 0);
+  assert.ok(checkpoint.nextNumber >= 2);
+  const originalLock = checkpoint.lockedAt;
+  const originalCountdownStart = checkpoint.countdownStartedAt;
+  first.stop();
+
+  const second = createJaidenTargetCountdown({
+    inactivityMs: 5, countDelayMs: 100,
+    getTarget: target, persistState, loadState, loadAllStates, deleteState,
+    send: async (_api, message) => { sendsAfterRestart.push(message); return { sent: true }; },
+  });
+  await second.restore({});
+  await sleep(25);
+  assert.equal(saved.get("gc-persist").lockedAt, originalLock);
+  assert.equal(saved.get("gc-persist").countdownStartedAt, originalCountdownStart);
+  assert.ok(sendsAfterRestart.length > 0);
+  assert.equal(sendsAfterRestart[0], String(checkpoint.nextNumber));
+  second.stop();
+});
+
+
+test("syncs the bot nickname to the resolved target when countdown begins", async () => {
+  const nicknameSyncs = [];
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 5,
+    countDelayMs: 1000,
+    getTarget: async () => ({ target_user_id: "target-nick", target_name: "Target Display Name" }),
+    getTargetName: async () => "Target Display Name",
+    syncTargetNickname: async (details) => { nicknameSyncs.push(details); },
+    send: async () => ({ sent: true }),
+  });
+  await tracker.onMessage({ api: {}, threadId: "gc-nickname", senderId: "target-nick" });
+  await sleep(30);
+  assert.equal(nicknameSyncs.length, 1);
+  assert.equal(nicknameSyncs[0].threadId, "gc-nickname");
+  assert.equal(nicknameSyncs[0].targetId, "target-nick");
+  assert.equal(nicknameSyncs[0].savedName, "Target Display Name");
+  assert.ok(nicknameSyncs[0].countdownStartedAt > 0);
+  tracker.stop();
+});
