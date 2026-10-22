@@ -456,8 +456,10 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
 
     // Preserve the legacy owner-removal safeguard, but use the requested stronger
     // kick behavior only for a group-specific trusted admin.
-    if (targetIsOwner && String(process.env.SENSITIVE_ADMIN_DEMOTE_ACTOR_ENABLED || "").toLowerCase() === "true") {
-      if (!promoted) {
+    if (targetIsOwner) {
+      if (String(process.env.SENSITIVE_ADMIN_DEMOTE_ACTOR_ENABLED || "").toLowerCase() !== "true") {
+        log("[AUTOMOD-SENSITIVE] Actor demotion skipped: opt-in is disabled.");
+      } else if (!promoted) {
         log("[AUTOMOD-SENSITIVE] Actor demotion skipped because owner restoration failed.");
       } else if (typeof api?.changeAdminStatus === "function") {
         try {
