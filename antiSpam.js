@@ -451,7 +451,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         log(`[AUTOMOD-SENSITIVE] Admin restoration request succeeded for ${targetIsOwner ? "owner" : "trusted group admin"} in ${threadID}.`);
       }
     } catch (error) {
-      log(`[AUTOMOD-SENSITIVE] Admin restoration failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+      log(`[AUTOMOD-SENSITIVE] ${targetIsOwner ? "Owner admin restoration failed" : "Trusted admin restoration failed"} in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
     }
 
     // Preserve the legacy owner-removal safeguard, but use the requested stronger
