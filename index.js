@@ -12819,6 +12819,15 @@ const jaidenTargetCountdown = createJaidenTargetCountdown({
     const resolved = await resolveTargetName(api, threadId, targetId, { savedName });
     return resolved?.name || "";
   },
+  syncTargetNickname: async ({ threadId, targetId, savedName, api }) => {
+    const resolved = await resolveTargetName(api, threadId, targetId, { savedName });
+    const targetName = String(resolved?.name || "").trim();
+    const botId = String(typeof api?.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
+    if (!targetName || !botId) throw new Error("Target display name or bot user ID is unavailable.");
+    await changeNicknameAsync(api, targetName, threadId, botId);
+    console.log("[JAIDEN COUNTDOWN] Synced bot nickname in " + threadId + " to selected target " + targetId + " (" + targetName + ")");
+    return targetName;
+  },
   onComplete: async ({ threadId, targetId }) => {
     // Only clear the target that actually completed. If an admin selected a
     // different target while the results message was in flight, preserve it.
