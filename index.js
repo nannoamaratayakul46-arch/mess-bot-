@@ -65,7 +65,7 @@ const { login } = require("ws3-fca");
 
 const db = require("./db");
 const trafficDeliveryStore = require("./trafficDeliveryHistory");
-const { resolveTargetName } = require("./targetName");
+const { resolveTargetName, clearTargetNameCache } = require("./targetName");
 const { createJaidenMessageQueue } = require("./jaiden-message-queue");
 const { createJaidenTargetCountdown } = require("./jaiden-target-countdown");
 const { registerGroupProfileRoutes, handleGroupProfileEvent } = require("./groupProfileRoutes");
@@ -12835,10 +12835,18 @@ const jaidenTargetCountdown = createJaidenTargetCountdown({
     return resolved?.name || "";
   },
   syncTargetNickname: async ({ threadId, targetId, savedName, api }) => {
-    const resolved = await resolveTargetName(api, threadId, targetId, { savedName });
+    const isDefaultPlaceholder = (value) => /^(?:kei|unknown(?: target)?|unnamed|facebook user|messenger user)(?:\s+\d+)?$/i.test(String(value || "").trim());
+    let resolved = await resolveTargetName(api, threadId, targetId, { savedName: isDefaultPlaceholder(savedName) ? "" : savedName });
+    // "Kei" is the legacy default placeholder, not a verified target display name.
+    // Clear a cached placeholder and retry the real Messenger profile before using
+    // the operator's configured fallback nickname.
+    if (isDefaultPlaceholder(resolved?.name)) {
+      clearTargetNameCache(threadId, targetId);
+      resolved = await resolveTargetName(api, threadId, targetId, {});
+    }
     let nickname = String(resolved?.name || "").trim();
     let nicknameSource = "target";
-    if (!nickname) {
+    if (!nickname || isDefaultPlaceholder(nickname)) {
       const settings = await db.getJaidenTargetCountdownSettings();
       nickname = String(settings?.customNickname || "").trim();
       nicknameSource = "custom fallback";
