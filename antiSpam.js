@@ -45,7 +45,7 @@ function callbackCall(invoke, timeoutMs = 10000) {
   });
 }
 
-function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, log = () => {}, getSettings = getAutoModSettings, setEnabled = setAutoModEnabled, isBotOwnerId = isBotOwner, removeFromGroupFn = removeFromGroup }) {
+function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, log = () => {}, onGroupJoin = async () => {}, getSettings = getAutoModSettings, setEnabled = setAutoModEnabled, isBotOwnerId = isBotOwner, removeFromGroupFn = removeFromGroup }) {
   if (!db || typeof db.query !== "function") throw new TypeError("antiSpam requires the persistent db query interface");
 
   const hits = new Map();
@@ -639,7 +639,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     const eventQueueIdentity = userID || String(event?.logMessageType || event?.type || "system-event");
     const key = threadID + ":" + eventQueueIdentity;
     const previous = queues.get(key) || Promise.resolve();
-    const next = previous.then(() => processSensitiveAdminEvent(api, event)).then(() => processGroupProfileEvent(api, event)).then(() => processGroupMembershipEvent(api, event)).catch(error => {
+    const next = previous.then(() => onGroupJoin(api, event)).then(() => processSensitiveAdminEvent(api, event)).then(() => processGroupProfileEvent(api, event)).then(() => processGroupMembershipEvent(api, event)).catch(error => {
       log(`[AUTOMOD-PROFILE] event check failed: ${String(error?.message || error).slice(0, 180)}`);
     });
     queues.set(key, next);

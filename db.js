@@ -3511,8 +3511,8 @@ async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled =
   const lockNow = Date.now();
   await conn.query(`
     INSERT INTO jaiden_target_countdown_state
-      (thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, next_number, status, updated_at)
-    VALUES ($1, $2, $3, $4, $4, NULL, 1, 'locked', $4)
+      (thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, targeting_started_at, next_number, status, updated_at)
+    VALUES ($1, $2, $3, $4, $4, NULL, $4, 1, 'locked', $4)
     ON CONFLICT (thread_id) DO UPDATE SET
       target_user_id = EXCLUDED.target_user_id,
       target_name = EXCLUDED.target_name,
@@ -4094,6 +4094,7 @@ async function ensureJaidenCountdownStateTable() {
         locked_at BIGINT NOT NULL,
         last_activity_at BIGINT NOT NULL,
         countdown_started_at BIGINT,
+        targeting_started_at BIGINT,
         next_number INTEGER NOT NULL DEFAULT 1,
         status TEXT NOT NULL DEFAULT 'waiting',
         updated_at BIGINT NOT NULL
@@ -4102,6 +4103,7 @@ async function ensureJaidenCountdownStateTable() {
   }
   await jaidenCountdownStateTableReady;
   await requireConn().query("ALTER TABLE jaiden_target_countdown_state ADD COLUMN IF NOT EXISTS countdown_started_at BIGINT");
+  await requireConn().query("ALTER TABLE jaiden_target_countdown_state ADD COLUMN IF NOT EXISTS targeting_started_at BIGINT");
 }
 async function saveJaidenTargetCountdownState(state = {}) {
   await ensureJaidenCountdownStateTable();
@@ -4114,34 +4116,36 @@ async function saveJaidenTargetCountdownState(state = {}) {
   const status = ['locked', 'waiting', 'counting'].includes(state.status) ? state.status : 'waiting';
   await requireConn().query(`
     INSERT INTO jaiden_target_countdown_state
-      (thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, next_number, status, updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      (thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, targeting_started_at, next_number, status, updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
     ON CONFLICT (thread_id) DO UPDATE SET
       target_user_id=EXCLUDED.target_user_id, target_name=EXCLUDED.target_name,
       locked_at=EXCLUDED.locked_at, last_activity_at=EXCLUDED.last_activity_at, countdown_started_at=EXCLUDED.countdown_started_at,
+      targeting_started_at=COALESCE(jaiden_target_countdown_state.targeting_started_at, EXCLUDED.targeting_started_at),
       next_number=EXCLUDED.next_number, status=EXCLUDED.status, updated_at=EXCLUDED.updated_at
   `, [threadId, targetId, String(state.targetName || ''), lockedAt, lastActivityAt,
     Number.isFinite(Number(state.countdownStartedAt)) && Number(state.countdownStartedAt) > 0 ? Number(state.countdownStartedAt) : null,
+    Number.isFinite(Number(state.targetingStartedAt)) && Number(state.targetingStartedAt) > 0 ? Number(state.targetingStartedAt) : lockedAt,
     nextNumber, status, Date.now()]);
 }
 async function getJaidenTargetCountdownState(threadId) {
   await ensureJaidenCountdownStateTable();
   const { rows } = await requireConn().query(
-    'SELECT thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, next_number, status FROM jaiden_target_countdown_state WHERE thread_id = $1',
+    'SELECT thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, targeting_started_at, next_number, status FROM jaiden_target_countdown_state WHERE thread_id = $1',
     [String(threadId || '').trim()]
   );
   const row = rows[0];
   return row ? { threadId: row.thread_id, targetId: row.target_user_id, targetName: row.target_name,
-    lockedAt: Number(row.locked_at), lastActivityAt: Number(row.last_activity_at), countdownStartedAt: row.countdown_started_at == null ? null : Number(row.countdown_started_at),
+    lockedAt: Number(row.locked_at), lastActivityAt: Number(row.last_activity_at), countdownStartedAt: row.countdown_started_at == null ? null : Number(row.countdown_started_at), targetingStartedAt: row.targeting_started_at == null ? Number(row.locked_at) : Number(row.targeting_started_at),
     nextNumber: Number(row.next_number), status: row.status } : null;
 }
 async function listJaidenTargetCountdownStates() {
   await ensureJaidenCountdownStateTable();
   const { rows } = await requireConn().query(
-    "SELECT thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, next_number, status FROM jaiden_target_countdown_state WHERE status IN ('waiting','counting')"
+    "SELECT thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, targeting_started_at, next_number, status FROM jaiden_target_countdown_state WHERE status IN ('waiting','counting')"
   );
   return (rows || []).map(row => ({ threadId: row.thread_id, targetId: row.target_user_id,
-    targetName: row.target_name, lockedAt: Number(row.locked_at), lastActivityAt: Number(row.last_activity_at), countdownStartedAt: row.countdown_started_at == null ? null : Number(row.countdown_started_at),
+    targetName: row.target_name, lockedAt: Number(row.locked_at), lastActivityAt: Number(row.last_activity_at), countdownStartedAt: row.countdown_started_at == null ? null : Number(row.countdown_started_at), targetingStartedAt: row.targeting_started_at == null ? Number(row.locked_at) : Number(row.targeting_started_at),
     nextNumber: Number(row.next_number), status: row.status }));
 }
 async function deleteJaidenTargetCountdownState(threadId, targetId = null) {
