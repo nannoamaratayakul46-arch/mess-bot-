@@ -12835,7 +12835,7 @@ const jaidenTargetCountdown = createJaidenTargetCountdown({
     return resolved?.name || "";
   },
   syncTargetNickname: async ({ threadId, targetId, savedName, api }) => {
-    const isDefaultPlaceholder = (value) => /^(?:kei|unknown(?: target)?|unnamed|facebook user|messenger user)(?:\\s+\\d+)?$/i.test(String(value || "").trim());
+    const isDefaultPlaceholder = (value) => /^(?:kei|unknown(?: target)?|unnamed|facebook user|messenger user)(?:\s+\d+)?$/i.test(String(value || "").trim());
     let resolved = await resolveTargetName(api, threadId, targetId, { savedName: isDefaultPlaceholder(savedName) ? "" : savedName });
     // "Kei" is the legacy default placeholder, not a verified target display name.
     // Clear a cached placeholder and retry the real Messenger profile before using
