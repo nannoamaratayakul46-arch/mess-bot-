@@ -4094,6 +4094,7 @@ async function ensureJaidenCountdownStateTable() {
         locked_at BIGINT NOT NULL,
         last_activity_at BIGINT NOT NULL,
         countdown_started_at BIGINT,
+        targeting_started_at BIGINT,
         next_number INTEGER NOT NULL DEFAULT 1,
         status TEXT NOT NULL DEFAULT 'waiting',
         updated_at BIGINT NOT NULL
@@ -4102,6 +4103,7 @@ async function ensureJaidenCountdownStateTable() {
   }
   await jaidenCountdownStateTableReady;
   await requireConn().query("ALTER TABLE jaiden_target_countdown_state ADD COLUMN IF NOT EXISTS countdown_started_at BIGINT");
+  await requireConn().query("ALTER TABLE jaiden_target_countdown_state ADD COLUMN IF NOT EXISTS targeting_started_at BIGINT");
 }
 async function saveJaidenTargetCountdownState(state = {}) {
   await ensureJaidenCountdownStateTable();
@@ -4114,14 +4116,16 @@ async function saveJaidenTargetCountdownState(state = {}) {
   const status = ['locked', 'waiting', 'counting'].includes(state.status) ? state.status : 'waiting';
   await requireConn().query(`
     INSERT INTO jaiden_target_countdown_state
-      (thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, next_number, status, updated_at)
-    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+      (thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, targeting_started_at, next_number, status, updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)
     ON CONFLICT (thread_id) DO UPDATE SET
       target_user_id=EXCLUDED.target_user_id, target_name=EXCLUDED.target_name,
       locked_at=EXCLUDED.locked_at, last_activity_at=EXCLUDED.last_activity_at, countdown_started_at=EXCLUDED.countdown_started_at,
+      targeting_started_at=COALESCE(jaiden_target_countdown_state.targeting_started_at, EXCLUDED.targeting_started_at),
       next_number=EXCLUDED.next_number, status=EXCLUDED.status, updated_at=EXCLUDED.updated_at
   `, [threadId, targetId, String(state.targetName || ''), lockedAt, lastActivityAt,
     Number.isFinite(Number(state.countdownStartedAt)) && Number(state.countdownStartedAt) > 0 ? Number(state.countdownStartedAt) : null,
+    Number.isFinite(Number(state.targetingStartedAt)) && Number(state.targetingStartedAt) > 0 ? Number(state.targetingStartedAt) : lockedAt,
     nextNumber, status, Date.now()]);
 }
 async function getJaidenTargetCountdownState(threadId) {
