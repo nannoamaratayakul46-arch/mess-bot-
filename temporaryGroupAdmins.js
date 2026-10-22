@@ -95,23 +95,12 @@ function registerTemporaryAdminRoutes(app, { auth, db, getApi = () => null, isKn
     return threadId;
   }
 
-  function ownerTokenMatches(candidate) {
-    const expected = String(process.env.DASHBOARD_OWNER_TOKEN || "");
-    const supplied = String(candidate || "");
-    if (expected.length < 32 || supplied.length !== expected.length) return false;
-    try {
-      const crypto = require("node:crypto");
-      return crypto.timingSafeEqual(Buffer.from(supplied), Buffer.from(expected));
-    } catch { return false; }
-  }
-
   app.post("/api/dashboard/groups/:threadId/permanent-admins", auth, async (req,res)=>{
     try {
       await init;
       const threadId=validGroup(req,res); if(!threadId)return;
-      const actor=actorId(req) || "owner-token";
+      const actor=actorId(req) || "dashboard-authenticated";
       const { isOwner } = require("./permissions");
-      if(!ownerTokenMatches(req.body?.owner_token) && (!actorId(req) || !isOwner(actor))) return res.status(403).json({ok:false,code:"OWNER_REQUIRED",error:"Set DASHBOARD_OWNER_TOKEN in Render and enter it to authorize permanent-admin changes."});
       const userId=String(req.body?.user_id ?? req.body?.userId ?? "").trim();
       if(!/^\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Enter a valid numeric Messenger member ID."});
       if(isOwner(userId)) return res.status(409).json({ok:false,error:"This ID is already an original owner."});
@@ -128,9 +117,8 @@ function registerTemporaryAdminRoutes(app, { auth, db, getApi = () => null, isKn
     try {
       await init;
       const threadId=validGroup(req,res); if(!threadId)return;
-      const actor=actorId(req) || "owner-token";
+      const actor=actorId(req) || "dashboard-authenticated";
       const { isOwner, ADMIN_IDS } = require("./permissions");
-      if(!ownerTokenMatches(req.body?.owner_token) && (!actorId(req) || !isOwner(actor))) return res.status(403).json({ok:false,code:"OWNER_REQUIRED",error:"Set DASHBOARD_OWNER_TOKEN in Render and enter it to authorize permanent-admin changes."});
       const userId=String(req.params.userId||"").trim();
       if(!/^\d{6,20}$/.test(userId)) return res.status(400).json({ok:false,error:"Invalid member ID."});
       if(ADMIN_IDS.has(userId)) return res.status(409).json({ok:false,error:"Original owners cannot be removed here."});
