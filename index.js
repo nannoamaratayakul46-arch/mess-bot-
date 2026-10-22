@@ -6401,6 +6401,21 @@ function fallbackFromRejectedDurableSession() {
 
 function attemptLogin() {
   const isReplacementSession = Boolean(pendingFacebookAppState);
+
+  // A healthy active listener owns the connection. Do not create a second
+  // login/listener unless the dashboard explicitly supplied a replacement
+  // session to validate.
+  if (
+    activeMessengerApi &&
+    activeListenerGeneration > 0 &&
+    !isReplacementSession
+  ) {
+    console.warn(
+      "[LOGIN] Skipping login attempt: an active Messenger listener already owns the connection."
+    );
+    return;
+  }
+
   const candidateAppState =
     pendingFacebookAppState || appState;
 
@@ -6676,6 +6691,36 @@ function attemptLogin() {
       if (loginRetryTimer) {
         clearTimeout(loginRetryTimer);
         loginRetryTimer = null;
+      }
+
+      // Promote this API to connection owner only after the login succeeded.
+      // A replacement-session login is allowed while the old session remains
+      // healthy; stop that old listener before attaching the replacement so
+      // only one MQTT consumer can process messages.
+      const previousApi = activeMessengerApi;
+      const previousRawApi =
+        previousApi && previousApi.__eclipseTrafficRawApi
+          ? previousApi.__eclipseTrafficRawApi
+          : previousApi;
+
+      if (previousApi && previousApi !== api) {
+        activeListenerGeneration = 0;
+        try {
+          if (typeof previousApi.stopListenMqtt === "function") {
+            previousApi.stopListenMqtt();
+          } else if (
+            previousRawApi &&
+            typeof previousRawApi.stopListenMqtt === "function"
+          ) {
+            previousRawApi.stopListenMqtt();
+          }
+        } catch (stopError) {
+          console.warn(
+            "[LISTENER] Could not stop previous listener before replacement:",
+            stopError?.message || stopError
+          );
+        }
+        console.log("[LISTENER] Previous Messenger listener stopped before replacement.");
       }
 
       activeListenerGeneration = thisGeneration;
