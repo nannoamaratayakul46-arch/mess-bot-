@@ -195,6 +195,7 @@ const {
 } = require("./moderation");
 
 const { createAntiSpam } = require("./antiSpam");
+const { createAutoWelcome } = require("./autoWelcome");
 
 // ============================================================
 // YOUTUBE
@@ -3638,6 +3639,14 @@ registerGroupProfileRoutes(app, {
 
 // Spam protection shares the existing persistent !automod on/off setting.
 // It monitors all members independently of owner presence.
+const autoWelcome = createAutoWelcome({
+  db,
+  getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,
+  isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
+  log: message => console.log(message),
+});
+autoWelcome.registerRoutes(app, requireDashboardAccess);
+
 const antiSpam = createAntiSpam({
   db,
   getApi: () =>
@@ -3646,6 +3655,7 @@ const antiSpam = createAntiSpam({
       : null,
   isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
   log: message => console.log(message),
+  onGroupJoin: (api, event) => autoWelcome.onGroupEvent(api, event),
 });
 antiSpam.registerRoutes(app, requireDashboardAccess);
 
