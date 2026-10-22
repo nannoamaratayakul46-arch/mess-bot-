@@ -3467,6 +3467,10 @@ async function getBanatThreadTarget(threadId) {
 }
 
 async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled = null, targetName = null, jaidenSettings = {}) {
+  // Record the target-lock timestamp at selection time, independently of
+  // when the target next speaks and starts the inactivity countdown.
+  await ensureJaidenCountdownStateTable();
+
   const conn = requireConn();
   const id = String(threadId || "").trim();
   const target = String(targetUserId || "").trim();
@@ -3504,6 +3508,21 @@ async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled =
     [id, target, name, setter, typeof bangEnabled === "boolean" ? bangEnabled : null,
       interval, cooldown, replyMode, typing, Date.now()]
   );
+  const lockNow = Date.now();
+  await conn.query(`
+    INSERT INTO jaiden_target_countdown_state
+      (thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, next_number, status, updated_at)
+    VALUES ($1, $2, $3, $4, $4, NULL, 1, 'locked', $4)
+    ON CONFLICT (thread_id) DO UPDATE SET
+      target_user_id = EXCLUDED.target_user_id,
+      target_name = EXCLUDED.target_name,
+      locked_at = EXCLUDED.locked_at,
+      last_activity_at = EXCLUDED.last_activity_at,
+      countdown_started_at = NULL,
+      next_number = 1,
+      status = 'locked',
+      updated_at = EXCLUDED.updated_at
+  `, [id, target, name || '', lockNow]);
   return getBanatThreadTarget(id);
 }
 
@@ -4090,7 +4109,7 @@ async function saveJaidenTargetCountdownState(state = {}) {
   const lockedAt = Number.isFinite(Number(state.lockedAt)) ? Number(state.lockedAt) : Date.now();
   const lastActivityAt = Number.isFinite(Number(state.lastActivityAt)) ? Number(state.lastActivityAt) : lockedAt;
   const nextNumber = Math.min(101, Math.max(1, Math.trunc(Number(state.nextNumber) || 1)));
-  const status = ['waiting', 'counting'].includes(state.status) ? state.status : 'waiting';
+  const status = ['locked', 'waiting', 'counting'].includes(state.status) ? state.status : 'waiting';
   await requireConn().query(`
     INSERT INTO jaiden_target_countdown_state
       (thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, next_number, status, updated_at)
