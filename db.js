@@ -4167,9 +4167,10 @@ async function ensureJaidenTargetCountdownSettingsTable() {
         id INTEGER PRIMARY KEY CHECK (id = 1),
         template TEXT NOT NULL,
         reason TEXT NOT NULL,
+        custom_nickname TEXT NOT NULL DEFAULT '',
         updated_at BIGINT NOT NULL
       )
-    `).catch(error => {
+    `).then(() => requireConn().query("ALTER TABLE jaiden_target_countdown_settings ADD COLUMN IF NOT EXISTS custom_nickname TEXT NOT NULL DEFAULT ''")).catch(error => {
       jaidenTargetCountdownSettingsTableReady = null;
       throw error;
     });
@@ -4180,12 +4181,13 @@ async function ensureJaidenTargetCountdownSettingsTable() {
 async function getJaidenTargetCountdownSettings() {
   await ensureJaidenTargetCountdownSettingsTable();
   const { rows } = await requireConn().query(
-    "SELECT template, reason FROM jaiden_target_countdown_settings WHERE id = 1"
+    "SELECT template, reason, custom_nickname FROM jaiden_target_countdown_settings WHERE id = 1"
   );
   const row = rows[0];
   return {
     template: typeof row?.template === "string" ? row.template : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.template,
     reason: typeof row?.reason === "string" ? row.reason : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.reason,
+    customNickname: typeof row?.custom_nickname === "string" ? row.custom_nickname : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.customNickname,
   };
 }
 
@@ -4193,17 +4195,20 @@ async function setJaidenTargetCountdownSettings(settings = {}) {
   const current = await getJaidenTargetCountdownSettings();
   const template = typeof settings.template === "string" ? settings.template : current.template;
   const reason = typeof settings.reason === "string" ? settings.reason : current.reason;
+  const customNickname = typeof settings.customNickname === "string" ? settings.customNickname.trim() : current.customNickname;
   if (!template.trim() || template.length > 4000) throw new Error("Countdown message template must be between 1 and 4000 characters.");
   if (reason.length > 2000) throw new Error("Countdown reason must be 2000 characters or fewer.");
+  if (customNickname.length > 80) throw new Error("Custom nickname must be 80 characters or fewer.");
   await requireConn().query(`
-    INSERT INTO jaiden_target_countdown_settings (id, template, reason, updated_at)
-    VALUES (1, $1, $2, $3)
+    INSERT INTO jaiden_target_countdown_settings (id, template, reason, custom_nickname, updated_at)
+    VALUES (1, $1, $2, $3, $4)
     ON CONFLICT (id) DO UPDATE SET
       template = EXCLUDED.template,
       reason = EXCLUDED.reason,
+      custom_nickname = EXCLUDED.custom_nickname,
       updated_at = EXCLUDED.updated_at
-  `, [template, reason, Date.now()]);
-  return { template, reason };
+  `, [template, reason, customNickname, Date.now()]);
+  return { template, reason, customNickname };
 }
 
 // ╔══════════════════════════════════════════════════════════╗
