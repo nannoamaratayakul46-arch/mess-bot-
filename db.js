@@ -3511,8 +3511,8 @@ async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled =
   const lockNow = Date.now();
   await conn.query(`
     INSERT INTO jaiden_target_countdown_state
-      (thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, next_number, status, updated_at)
-    VALUES ($1, $2, $3, $4, $4, NULL, 1, 'locked', $4)
+      (thread_id, target_user_id, target_name, locked_at, last_activity_at, countdown_started_at, targeting_started_at, next_number, status, updated_at)
+    VALUES ($1, $2, $3, $4, $4, NULL, $4, 1, 'locked', $4)
     ON CONFLICT (thread_id) DO UPDATE SET
       target_user_id = EXCLUDED.target_user_id,
       target_name = EXCLUDED.target_name,
