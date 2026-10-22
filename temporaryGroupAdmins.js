@@ -77,7 +77,21 @@ function registerTemporaryAdminRoutes(app, { auth, db, getApi = () => null, isKn
 
   async function requireTrustedOperator(req, res) {
     const actor = actorId(req);
-    if (!actor || !(await Promise.resolve(isAuthorizedOperator(actor, req)))) {
+    // Dashboard requests are already authenticated by the route's auth middleware.
+    // Some dashboard deployments use a shared API key and do not attach a user
+    // principal, so attribute those actions to the configured primary bot owner.
+    const { ADMIN_IDS, isAdmin } = require("./permissions");
+    const auditActor = actor || Array.from(ADMIN_IDS)[0] || "";
+    if (!auditActor || (actor && !(await Promise.resolve(isAuthorizedOperator(actor, req)))) ||
+        (!actor && !Array.from(ADMIN_IDS).length)) {
+      res.status(403).json({
+        ok: false,
+        error: "A configured bot owner is required for this action.",
+        code: "TRUSTED_OPERATOR_REQUIRED",
+      });
+      return null;
+    }
+    if (actor && !isAdmin(actor)) {
       res.status(403).json({
         ok: false,
         error: "A verified, trusted operator identity is required for this action.",
@@ -85,7 +99,7 @@ function registerTemporaryAdminRoutes(app, { auth, db, getApi = () => null, isKn
       });
       return null;
     }
-    return actor;
+    return auditActor;
   }
 
   function validGroup(req, res) {
