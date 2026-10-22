@@ -1,5 +1,7 @@
 "use strict";
 
+const { resolveMemberName } = require("./memberNameResolver");
+
 const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
 const KICK_LIMIT = 3;
 const KICK_WINDOW_MS = 60_000;
@@ -202,13 +204,20 @@ function registerTemporaryAdminRoutes(app, { auth, db, getApi = () => null, isKn
       const nativeIds = [...new Set(nativeRows.map(row => String(
         row?.id ?? row?.userID ?? row?.userId ?? row?.uid ?? row ?? ""
       ).trim()).filter(id => /^\d{6,32}$/.test(id)))];
-      const nativeAdmins = nativeIds.map(user_id => ({
-        user_id, role: "This group's Messenger administrator", removable: false, source: "messenger"
+      const resolveRows = async rows => Promise.all(rows.map(async row => {
+        let name = "";
+        try { name = await resolveMemberName(api, threadId, row.user_id, ""); } catch (_) {}
+        return { ...row, name: name || "", display_name: name || "" };
       }));
-      const owners=[...ADMIN_IDS].map(user_id=>({user_id, role:"Bot owner (global)", removable:false, source:"bot"}));
+      const nativeAdmins = await resolveRows(nativeIds.map(user_id => ({
+        user_id, role: "This group's Messenger administrator", removable: false, source: "messenger"
+      })));
+      const owners = await resolveRows([...ADMIN_IDS].filter(user_id => !nativeIds.includes(user_id)).map(user_id => ({
+        user_id, role: "Bot owner (global)", removable: false, source: "bot"
+      })));
       const result=await db.query("SELECT user_id FROM dashboard_group_permanent_admins WHERE thread_id=$1 ORDER BY added_at ASC",[threadId]);
-      const trusted=(result.rows||[]).map(row=>String(row.user_id)).filter(id=>!ADMIN_IDS.has(id) && !nativeIds.includes(id)).map(user_id=>({user_id,role:"Dashboard permanent administrator",removable:true,source:"dashboard"}));
-      return res.json({ok:true,group_admins_available:nativeRows.length>0,admins:[...nativeAdmins,...owners.filter(owner=>!nativeIds.includes(owner.user_id)),...trusted]});
+      const trusted=await resolveRows((result.rows||[]).map(row=>String(row.user_id)).filter(id=>!ADMIN_IDS.has(id) && !nativeIds.includes(id)).map(user_id=>({user_id,role:"Trusted admin · auto-readd",removable:true,source:"dashboard"})));
+      return res.json({ok:true,group_admins_available:nativeRows.length>0,admins:[...nativeAdmins,...owners,...trusted]});
     } catch(error) {
       console.error("[TEMP ADMIN] permanent-admin list failed:",String(error?.message||error).slice(0,160));
       return res.status(500).json({ok:false,error:"Could not load configured permanent administrators."});
