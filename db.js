@@ -4061,6 +4061,74 @@ async function getDashboardAnalytics(hours = 24) {
 }
 
 
+
+let jaidenCountdownStateTableReady = null;
+async function ensureJaidenCountdownStateTable() {
+  if (!jaidenCountdownStateTableReady) {
+    jaidenCountdownStateTableReady = requireConn().query(`
+      CREATE TABLE IF NOT EXISTS jaiden_target_countdown_state (
+        thread_id TEXT PRIMARY KEY,
+        target_user_id TEXT NOT NULL,
+        target_name TEXT NOT NULL DEFAULT '',
+        locked_at BIGINT NOT NULL,
+        last_activity_at BIGINT NOT NULL,
+        next_number INTEGER NOT NULL DEFAULT 1,
+        status TEXT NOT NULL DEFAULT 'waiting',
+        updated_at BIGINT NOT NULL
+      )
+    `).catch(error => { jaidenCountdownStateTableReady = null; throw error; });
+  }
+  await jaidenCountdownStateTableReady;
+}
+async function saveJaidenTargetCountdownState(state = {}) {
+  await ensureJaidenCountdownStateTable();
+  const threadId = String(state.threadId || '').trim();
+  const targetId = String(state.targetId || '').trim();
+  if (!threadId || !targetId) throw new Error('Countdown thread and target IDs are required.');
+  const lockedAt = Number.isFinite(Number(state.lockedAt)) ? Number(state.lockedAt) : Date.now();
+  const lastActivityAt = Number.isFinite(Number(state.lastActivityAt)) ? Number(state.lastActivityAt) : lockedAt;
+  const nextNumber = Math.min(101, Math.max(1, Math.trunc(Number(state.nextNumber) || 1)));
+  const status = ['waiting', 'counting'].includes(state.status) ? state.status : 'waiting';
+  await requireConn().query(`
+    INSERT INTO jaiden_target_countdown_state
+      (thread_id, target_user_id, target_name, locked_at, last_activity_at, next_number, status, updated_at)
+    VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
+    ON CONFLICT (thread_id) DO UPDATE SET
+      target_user_id=EXCLUDED.target_user_id, target_name=EXCLUDED.target_name,
+      locked_at=EXCLUDED.locked_at, last_activity_at=EXCLUDED.last_activity_at,
+      next_number=EXCLUDED.next_number, status=EXCLUDED.status, updated_at=EXCLUDED.updated_at
+  `, [threadId, targetId, String(state.targetName || ''), lockedAt, lastActivityAt, nextNumber, status, Date.now()]);
+}
+async function getJaidenTargetCountdownState(threadId) {
+  await ensureJaidenCountdownStateTable();
+  const { rows } = await requireConn().query(
+    'SELECT thread_id, target_user_id, target_name, locked_at, last_activity_at, next_number, status FROM jaiden_target_countdown_state WHERE thread_id = $1',
+    [String(threadId || '').trim()]
+  );
+  const row = rows[0];
+  return row ? { threadId: row.thread_id, targetId: row.target_user_id, targetName: row.target_name,
+    lockedAt: Number(row.locked_at), lastActivityAt: Number(row.last_activity_at),
+    nextNumber: Number(row.next_number), status: row.status } : null;
+}
+async function listJaidenTargetCountdownStates() {
+  await ensureJaidenCountdownStateTable();
+  const { rows } = await requireConn().query(
+    "SELECT thread_id, target_user_id, target_name, locked_at, last_activity_at, next_number, status FROM jaiden_target_countdown_state WHERE status IN ('waiting','counting')"
+  );
+  return (rows || []).map(row => ({ threadId: row.thread_id, targetId: row.target_user_id,
+    targetName: row.target_name, lockedAt: Number(row.locked_at), lastActivityAt: Number(row.last_activity_at),
+    nextNumber: Number(row.next_number), status: row.status }));
+}
+async function deleteJaidenTargetCountdownState(threadId, targetId = null) {
+  await ensureJaidenCountdownStateTable();
+  if (targetId) {
+    await requireConn().query('DELETE FROM jaiden_target_countdown_state WHERE thread_id = $1 AND target_user_id = $2',
+      [String(threadId || '').trim(), String(targetId || '').trim()]);
+  } else {
+    await requireConn().query('DELETE FROM jaiden_target_countdown_state WHERE thread_id = $1', [String(threadId || '').trim()]);
+  }
+}
+
 const DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS = {
   template: "WIN: {{WIN}}\nLOSE: {{LOSE}}\nREASON: {{REASON}}\nSTART: {{START}}\nEND: {{END}}",
   reason: "DI TUMAGOS SA HEV CHALLENGE, NA-OUTPLAY SA COUNTDOWN 😭",
@@ -4132,6 +4200,10 @@ module.exports = {
   getDashboardAnalytics,
   getJaidenTargetCountdownSettings,
   setJaidenTargetCountdownSettings,
+  saveJaidenTargetCountdownState,
+  getJaidenTargetCountdownState,
+  listJaidenTargetCountdownStates,
+  deleteJaidenTargetCountdownState,
 
   // Users
   getUser,
