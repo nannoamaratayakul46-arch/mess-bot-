@@ -3778,14 +3778,18 @@ app.put(
   async (req, res) => {
     const template = typeof req.body?.template === "string" ? req.body.template : "";
     const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
+    const customNickname = typeof req.body?.customNickname === "string" ? req.body.customNickname.trim() : "";
     if (!template.trim() || template.length > 4000) {
       return res.status(400).json({ ok: false, error: "Message template must be between 1 and 4000 characters." });
     }
     if (reason.length > 2000) {
       return res.status(400).json({ ok: false, error: "Reason must be 2000 characters or fewer." });
     }
+    if (customNickname.length > 80) {
+      return res.status(400).json({ ok: false, error: "Custom nickname must be 80 characters or fewer." });
+    }
     try {
-      const settings = await db.setJaidenTargetCountdownSettings({ template, reason });
+      const settings = await db.setJaidenTargetCountdownSettings({ template, reason, customNickname });
       return res.json({ ok: true, settings });
     } catch (error) {
       console.error("[JAIDEN COUNTDOWN] Could not save dashboard settings:", error?.message || error);
@@ -12821,12 +12825,18 @@ const jaidenTargetCountdown = createJaidenTargetCountdown({
   },
   syncTargetNickname: async ({ threadId, targetId, savedName, api }) => {
     const resolved = await resolveTargetName(api, threadId, targetId, { savedName });
-    const targetName = String(resolved?.name || "").trim();
+    let nickname = String(resolved?.name || "").trim();
+    let nicknameSource = "target";
+    if (!nickname) {
+      const settings = await db.getJaidenTargetCountdownSettings();
+      nickname = String(settings?.customNickname || "").trim();
+      nicknameSource = "custom fallback";
+    }
     const botId = String(typeof api?.getCurrentUserID === "function" ? api.getCurrentUserID() : "").trim();
-    if (!targetName || !botId) throw new Error("Target display name or bot user ID is unavailable.");
-    await changeNicknameAsync(api, targetName, threadId, botId);
-    console.log("[JAIDEN COUNTDOWN] Synced bot nickname in " + threadId + " to selected target " + targetId + " (" + targetName + ")");
-    return targetName;
+    if (!nickname || !botId) throw new Error("Target display name and custom nickname are unavailable, or bot user ID is missing.");
+    await changeNicknameAsync(api, nickname, threadId, botId);
+    console.log("[JAIDEN COUNTDOWN] Synced bot nickname in " + threadId + " using " + nicknameSource + " for target " + targetId + " (" + nickname + ")");
+    return nickname;
   },
   onComplete: async ({ threadId, targetId }) => {
     // Only clear the target that actually completed. If an admin selected a
