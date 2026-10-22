@@ -3778,18 +3778,18 @@ app.put(
   async (req, res) => {
     const template = typeof req.body?.template === "string" ? req.body.template : "";
     const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
-    const customNickname = typeof req.body?.customNickname === "string" ? req.body.customNickname.trim() : "";
+    const customNickname = typeof req.body?.customNickname === "string" ? req.body.customNickname.trim() : undefined;
     if (!template.trim() || template.length > 4000) {
       return res.status(400).json({ ok: false, error: "Message template must be between 1 and 4000 characters." });
     }
     if (reason.length > 2000) {
       return res.status(400).json({ ok: false, error: "Reason must be 2000 characters or fewer." });
     }
-    if (customNickname.length > 80) {
+    if (customNickname !== undefined && customNickname.length > 80) {
       return res.status(400).json({ ok: false, error: "Custom nickname must be 80 characters or fewer." });
     }
     try {
-      const settings = await db.setJaidenTargetCountdownSettings({ template, reason, customNickname });
+      const settings = await db.setJaidenTargetCountdownSettings({ template, reason, ...(customNickname === undefined ? {} : { customNickname }) });
       return res.json({ ok: true, settings });
     } catch (error) {
       console.error("[JAIDEN COUNTDOWN] Could not save dashboard settings:", error?.message || error);
