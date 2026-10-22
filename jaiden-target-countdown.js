@@ -137,6 +137,7 @@ function createJaidenTargetCountdown(options = {}) {
         if (result === false || (result && result.sent === false)) {
           console.warn("[JAIDEN COUNTDOWN] Number send failed for thread " + threadId + "; countdown stopped.");
           if (!stopped && state.generation === generation && states.get(threadId) === state) {
+            state.nextNumber = number;
             state.counting = false;
             scheduleInactivity(threadId, state, generation);
           }
@@ -275,6 +276,8 @@ function createJaidenTargetCountdown(options = {}) {
     state.api = api;
     state.targetName = String(target?.target_name || state.targetName || "").trim();
     state.lastActivityAt = Date.now();
+    state.nextNumber = 1;
+    state.countdownStartedAt = null;
     state.generation += 1;
     state.counting = false;
     await persist(threadKey, state);
