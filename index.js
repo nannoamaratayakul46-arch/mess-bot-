@@ -12831,8 +12831,17 @@ const jaidenTargetCountdown = createJaidenTargetCountdown({
   getTarget: (threadId) => db.getBanatThreadTarget(threadId),
   getResultsSettings: () => db.getJaidenTargetCountdownSettings(),
   getTargetName: async ({ threadId, targetId, savedName, api }) => {
-    const resolved = await resolveTargetName(api, threadId, targetId, { savedName });
-    return resolved?.name || "";
+    const isDefaultPlaceholder = (value) => /^(?:kei|facebook|facebook user|unknown(?: target)?|unnamed|messenger(?: user)?|user)(?:\\s+\\d+)?$/i.test(String(value || "").trim());
+    let resolved = await resolveTargetName(api, threadId, targetId, {
+      savedName: isDefaultPlaceholder(savedName) ? "" : savedName,
+    });
+    // The result formatter must use the same real-target-name rules as nickname sync.
+    // A legacy value such as "FACEBOOK" is not the selected target's display name.
+    if (isDefaultPlaceholder(resolved?.name)) {
+      clearTargetNameCache(threadId, targetId);
+      resolved = await resolveTargetName(api, threadId, targetId, {});
+    }
+    return isDefaultPlaceholder(resolved?.name) ? "" : (resolved?.name || "");
   },
   syncTargetNickname: async ({ threadId, targetId, savedName, api }) => {
     const isDefaultPlaceholder = (value) => /^(?:kei|unknown(?: target)?|unnamed|facebook user|messenger user)(?:\s+\d+)?$/i.test(String(value || "").trim());
