@@ -25,6 +25,40 @@ function callSend(api, payload, threadID) {
 }
 
 function createAutoWelcome({ db, getApi = () => null, isKnownGroup = () => true, log = () => {} }) {
+  const profileNameCache = new Map();
+  async function resolveMemberName(api, id, participant) {
+    const direct = String(participant?.fullName || participant?.name || participant?.firstName || "").trim();
+    if (direct && !/^\d{6,32}$/.test(direct)) return direct;
+    if (profileNameCache.has(id)) return profileNameCache.get(id);
+    if (!api || typeof api.getUserInfo !== "function") return id;
+    const namePromise = new Promise(resolve => {
+      let settled = false;
+      const finish = value => { if (!settled) { settled = true; resolve(value); } };
+      const timeout = setTimeout(() => finish(id), 4000);
+      try {
+        const result = api.getUserInfo(id, (error, data) => {
+          clearTimeout(timeout);
+          if (error) return finish(id);
+          const profile = data && (data[id] || data);
+          const name = String(profile?.name || profile?.fullName || profile?.firstName || "").trim();
+          finish(name && !/^\d{6,32}$/.test(name) ? name : id);
+        });
+        if (result && typeof result.then === "function") result.then(data => {
+          clearTimeout(timeout);
+          const profile = data && (data[id] || data);
+          const name = String(profile?.name || profile?.fullName || profile?.firstName || "").trim();
+          finish(name && !/^\d{6,32}$/.test(name) ? name : id);
+        }).catch(() => { clearTimeout(timeout); finish(id); });
+      } catch { clearTimeout(timeout); finish(id); }
+    });
+    const resolved = await namePromise;
+    if (resolved !== id) {
+      profileNameCache.set(id, resolved);
+      if (profileNameCache.size > 500) profileNameCache.delete(profileNameCache.keys().next().value);
+    }
+    return resolved;
+  }
+
   if (!db || typeof db.query !== "function") throw new TypeError("Auto Welcome requires the database query interface");
   let schemaReady;
   function ensureSchema() {
@@ -98,7 +132,7 @@ function createAutoWelcome({ db, getApi = () => null, isKnownGroup = () => true,
     for (const participant of added) {
       const id = String(participant?.userFbId ?? participant?.userFBID ?? participant?.userID ?? participant?.userId ?? participant?.id ?? "").trim();
       if (!/^\d{6,32}$/.test(id) || id === botID) continue;
-      const name = String(participant?.fullName || participant?.name || participant?.firstName || id).trim();
+      const name = await resolveMemberName(api, id, participant);
       const message = String(settings.message_template || DEFAULT_MESSAGE).replace(/\{\{NAME\}\}/g, name);
       let attachment;
       let tempPath;
