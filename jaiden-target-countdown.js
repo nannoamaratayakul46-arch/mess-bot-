@@ -9,6 +9,7 @@ function createJaidenTargetCountdown(options = {}) {
   const getTarget = options.getTarget;
   const send = options.send;
   const getTargetName = options.getTargetName;
+  const syncTargetNickname = options.syncTargetNickname;
   const getResultsSettings = options.getResultsSettings;
   const onComplete = options.onComplete;
   const persistState = options.persistState;
@@ -123,6 +124,18 @@ function createJaidenTargetCountdown(options = {}) {
     const startedAt = Number(state.countdownStartedAt) || Date.now();
     state.countdownStartedAt = startedAt;
     await persist(threadId, state);
+    // Match the known working nickname-sync path at countdown start: resolve
+    // the selected target's real display name, then set the bot's group nickname.
+    if (typeof syncTargetNickname === "function") {
+      try {
+        await syncTargetNickname({
+          threadId, targetId: state.targetId, savedName: state.targetName,
+          api: state.api, lockedAt: state.lockedAt, countdownStartedAt: startedAt,
+        });
+      } catch (error) {
+        console.warn("[JAIDEN COUNTDOWN] Could not sync bot nickname to selected target:", error?.message || error);
+      }
+    }
     try {
       for (let number = Math.max(1, Number(state.nextNumber) || 1); number <= 100; number += 1) {
         if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
