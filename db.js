@@ -3528,10 +3528,12 @@ async function setBanatThreadTarget(threadId, targetUserId, setBy, bangEnabled =
 
 async function clearBanatThreadTarget(threadId) {
   const conn = requireConn();
+  const id = String(threadId || "").trim();
   const { rowCount } = await conn.query(
     `DELETE FROM banat_thread_targets WHERE thread_id = $1`,
-    [String(threadId || "").trim()]
+    [id]
   );
+  await deleteJaidenTargetCountdownState(id);
   return rowCount > 0;
 }
 
