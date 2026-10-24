@@ -154,6 +154,24 @@ test("clears the selected target only after the results message sends successful
   tracker.stop();
 });
 
+test("backs off after a failed countdown send instead of immediately retrying", async () => {
+  const sends = [];
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 5,
+    retryCooldownMs: 150,
+    countDelayMs: 0,
+    getTarget: async () => ({ target_user_id: "target-cooldown", target_name: "Target" }),
+    send: async (_api, message) => {
+      sends.push(message);
+      return { sent: false };
+    },
+  });
+  await tracker.onMessage({ api: {}, threadId: "gc-send-cooldown", senderId: "target-cooldown" });
+  await sleep(35);
+  assert.deepEqual(sends, ["1"]);
+  tracker.stop();
+});
+
 test("does not clear the selected target when the results message fails", async () => {
   const completed = [];
   const tracker = createJaidenTargetCountdown({
