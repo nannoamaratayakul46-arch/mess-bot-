@@ -310,6 +310,27 @@ async function isDashboardGroupArchived(threadID) {
   return archivedDashboardGroups.has(String(threadID || "").trim());
 }
 
+
+function getRenderRuntimeSeconds() {
+  // Render runs the service inside a Linux container. Measure PID 1's age,
+  // which tracks the container/service runtime rather than this Node child.
+  try {
+    const uptimeText = fs.readFileSync("/proc/uptime", "utf8").trim().split(/\s+/)[0];
+    const uptimeSeconds = Number(uptimeText);
+    const stat = fs.readFileSync("/proc/1/stat", "utf8");
+    const closingParen = stat.lastIndexOf(")");
+    const fieldsAfterComm = stat.slice(closingParen + 1).trim().split(/\s+/);
+    const startTicks = Number(fieldsAfterComm[19]); // Linux stat field 22: starttime
+    const ticksPerSecond = 100; // Linux clock ticks on Render's standard runtime images
+    if (Number.isFinite(uptimeSeconds) && Number.isFinite(startTicks) && startTicks >= 0) {
+      return Math.max(0, Math.floor(uptimeSeconds - startTicks / ticksPerSecond));
+    }
+  } catch {
+    // Keep the command usable in local/test environments without procfs.
+  }
+  return Math.max(0, Math.floor(process.uptime()));
+}
+
 // ============================================================
 // WATCHDOG
 // ============================================================
@@ -9450,10 +9471,7 @@ async function handleMessage(
     const watchdog =
       getWatchdogStatus();
 
-    const uptimeSeconds =
-      Math.floor(
-        process.uptime()
-      );
+    const uptimeSeconds = getRenderRuntimeSeconds();
 
     const uptimeMinutes =
       Math.floor(
