@@ -229,6 +229,8 @@ function createJaidenTargetCountdown(options = {}) {
       console.error("[JAIDEN COUNTDOWN] Failed for thread " + threadId + ":", error?.message || error);
       if (!stopped && state.generation === generation && states.get(threadId) === state) {
         state.counting = false;
+        state.retryNotBeforeAt = Date.now() + retryCooldownMs;
+        state.lastActivityAt = Date.now();
         await persist(threadId, state);
         scheduleInactivity(threadId, state, generation);
       }
