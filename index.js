@@ -359,19 +359,12 @@ function getRenderRuntimeSeconds() {
     // Fall through to Node's monotonic process clock.
   }
 
-  // Optional operator-supplied fallback. Set WATCHDOG_UPTIME_START_AT to an
-  // ISO timestamp (for example, 2026-10-24T12:44:00Z). This is useful when
-  // procfs is unavailable; keep it updated when the instance is recreated.
-  const configuredStartAt = String(process.env.WATCHDOG_UPTIME_START_AT || "").trim();
-  if (configuredStartAt) {
-    const startAtMs = Date.parse(configuredStartAt);
-    if (Number.isFinite(startAtMs) && startAtMs > 0 && startAtMs <= Date.now()) {
-      return Math.max(0, Math.floor((Date.now() - startAtMs) / 1000));
-    }
-  }
-
-  // Last-resort fallback keeps the status command functional off Linux too.
-  return Math.max(0, Math.floor(process.uptime()));
+  // Automatic fallback: capture this Node process's start timestamp at
+  // startup, derived from its monotonic uptime clock. This needs no Render env
+  // var and naturally resets when Node starts again. It represents process
+  // uptime, not container uptime, so procfs remains preferred above.
+  const processStartedAtMs = Date.now() - process.uptime() * 1000;
+  return Math.max(0, Math.floor((Date.now() - processStartedAtMs) / 1000));
 }
 
 // ============================================================
