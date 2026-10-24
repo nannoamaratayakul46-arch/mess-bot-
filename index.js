@@ -312,23 +312,59 @@ async function isDashboardGroupArchived(threadID) {
 
 
 function getRenderRuntimeSeconds() {
-  // Render runs the service inside a Linux container. Measure PID 1's age,
-  // which tracks the container/service runtime rather than this Node child.
-  try {
+  // Prefer PID 1's age: on Render this is the closest available local signal
+  // for how long the service container has been running.
+  const readProcAgeSeconds = (pid) => {
     const uptimeText = fs.readFileSync("/proc/uptime", "utf8").trim().split(/\s+/)[0];
     const uptimeSeconds = Number(uptimeText);
-    const stat = fs.readFileSync("/proc/1/stat", "utf8");
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+    // The comm field can contain spaces and parentheses; parse after its last ')'.
     const closingParen = stat.lastIndexOf(")");
+    if (closingParen < 0) throw new Error("Invalid proc stat");
     const fieldsAfterComm = stat.slice(closingParen + 1).trim().split(/\s+/);
     const startTicks = Number(fieldsAfterComm[19]); // Linux stat field 22: starttime
-    const ticksPerSecond = 100; // Linux clock ticks on Render's standard runtime images
-    if (Number.isFinite(uptimeSeconds) && Number.isFinite(startTicks) && startTicks >= 0) {
-      return Math.max(0, Math.floor(uptimeSeconds - startTicks / ticksPerSecond));
+    if (!Number.isFinite(uptimeSeconds) || !Number.isFinite(startTicks) || startTicks < 0) {
+      throw new Error("Invalid proc uptime data");
     }
+
+    // CLK_TCK is system-specific; ask the runtime rather than assuming 100.
+    let ticksPerSecond = 100;
+    try {
+      const { execFileSync } = require("child_process");
+      const detected = Number(execFileSync("getconf", ["CLK_TCK"], {
+        encoding: "utf8",
+        stdio: ["ignore", "pipe", "ignore"],
+        timeout: 1000,
+      }).trim());
+      if (Number.isFinite(detected) && detected > 0) ticksPerSecond = detected;
+    } catch {
+      // 100 is a compatibility fallback for common Linux container images.
+    }
+
+    return Math.max(0, Math.floor(uptimeSeconds - startTicks / ticksPerSecond));
+  };
+
+  try {
+    const containerAge = readProcAgeSeconds(1);
+    if (containerAge > 0) return containerAge;
   } catch {
-    // Keep the command usable in local/test environments without procfs.
+    // PID 1/procfs may not be readable in local or restricted environments.
   }
-  return Math.max(0, Math.floor(process.uptime()));
+
+  // Secondary fallback: use this Node process's kernel start time if possible.
+  try {
+    const processAge = readProcAgeSeconds("self");
+    if (processAge > 0) return processAge;
+  } catch {
+    // Fall through to Node's monotonic process clock.
+  }
+
+  // Automatic fallback: capture this Node process's start timestamp at
+  // startup, derived from its monotonic uptime clock. This needs no Render env
+  // var and naturally resets when Node starts again. It represents process
+  // uptime, not container uptime, so procfs remains preferred above.
+  const processStartedAtMs = Date.now() - process.uptime() * 1000;
+  return Math.max(0, Math.floor((Date.now() - processStartedAtMs) / 1000));
 }
 
 // ============================================================
