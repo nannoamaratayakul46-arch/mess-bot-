@@ -3868,6 +3868,7 @@ app.put(
     const template = typeof req.body?.template === "string" ? req.body.template : "";
     const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
     const customNickname = typeof req.body?.customNickname === "string" ? req.body.customNickname.trim() : undefined;
+    const targetName = typeof req.body?.targetName === "string" ? req.body.targetName.trim() : undefined;
     if (!template.trim() || template.length > 4000) {
       return res.status(400).json({ ok: false, error: "Message template must be between 1 and 4000 characters." });
     }
@@ -3877,8 +3878,11 @@ app.put(
     if (customNickname !== undefined && customNickname.length > 80) {
       return res.status(400).json({ ok: false, error: "Custom nickname must be 80 characters or fewer." });
     }
+    if (targetName !== undefined && targetName.length > 80) {
+      return res.status(400).json({ ok: false, error: "Auto Target name must be 80 characters or fewer." });
+    }
     try {
-      const settings = await db.setJaidenTargetCountdownSettings({ template, reason, ...(customNickname === undefined ? {} : { customNickname }) });
+      const settings = await db.setJaidenTargetCountdownSettings({ template, reason, ...(customNickname === undefined ? {} : { customNickname }), ...(targetName === undefined ? {} : { targetName }) });
       return res.json({ ok: true, settings });
     } catch (error) {
       console.error("[JAIDEN COUNTDOWN] Could not save dashboard settings:", error?.message || error);
@@ -12672,7 +12676,8 @@ async function handleAutomaticBanatMessage({
           ? String(event?.senderName || event?.authorName || event?.userName || "")
           : "",
       });
-      const dashboardTargetName = resolvedTarget.name || "";
+      const configuredTargetName = String((await db.getJaidenTargetCountdownSettings()).targetName || "").trim();
+      const dashboardTargetName = configuredTargetName || resolvedTarget.name || "";
 
       // Keep the selected Jaiden Target's group nickname synced with their
       // resolved name. Do this only on the existing target-reply path, and
