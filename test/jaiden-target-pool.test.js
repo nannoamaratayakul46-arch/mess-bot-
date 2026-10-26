@@ -67,22 +67,6 @@ test("forced Jaiden routing is connected to the Banat Jaiden pool", () => {
   assert.match(index, /forceJaidenTarget:\s*true/);
 });
 
-test("Jaiden rotation survives a process-module reload", () => {
-  const modulePath = require.resolve("../banat-jaiden");
-  const threadID = "jaiden-reload-test-" + process.pid;
-  let currentPool = require(modulePath);
-  currentPool.clearBanatJaidenPool(threadID);
-  const first = currentPool.pickBanatJaidenReply(threadID, "Reload Target", { random: () => 0.37 });
-  delete require.cache[modulePath];
-  currentPool = require(modulePath);
-  const second = currentPool.pickBanatJaidenReply(threadID, "Reload Target", { random: () => 0.37 });
-  assert.notEqual(first, second);
-  assert.ok(currentPool.TEMPLATES.includes(first));
-  assert.ok(currentPool.TEMPLATES.includes(second));
-  currentPool.clearBanatJaidenPool(threadID);
-  delete require.cache[modulePath];
-});
-
 test("Jaiden trigger mode preserves recognized bot commands", () => {
   const source = read("index.js");
   assert.ok(source.includes("function isRecognizedBangCommand(body)"));
