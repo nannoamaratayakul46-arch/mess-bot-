@@ -10840,7 +10840,7 @@ async function handleMessage(
   const escapeRegex = (value) =>
     String(value || "").replace(/[.*+?^${}()|[\]\\]/g, (match) => "\\" + match);
   const registeredGameCommandsPattern =
-    gameRegistry.COMMANDS
+    [...new Set(["games", ...gameRegistry.COMMANDS])]
       .map(escapeRegex)
       .sort((a, b) => b.length - a.length)
       .join("|");
