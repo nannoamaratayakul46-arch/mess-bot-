@@ -37,10 +37,10 @@ test("user info is used when group details have no target name", async () => {
   assert.deepEqual(result, { name: "Ray", source: "userInfo" });
 });
 
-test("renderer replaces all placeholders and leftover Jaiden text", () => {
+test("renderer replaces NAME/TARGET placeholders and legacy hardcoded names", () => {
   assert.equal(
-    renderTargetReply("Jaiden, {{target}}! jaiden saw {{ target }}.", "Ray"),
-    "Ray, Ray! Ray saw Ray."
+    renderTargetReply("{{NAME}} moka ka tanga; {{target}}; Jaiden; kei.", "Kaiser"),
+    "Kaiser moka ka tanga; Kaiser; Kaiser; Kaiser."
   );
   assert.equal(
     renderTargetReply("Jaiden, {{target}}!", "Jaiden Smith"),

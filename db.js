@@ -4162,6 +4162,7 @@ const DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS = {
   template: "WIN: {{WIN}}\nLOSE: {{LOSE}}\nREASON: {{REASON}}\nSTART: {{START}}\nEND: {{END}}",
   reason: "DI TUMAGOS SA HEV CHALLENGE, NA-OUTPLAY SA COUNTDOWN 😭",
   customNickname: "",
+  targetName: "",
 };
 let jaidenTargetCountdownSettingsTableReady = null;
 
@@ -4173,9 +4174,10 @@ async function ensureJaidenTargetCountdownSettingsTable() {
         template TEXT NOT NULL,
         reason TEXT NOT NULL,
         custom_nickname TEXT NOT NULL DEFAULT '',
+        target_name TEXT NOT NULL DEFAULT '',
         updated_at BIGINT NOT NULL
       )
-    `).then(() => requireConn().query("ALTER TABLE jaiden_target_countdown_settings ADD COLUMN IF NOT EXISTS custom_nickname TEXT NOT NULL DEFAULT ''")).catch(error => {
+    `).then(() => requireConn().query("ALTER TABLE jaiden_target_countdown_settings ADD COLUMN IF NOT EXISTS custom_nickname TEXT NOT NULL DEFAULT ''")).then(() => requireConn().query("ALTER TABLE jaiden_target_countdown_settings ADD COLUMN IF NOT EXISTS target_name TEXT NOT NULL DEFAULT ''")).catch(error => {
       jaidenTargetCountdownSettingsTableReady = null;
       throw error;
     });
@@ -4186,13 +4188,14 @@ async function ensureJaidenTargetCountdownSettingsTable() {
 async function getJaidenTargetCountdownSettings() {
   await ensureJaidenTargetCountdownSettingsTable();
   const { rows } = await requireConn().query(
-    "SELECT template, reason, custom_nickname FROM jaiden_target_countdown_settings WHERE id = 1"
+    "SELECT template, reason, custom_nickname, target_name FROM jaiden_target_countdown_settings WHERE id = 1"
   );
   const row = rows[0];
   return {
     template: typeof row?.template === "string" ? row.template : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.template,
     reason: typeof row?.reason === "string" ? row.reason : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.reason,
     customNickname: typeof row?.custom_nickname === "string" ? row.custom_nickname : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.customNickname,
+    targetName: typeof row?.target_name === "string" ? row.target_name : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.targetName,
   };
 }
 
@@ -4201,19 +4204,22 @@ async function setJaidenTargetCountdownSettings(settings = {}) {
   const template = typeof settings.template === "string" ? settings.template : current.template;
   const reason = typeof settings.reason === "string" ? settings.reason : current.reason;
   const customNickname = typeof settings.customNickname === "string" ? settings.customNickname.trim() : current.customNickname;
+  const targetName = typeof settings.targetName === "string" ? settings.targetName.trim() : current.targetName;
   if (!template.trim() || template.length > 4000) throw new Error("Countdown message template must be between 1 and 4000 characters.");
   if (reason.length > 2000) throw new Error("Countdown reason must be 2000 characters or fewer.");
   if (customNickname.length > 80) throw new Error("Custom nickname must be 80 characters or fewer.");
+  if (targetName.length > 80) throw new Error("Auto Target name must be 80 characters or fewer.");
   await requireConn().query(`
-    INSERT INTO jaiden_target_countdown_settings (id, template, reason, custom_nickname, updated_at)
-    VALUES (1, $1, $2, $3, $4)
+    INSERT INTO jaiden_target_countdown_settings (id, template, reason, custom_nickname, target_name, updated_at)
+    VALUES (1, $1, $2, $3, $4, $5)
     ON CONFLICT (id) DO UPDATE SET
       template = EXCLUDED.template,
       reason = EXCLUDED.reason,
       custom_nickname = EXCLUDED.custom_nickname,
+      target_name = EXCLUDED.target_name,
       updated_at = EXCLUDED.updated_at
-  `, [template, reason, customNickname, Date.now()]);
-  return { template, reason, customNickname };
+  `, [template, reason, customNickname, targetName, Date.now()]);
+  return { template, reason, customNickname, targetName };
 }
 
 // ╔══════════════════════════════════════════════════════════╗

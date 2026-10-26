@@ -36,6 +36,25 @@ test("Banat Jaiden pool avoids repeats within a full cycle per group", () => {
   pool.clearBanatJaidenPool(threadID);
 });
 
+test("Jaiden rotation survives a process-module reload", () => {
+  const modulePath = require.resolve("../banat-jaiden");
+  const threadID = "jaiden-reload-test-" + process.pid;
+  let currentPool = require(modulePath);
+  currentPool.clearBanatJaidenPool(threadID);
+  const first = currentPool.pickBanatJaidenReply(threadID, "Reload Target");
+  delete require.cache[modulePath];
+  currentPool = require(modulePath);
+  const second = currentPool.pickBanatJaidenReply(threadID, "Reload Target");
+  assert.notEqual(first, second);
+  const renderedTemplates = currentPool.TEMPLATES.map((template) =>
+    currentPool.renderBanatJaidenTemplate(template, "Reload Target")
+  );
+  assert.ok(renderedTemplates.includes(first));
+  assert.ok(renderedTemplates.includes(second));
+  currentPool.clearBanatJaidenPool(threadID);
+  delete require.cache[modulePath];
+});
+
 test("forced Jaiden routing is connected to the Banat Jaiden pool", () => {
   const source = read("triggers.js");
   assert.match(source, /require\("\.\/banat-jaiden"\)/);
@@ -46,22 +65,6 @@ test("forced Jaiden routing is connected to the Banat Jaiden pool", () => {
   assert.match(index, /savedName: savedBanatTarget\?\.target_name/);
   assert.match(index, /Jaiden target resolved:/);
   assert.match(index, /forceJaidenTarget:\s*true/);
-});
-
-test("Jaiden rotation survives a process-module reload", () => {
-  const modulePath = require.resolve("../banat-jaiden");
-  const threadID = "jaiden-reload-test-" + process.pid;
-  let currentPool = require(modulePath);
-  currentPool.clearBanatJaidenPool(threadID);
-  const first = currentPool.pickBanatJaidenReply(threadID, "Reload Target", { random: () => 0.37 });
-  delete require.cache[modulePath];
-  currentPool = require(modulePath);
-  const second = currentPool.pickBanatJaidenReply(threadID, "Reload Target", { random: () => 0.37 });
-  assert.notEqual(first, second);
-  assert.ok(currentPool.TEMPLATES.includes(first));
-  assert.ok(currentPool.TEMPLATES.includes(second));
-  currentPool.clearBanatJaidenPool(threadID);
-  delete require.cache[modulePath];
 });
 
 test("Jaiden trigger mode preserves recognized bot commands", () => {
