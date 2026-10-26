@@ -134,7 +134,8 @@ function renderTargetReply(template, name) {
   const who = cleanName(name) || "you";
   return String(template || "")
     .replace(new RegExp("\\b" + escapeRe("Jaiden") + "\\b", "gi"), () => who)
-    .replace(/\{\{\s*target\s*\}\}/gi, () => who);
+    .replace(new RegExp("\\b" + escapeRe("kei") + "\\b", "gi"), () => who)
+    .replace(/\{\{\s*(?:target|name)\s*\}\}/gi, () => who);
 }
 
 function clearTargetNameCache(threadID, userID) {
