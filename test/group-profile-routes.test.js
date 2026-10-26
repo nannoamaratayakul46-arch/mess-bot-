@@ -189,3 +189,42 @@ test("photo guard diagnostics distinguish a null thread-info response", async ()
     "diagnostics should distinguish a null thread-info response",
   );
 });
+
+test("photo guard requires a second mismatch observation even for a thread-image event", async () => {
+  let uploads = 0;
+  const threadId = "test-photo-event-confirmation";
+  const db = {
+    async query(sql) {
+      if (sql.includes("SELECT thread_id, image_data")) {
+        return { rows: [{
+          thread_id: threadId,
+          image_data: Buffer.from([0xff, 0xd8, 0xff]),
+          image_mime: "image/jpeg",
+          expected_image_url: "cdn.example.com/saved-photo",
+          last_restore_at: null,
+        }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const api = {
+    getThreadInfo(_id, callback) {
+      callback(null, { imageSrc: "https://cdn.example.com/other-photo" });
+    },
+    changeGroupImage(_stream, _id, callback) {
+      uploads += 1;
+      if (callback) callback(null, true);
+    },
+  };
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    await runGuardCheck({ db, getApi: () => api, immediateThreadId: threadId });
+    assert.equal(uploads, 0, "the event's first mismatch must not immediately upload a photo");
+    await runGuardCheck({ db, getApi: () => api, immediateThreadId: threadId });
+    assert.equal(uploads, 1, "a second matching observation may trigger one restore");
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+

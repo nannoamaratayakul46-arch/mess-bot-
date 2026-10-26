@@ -136,8 +136,7 @@ function getPhotoUrlDiagnostic(info) {
 
 function sleep(ms) {
   return new Promise(resolve => {
-    const timer = setTimeout(resolve, ms);
-    timer.unref?.();
+    setTimeout(resolve, ms);
   });
 }
 
@@ -342,7 +341,11 @@ async function runGuardCheck({ db, getApi, audit = () => {}, immediateThreadId =
         continue;
       }
       const previousPhoto = mismatchObservations.get(photoKey);
-      if ((!previousPhoto || previousPhoto.value !== currentPhoto) && String(immediateThreadId || "") !== threadId) {
+      // A thread-image event can be emitted by our own restore upload as well
+      // as by a human change. Never let the event itself bypass the second
+      // observation: that can make a restore trigger another immediate restore
+      // before Messenger has finished updating the thread's image URL.
+      if (!previousPhoto || previousPhoto.value !== currentPhoto) {
         mismatchObservations.set(photoKey, { value: currentPhoto, at: Date.now() });
         console.warn("[PHOTO-GUARD] Photo URL differs for " + threadId + "; waiting for confirmation before restoring.");
         continue;
