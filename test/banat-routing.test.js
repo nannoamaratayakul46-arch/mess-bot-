@@ -35,7 +35,7 @@ test("dashboard target sender overrides normal conversation scoring", () => {
   const body = source.slice(start, end);
   assert.match(body, /senderIsDashboardTarget/);
   assert.match(body, /forceJaidenTarget:\s*true/);
-  assert.match(body, /targetName:\s*dashboardTargetName/);
+  assert.match(body, /targetName:\s*banatTargetName/);
   assert.match(body, /target\.reason = "dashboard-target"/);
   assert.match(body, /target\.reason = "dashboard-target-wait"/);
 });
