@@ -380,8 +380,26 @@ function sendMessageAsync(api, threadID, text) {
     }, GAME_SEND_TIMEOUT_MS);
 
     try {
-      api.sendMessage(text, threadID, (error, messageInfo) =>
-        finish(error, messageInfo)
+      const { typeBeforeSend } = require("./typingIndicator");
+      const configuredMin = Number(process.env.ECLIPSE_GAME_HUMAN_DELAY_MIN_MS || 350);
+      const configuredMax = Number(process.env.ECLIPSE_GAME_HUMAN_DELAY_MAX_MS || 1500);
+      const minDelay = Number.isFinite(configuredMin) ? Math.max(0, Math.min(5000, configuredMin)) : 350;
+      const maxDelay = Number.isFinite(configuredMax) ? Math.max(minDelay, Math.min(7000, configuredMax)) : 1500;
+      const messageLength = String(text || "").length;
+      const delay = Math.min(maxDelay, minDelay + Math.floor(messageLength / 35) * 75);
+      typeBeforeSend(api, threadID, text, { ms: delay }, () =>
+        new Promise((resolve, reject) => {
+          api.sendMessage(text, threadID, (error, messageInfo) => {
+            if (error) {
+              reject(error);
+              return;
+            }
+            resolve(messageInfo || null);
+          });
+        })
+      ).then(
+        (messageInfo) => finish(null, messageInfo),
+        (error) => finish(error)
       );
     } catch (error) {
       finish(error);
