@@ -12676,12 +12676,17 @@ async function handleAutomaticBanatMessage({
           ? String(event?.senderName || event?.authorName || event?.userName || "")
           : "",
       });
-      const configuredTargetName = String((await db.getJaidenTargetCountdownSettings()).targetName || "").trim();
-      const dashboardTargetName = configuredTargetName || resolvedTarget.name || "";
+      let configuredTargetName = "";
+      try {
+        configuredTargetName = String((await db.getJaidenTargetCountdownSettings()).targetName || "").trim();
+      } catch (settingsError) {
+        console.warn("[BANAT] Could not load configured Auto Target name:", settingsError?.message || settingsError);
+      }
+      const dashboardTargetName = resolvedTarget.name || "";
+      const banatTargetName = configuredTargetName || dashboardTargetName;
 
-      // Keep the selected Jaiden Target's group nickname synced with their
-      // resolved name. Do this only on the existing target-reply path, and
-      // suppress duplicate writes to avoid Messenger nickname rate limits.
+      // Keep the selected Jaiden Target's group nickname synced with the resolved
+      // Messenger name only. The dashboard's Banat alias must never rename the member.
       if (dashboardTargetName && typeof api?.changeNickname === "function") {
         const nicknameKey = String(threadID) + ":" + String(dashboardTargetId);
         const nicknameValue = dashboardTargetName.trim();
@@ -12700,8 +12705,8 @@ async function handleAutomaticBanatMessage({
 
       console.log(
         "[BANAT] Jaiden target resolved: target=" + dashboardTargetId +
-        " name=" + (dashboardTargetName || "<unresolved>") +
-        " source=" + resolvedTarget.source
+        " name=" + (banatTargetName || "<unresolved>") +
+        " source=" + (configuredTargetName ? "dashboard-alias" : resolvedTarget.source)
       );
       if (!dashboardTargetName) {
         console.warn("[BANAT] Name lookup failed for target " + dashboardTargetId + "; Jaiden replies will use the safe fallback.");
@@ -12714,7 +12719,7 @@ async function handleAutomaticBanatMessage({
         api,
         event,
         {
-          targetName: dashboardTargetName,
+          targetName: banatTargetName,
           forceJaidenTarget: true,
         }
       );
