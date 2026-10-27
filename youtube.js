@@ -515,8 +515,6 @@ async function downloadYouTubeAudioOnce(
       }, DOWNLOAD_TIMEOUT);
     });
 
-    const downloadPromise = Promise.resolve().then(() => child);
-
     const processPromise =
       typeof child?.then === "function"
         ? child.then(() => ({ stdout, stderr }))
@@ -543,8 +541,6 @@ async function downloadYouTubeAudioOnce(
               resolve({ stdout, stderr });
             });
           });
-
-    void downloadPromise;
 
     const racePromises = [processPromise, timeoutPromise];
 
