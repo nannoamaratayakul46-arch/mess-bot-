@@ -86,9 +86,9 @@ Add your own logic inside `handleMessage()` in `index.js`.
 
 ## YouTube playback
 
-YouTube may block downloads from cloud-hosted server IPs with a bot check. If `!play` reports `Sign in to confirm you’re not a bot` or `Failed to extract any player response`, export a fresh **Netscape-format** cookie file for `youtube.com` and add its contents as the `YOUTUBE_COOKIES` environment variable.
+YouTube may block downloads from cloud-hosted server IPs with a bot check. If `!play` reports `Sign in to confirm you’re not a bot` or HTTP 429, export a fresh **Netscape-format** cookie file for `youtube.com` and set either `YOUTUBE_COOKIES_CONTENT` to the file's text or `YOUTUBE_COOKIES_B64` to the Base64-encoded text in Render. `YOUTUBE_COOKIES` is for a file path on disk, not the cookie contents.
 
-Do not commit YouTube cookies to GitHub. The bot writes this secret to a temporary file only while downloading and deletes it afterward. After adding the variable in Render, redeploy the service.
+Do not commit YouTube cookies to GitHub or paste them into chat. The bot writes supplied cookie content to a temporary file only while downloading. After updating the environment variable in Render, redeploy the service. This helps with verification blocks but cannot guarantee YouTube will allow every download.
 
 
 ## Eclipse RPG
