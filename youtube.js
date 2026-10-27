@@ -347,24 +347,24 @@ function createFriendlyDownloadError(error) {
   const raw = getErrorText(error);
   const lower = raw.toLowerCase();
 
-  if (lower.includes("429") || lower.includes("too many requests")) {
-    return new Error(
-      "YouTube temporarily rate-limited the music server. Please try again in a little while."
-    );
-  }
-
-  if (lower.includes("403") || lower.includes("forbidden")) {
-    return new Error(
-      "YouTube refused this download request. The video may require a fresh browser session/cookies, or YouTube may be temporarily blocking the server."
-    );
-  }
-
   if (
     lower.includes("sign in to confirm") ||
     lower.includes("confirm you're not a bot")
   ) {
     return new Error(
-      "YouTube requires verification for this video. Please try another song or refresh the configured YouTube session."
+      "YouTube is blocking audio downloads from the server. Configure a fresh Netscape-format cookie export with YOUTUBE_COOKIES_CONTENT or YOUTUBE_COOKIES_B64 in Render, then redeploy."
+    );
+  }
+
+  if (lower.includes("429") || lower.includes("too many requests")) {
+    return new Error(
+      "YouTube temporarily rate-limited the music server. Wait before retrying; if it continues, configure a fresh YouTube cookie export in Render."
+    );
+  }
+
+  if (lower.includes("403") || lower.includes("forbidden")) {
+    return new Error(
+      "YouTube refused this download request. Refresh the configured YouTube session/cookies or try again later."
     );
   }
 
