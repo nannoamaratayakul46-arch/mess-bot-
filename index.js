@@ -7433,6 +7433,106 @@ async function handleMessage(
       senderID || ""
     ).trim();
 
+  // ==========================================================
+  // BANAT — BOT / ECLIPSE ADMIN REACTION
+  // ==========================================================
+  // Reaction eligibility is intentionally restricted to:
+  //   1) ECLIPSE itself, or
+  //   2) the configured ECLIPSE admin/owner.
+  //
+  // Everyone else is ignored. The bot's own outgoing events are still
+  // stopped from entering the normal Banat response pipeline below.
+  // ==========================================================
+
+  const reactionSenderAllowed =
+    (dashboardReactionConfig.eclipse_messages && senderId === eclipseUserID) ||
+    (dashboardReactionConfig.owner_messages && isOwner(senderId));
+
+  if (
+    reactionSenderAllowed &&
+    event.messageID &&
+    api &&
+    (
+      typeof api.setMessageReactionMqtt === "function" ||
+      typeof api.setMessageReaction === "function"
+    )
+  ) {
+    try {
+      const messageID = String(event.messageID);
+      const reactionLabel =
+        senderId === eclipseUserID ? "bot message" : "admin message";
+
+      const reactionCallback = (reactionError) => {
+        if (reactionError) {
+          console.error(
+            "[BANAT] Allowed-sender laugh reaction failed:",
+            reactionError
+          );
+        } else {
+          console.log(
+            "[BANAT] Reaction API callback completed without error for " +
+              reactionLabel +
+              ":",
+            messageID
+          );
+        }
+      };
+
+      // ws3-fca's native reaction API uses the fourth argument as the
+      // "force" flag. Keep it enabled so the reaction is actually written
+      // to the target message instead of being silently ignored on some
+      // Messenger sessions.
+      if (typeof api.setMessageReaction === "function") {
+        api.setMessageReaction(
+          dashboardReactionConfig.reaction,
+
+          messageID,
+          reactionCallback,
+          true
+        );
+      } else if (typeof api.setMessageReactionMqtt === "function") {
+        // MQTT adapters use the same target message ID but may expose
+        // a thread-aware signature. Prefer the explicit thread ID when
+        // supported by this adapter.
+        try {
+          api.setMessageReactionMqtt(
+            dashboardReactionConfig.reaction,
+
+            messageID,
+            threadId,
+            reactionCallback
+          );
+        } catch (mqttError) {
+          console.warn(
+            "[BANAT] Thread-aware reaction call failed; retrying legacy MQTT signature:",
+            mqttError?.message || mqttError
+          );
+          api.setMessageReactionMqtt(
+            dashboardReactionConfig.reaction,
+            messageID,
+            reactionCallback
+          );
+        }
+      }
+    } catch (reactionError) {
+      console.error(
+        "[BANAT] Allowed-sender laugh reaction error:",
+        reactionError
+      );
+    }
+  }
+
+  // ECLIPSE's own outgoing messages must never enter the normal Banat
+  // response pipeline. Its message may be reacted to above, but it must
+  // not cause another Banat reply.
+  if (
+    eclipseUserID &&
+    senderId === eclipseUserID
+  ) {
+    return;
+  }
+
+
   // Archived GCs are intentionally ignored by all bot features until restored
   // from the dashboard, including commands, Banat, games, and automod.
   if (await countdownArchiveCheck) return;
@@ -8582,104 +8682,6 @@ async function handleMessage(
     return;
   }
 
-  // ==========================================================
-  // BANAT — BOT / ECLIPSE ADMIN REACTION
-  // ==========================================================
-  // Reaction eligibility is intentionally restricted to:
-  //   1) ECLIPSE itself, or
-  //   2) the configured ECLIPSE admin/owner.
-  //
-  // Everyone else is ignored. The bot's own outgoing events are still
-  // stopped from entering the normal Banat response pipeline below.
-  // ==========================================================
-
-  const reactionSenderAllowed =
-    (dashboardReactionConfig.eclipse_messages && senderId === eclipseUserID) ||
-    (dashboardReactionConfig.owner_messages && isOwner(senderId));
-
-  if (
-    reactionSenderAllowed &&
-    event.messageID &&
-    api &&
-    (
-      typeof api.setMessageReactionMqtt === "function" ||
-      typeof api.setMessageReaction === "function"
-    )
-  ) {
-    try {
-      const messageID = String(event.messageID);
-      const reactionLabel =
-        senderId === eclipseUserID ? "bot message" : "admin message";
-
-      const reactionCallback = (reactionError) => {
-        if (reactionError) {
-          console.error(
-            "[BANAT] Allowed-sender laugh reaction failed:",
-            reactionError
-          );
-        } else {
-          console.log(
-            "[BANAT] Reaction API callback completed without error for " +
-              reactionLabel +
-              ":",
-            messageID
-          );
-        }
-      };
-
-      // ws3-fca's native reaction API uses the fourth argument as the
-      // "force" flag. Keep it enabled so the reaction is actually written
-      // to the target message instead of being silently ignored on some
-      // Messenger sessions.
-      if (typeof api.setMessageReaction === "function") {
-        api.setMessageReaction(
-          dashboardReactionConfig.reaction,
-
-          messageID,
-          reactionCallback,
-          true
-        );
-      } else if (typeof api.setMessageReactionMqtt === "function") {
-        // MQTT adapters use the same target message ID but may expose
-        // a thread-aware signature. Prefer the explicit thread ID when
-        // supported by this adapter.
-        try {
-          api.setMessageReactionMqtt(
-            dashboardReactionConfig.reaction,
-
-            messageID,
-            threadId,
-            reactionCallback
-          );
-        } catch (mqttError) {
-          console.warn(
-            "[BANAT] Thread-aware reaction call failed; retrying legacy MQTT signature:",
-            mqttError?.message || mqttError
-          );
-          api.setMessageReactionMqtt(
-            dashboardReactionConfig.reaction,
-            messageID,
-            reactionCallback
-          );
-        }
-      }
-    } catch (reactionError) {
-      console.error(
-        "[BANAT] Allowed-sender laugh reaction error:",
-        reactionError
-      );
-    }
-  }
-
-  // ECLIPSE's own outgoing messages must never enter the normal Banat
-  // response pipeline. Its message may be reacted to above, but it must
-  // not cause another Banat reply.
-  if (
-    eclipseUserID &&
-    senderId === eclipseUserID
-  ) {
-    return;
-  }
 
   // ==========================================================
   // TRAFFIC GOVERNOR — INCOMING COMMAND GUARD
