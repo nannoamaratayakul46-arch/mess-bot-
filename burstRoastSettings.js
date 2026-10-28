@@ -45,7 +45,7 @@ function reactLaugh(api, messageID) {
     console.warn("[BURST-ROAST] Auto-laugh reaction failed:", error?.message || error);
   }
 }
-function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () => false }) {
+function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () => false, send = null }) {
   let settings = { ...DEFAULTS };
   let initialized = false;
   const lastRunAt = new Map();
@@ -102,7 +102,7 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
         if (!isKnownGroup(id)) return res.status(400).json({ ok: false, error: "Refresh the group list and select a known group." });
       }
       const api = getApi();
-      if (!api || typeof api.sendMessage !== "function") return res.status(503).json({ ok: false, error: "Messenger is not connected." });
+      if (!api || (typeof send !== "function" && typeof api.sendMessage !== "function")) return res.status(503).json({ ok: false, error: "Messenger is not connected." });
       const config = await ensureLoaded().catch(() => null);
       if (!config) return res.status(503).json({ ok: false, error: "Burst & Roast settings are unavailable." });
       const now = Date.now();
@@ -125,7 +125,7 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
                 if (ROASTS.length > 1 && index === previous) index = (index + 1) % ROASTS.length;
                 previous = index;
                 try {
-                  const info = await sendMessage(api, ROASTS[index], threadID);
+                  const info = await sendMessage(api, ROASTS[index], threadID, send);
                   reactLaugh(api, info.messageID || info.messageId);
                 } catch (error) {
                   console.warn("[BURST-ROAST] Send failed in group " + threadID + ":", error?.message || error);
