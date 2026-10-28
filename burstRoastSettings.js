@@ -128,8 +128,43 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
       }
       const api = getApi();
       if (!api || typeof send !== "function") return res.status(503).json({ ok: false, error: "Messenger is not connected." });
-      const config = await ensureLoaded().catch(() => null);
-      if (!config) return res.status(503).json({ ok: false, error: "Burst & Roast settings are unavailable." });
+      // A run may supply an editor snapshot. Validate and use it for this execution only;
+      // never persist it implicitly. Older clients without a snapshot retain saved-settings behavior.
+      let config;
+      if (Object.prototype.hasOwnProperty.call(req.body || {}, "settings")) {
+        const snapshot = req.body.settings;
+        if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
+          return res.status(400).json({ ok: false, error: "Invalid Burst & Roast settings snapshot." });
+        }
+        const allowed = new Set(["messages_per_burst", "delay_seconds", "cooldown_seconds", "content_mode", "emoji", "suffix_names"]);
+        if (Object.keys(snapshot).some(key => !allowed.has(key))) {
+          return res.status(400).json({ ok: false, error: "Unsupported field in Burst & Roast settings." });
+        }
+        const ranges = [
+          ["messages_per_burst", 1, 20],
+          ["delay_seconds", 1, 30],
+          ["cooldown_seconds", 5, 3600],
+        ];
+        for (const [key, min, max] of ranges) {
+          if (!Number.isInteger(snapshot[key]) || snapshot[key] < min || snapshot[key] > max) {
+            return res.status(400).json({ ok: false, error: "Invalid " + key + " in Burst & Roast settings." });
+          }
+        }
+        if (!["normal", "dogmode"].includes(snapshot.content_mode)) {
+          return res.status(400).json({ ok: false, error: "Invalid content_mode in Burst & Roast settings." });
+        }
+        if (typeof snapshot.emoji !== "string" || !snapshot.emoji.trim() || snapshot.emoji.length > 16 || /[\\r\\n]/.test(snapshot.emoji)) {
+          return res.status(400).json({ ok: false, error: "Invalid emoji in Burst & Roast settings." });
+        }
+        if (!Array.isArray(snapshot.suffix_names) || snapshot.suffix_names.length > 50 ||
+            snapshot.suffix_names.some(name => typeof name !== "string" || !name.trim() || name.length > 40 || /[\\r\\n]/.test(name))) {
+          return res.status(400).json({ ok: false, error: "Invalid suffix_names in Burst & Roast settings." });
+        }
+        config = normalize(snapshot);
+      } else {
+        config = await ensureLoaded().catch(() => null);
+        if (!config) return res.status(503).json({ ok: false, error: "Burst & Roast settings are unavailable." });
+      }
       const now = Date.now();
       for (const id of threadIDs) {
         if (activeRuns.has(id)) return res.status(409).json({ ok: false, error: "A Burst & Roast run is already active in one of the selected groups." });
