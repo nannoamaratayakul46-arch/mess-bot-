@@ -137,7 +137,7 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
         if (remaining > 0) return res.status(429).json({ ok: false, error: "Cooldown active for a selected group. Try again in " + Math.ceil(remaining / 1000) + " seconds." });
       }
       for (const id of threadIDs) { activeRuns.add(id); lastRunAt.set(id, now); }
-      res.json({ ok: true, started: true, groups: threadIDs.length, mode });
+      res.json({ ok: true, started: true, groups: threadIDs.length, mode, content_mode: config.content_mode, messages_per_burst: config.messages_per_burst, delay_seconds: config.delay_seconds, cooldown_seconds: config.cooldown_seconds });
       void (async () => {
         try {
           await Promise.all(threadIDs.map(async threadID => {
