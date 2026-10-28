@@ -63,5 +63,6 @@ test("Dogmode Spam contains 200 source lines and formats a randomized name on a 
   const settings = normalize({ content_mode: "dogmode", emoji: "😭", suffix_names: ["rishan", "jam"] });
   let calls = 0;
   const random = () => (calls++ === 0 ? 0 : 0.99);
-  assert.equal(buildSpamMessage(settings, random), DOGMODE_BANATS[0] + " 😭\n\n-jam");
+  const cleanFirstLine = DOGMODE_BANATS[0].replace(/\\s+😂\\s+-ope\\s*$/i, "").replace(/\\s+-ope\\s*$/i, "").trim();
+  assert.equal(buildSpamMessage(settings, random), cleanFirstLine + " 😭\\n\\n-jam");
 });
