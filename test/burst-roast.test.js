@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { DEFAULTS, normalize, buildSpamMessage, DOGMODE_BANATS } = require("../burstRoastSettings");
+const { DEFAULTS, normalize, buildSpamMessage, DOGMODE_BANATS, NORMAL_SPAM_BANATS } = require("../burstRoastSettings");
 
 test("Burst & Roast defaults preserve the configured pacing", () => {
   const settings = normalize();
@@ -53,8 +53,9 @@ test("invalid Burst & Roast settings fall back to defaults", () => {
   });
 });
 
-test("Normal Spam formats the configured phrase with the chosen emoji", () => {
-  assert.equal(buildSpamMessage(normalize({ emoji: "💀" })), "moka ka aso 💀");
+test("Normal Spam contains 100 supplied lines and randomly formats one with the chosen emoji", () => {
+  assert.equal(NORMAL_SPAM_BANATS.length, 100);
+  assert.equal(buildSpamMessage(normalize({ emoji: "💀" }), () => 0), NORMAL_SPAM_BANATS[0] + " 💀");
 });
 
 test("Dogmode Spam contains 200 source lines and formats a randomized name on a separate line", () => {
