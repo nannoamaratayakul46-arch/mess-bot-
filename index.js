@@ -197,6 +197,7 @@ const {
 
 const { createAntiSpam } = require("./antiSpam");
 const { createAutoWelcome } = require("./autoWelcome");
+const { createSharedGcRegistry } = require("./sharedGcRegistry");
 
 // ============================================================
 // YOUTUBE
@@ -3734,6 +3735,8 @@ const autoWelcome = createAutoWelcome({
 });
 autoWelcome.registerRoutes(app, requireDashboardAccess);
 
+const sharedGcRegistry = createSharedGcRegistry();
+
 const antiSpam = createAntiSpam({
   db,
   getApi: () =>
@@ -7193,7 +7196,14 @@ function attemptLogin() {
               authorPresent: Boolean(event?.author ?? event?.authorID ?? event?.senderID),
               passesIncomingFilter
             }));
-            if (!passesIncomingFilter) {
+            if (!listenError && event) {
+            void sharedGcRegistry.syncExisting(api);
+            void sharedGcRegistry.onEvent(api, event).catch((error) => {
+              console.error("[SHARED-GC-REGISTRY] Event registration failed:", String(error?.message || error).slice(0, 160));
+            });
+          }
+
+          if (!passesIncomingFilter) {
               console.log("[AUTOMOD-DIAG] System event was rejected by shouldProcessIncomingEvent.");
             }
           }
