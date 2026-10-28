@@ -10,7 +10,7 @@ const DEFAULTS = Object.freeze({
   cooldown_seconds: 60,
   content_mode: "normal",
   emoji: "😂",
-  suffix_names: Object.freeze(["ope"]),
+  suffix_names: Object.freeze(["rishan", "jam", "aselm"]),
 });
 const clamp = (value, min, max, fallback) => {
   if (value == null || value === "") return fallback;
