@@ -12,18 +12,6 @@ const DEFAULTS = Object.freeze({
   emoji: "😂",
   suffix_names: Object.freeze(["ope"]),
 });
-const ROASTS = Object.freeze([
-  "Ang lakas ng confidence, pero loading pa rin ang comeback. 😂",
-  "Ikaw yung plot twist na hinihiling ng lahat na sana na-cut sa edit. 😂",
-  "May potential ka talaga—nakatago lang nang sobrang lalim. 😂",
-  "Hindi ka late, nasa ibang timeline ka lang palagi. 😂",
-  "Ang comeback mo parang Wi-Fi sa bundok: hinahanap, pero wala. 😂",
-  "Main character energy, pero extra yung dialogue. 😂",
-  "Hindi ka bobo, naka-power saving mode lang yung logic mo. 😂",
-  "Yung argument mo may point—kaso hindi pa natin alam kung saan. 😂",
-  "Sobrang rare mo, pati common sense hindi ka mahanap. 😂",
-  "Nag-load na lahat, ikaw na lang yung hindi pa. 😂"
-]);
 const clamp = (value, min, max, fallback) => {
   if (value == null || value === "") return fallback;
   const n = Number(value);
@@ -55,7 +43,7 @@ function buildSpamMessage(config, random = Math.random) {
   if (config.content_mode !== "dogmode") return "moka ka aso " + config.emoji;
   const line = DOGMODE_BANATS[pickIndex(DOGMODE_BANATS.length, random)];
   const name = config.suffix_names[pickIndex(config.suffix_names.length, random)];
-  return line + " " + config.emoji + "\\n\\n-" + name;
+  return line + " " + config.emoji + "\n\n-" + name;
 }
 function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function sendMessage(api, text, threadID) {
@@ -149,11 +137,7 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
             startTyping(api, threadID);
             try {
               const count = mode === "burst" ? config.messages_per_burst : 1;
-              let previous = -1;
               for (let i = 0; i < count; i += 1) {
-                let index = Math.floor(Math.random() * ROASTS.length);
-                if (ROASTS.length > 1 && index === previous) index = (index + 1) % ROASTS.length;
-                previous = index;
                 try {
                   const message = buildSpamMessage(config);
                   const info = typeof send === "function"
