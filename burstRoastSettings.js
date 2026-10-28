@@ -153,11 +153,11 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
         if (!["normal", "dogmode"].includes(snapshot.content_mode)) {
           return res.status(400).json({ ok: false, error: "Invalid content_mode in Burst & Roast settings." });
         }
-        if (typeof snapshot.emoji !== "string" || !snapshot.emoji.trim() || snapshot.emoji.length > 16 || /[\\r\\n]/.test(snapshot.emoji)) {
+        if (typeof snapshot.emoji !== "string" || !snapshot.emoji.trim() || snapshot.emoji.length > 16 || /[\r\n]/.test(snapshot.emoji)) {
           return res.status(400).json({ ok: false, error: "Invalid emoji in Burst & Roast settings." });
         }
         if (!Array.isArray(snapshot.suffix_names) || snapshot.suffix_names.length > 50 ||
-            snapshot.suffix_names.some(name => typeof name !== "string" || !name.trim() || name.length > 40 || /[\\r\\n]/.test(name))) {
+            snapshot.suffix_names.some(name => typeof name !== "string" || !name.trim() || name.length > 40 || /[\r\n]/.test(name))) {
           return res.status(400).json({ ok: false, error: "Invalid suffix_names in Burst & Roast settings." });
         }
         config = normalize(snapshot);
