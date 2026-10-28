@@ -3,6 +3,7 @@
 const express = require("express");
 const { startTyping, stopTyping } = require("./typingIndicator");
 const DOGMODE_BANATS = require("./dogmodeBanats");
+const NORMAL_SPAM_BANATS = require("./normalSpamBanats");
 
 const DEFAULTS = Object.freeze({
   messages_per_burst: 5,
@@ -40,8 +41,14 @@ function pickIndex(length, random = Math.random) {
   return Math.min(length - 1, Math.max(0, Math.floor(random() * length)));
 }
 function buildSpamMessage(config, random = Math.random) {
-  if (config.content_mode !== "dogmode") return "moka ka aso " + config.emoji;
-  const line = DOGMODE_BANATS[pickIndex(DOGMODE_BANATS.length, random)];
+  if (config.content_mode !== "dogmode") {
+    const line = NORMAL_SPAM_BANATS[pickIndex(NORMAL_SPAM_BANATS.length, random)];
+    return line + " " + config.emoji;
+  }
+  const line = DOGMODE_BANATS[pickIndex(DOGMODE_BANATS.length, random)]
+    .replace(/\s+😂\s+-ope\s*$/i, "")
+    .replace(/\s+-ope\s*$/i, "")
+    .trim();
   const name = config.suffix_names[pickIndex(config.suffix_names.length, random)];
   return line + " " + config.emoji + "\n\n-" + name;
 }
@@ -161,4 +168,4 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
   }
   return { registerRoutes, getSettings: () => ({ ...settings }) };
 }
-module.exports = { createBurstRoastSettings, DEFAULTS, normalize, buildSpamMessage, DOGMODE_BANATS };
+module.exports = { createBurstRoastSettings, DEFAULTS, normalize, buildSpamMessage, DOGMODE_BANATS, NORMAL_SPAM_BANATS };
