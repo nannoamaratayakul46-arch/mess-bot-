@@ -8607,64 +8607,60 @@ async function handleMessage(
     )
   ) {
     try {
-      const roastEnabled = await db.isRoastEnabled(threadId);
+      const messageID = String(event.messageID);
+      const reactionLabel =
+        senderId === eclipseUserID ? "bot message" : "admin message";
 
-      if (roastEnabled) {
-        const messageID = String(event.messageID);
-        const reactionLabel =
-          senderId === eclipseUserID ? "bot message" : "admin message";
+      const reactionCallback = (reactionError) => {
+        if (reactionError) {
+          console.error(
+            "[BANAT] Allowed-sender laugh reaction failed:",
+            reactionError
+          );
+        } else {
+          console.log(
+            "[BANAT] Reaction API callback completed without error for " +
+              reactionLabel +
+              ":",
+            messageID
+          );
+        }
+      };
 
-        const reactionCallback = (reactionError) => {
-          if (reactionError) {
-            console.error(
-              "[BANAT] Allowed-sender laugh reaction failed:",
-              reactionError
-            );
-          } else {
-            console.log(
-              "[BANAT] Reaction API callback completed without error for " +
-                reactionLabel +
-                ":",
-              messageID
-            );
-          }
-        };
+      // ws3-fca's native reaction API uses the fourth argument as the
+      // "force" flag. Keep it enabled so the reaction is actually written
+      // to the target message instead of being silently ignored on some
+      // Messenger sessions.
+      if (typeof api.setMessageReaction === "function") {
+        api.setMessageReaction(
+          dashboardReactionConfig.reaction,
 
-        // ws3-fca's native reaction API uses the fourth argument as the
-        // "force" flag. Keep it enabled so the reaction is actually written
-        // to the target message instead of being silently ignored on some
-        // Messenger sessions.
-        if (typeof api.setMessageReaction === "function") {
-          api.setMessageReaction(
+          messageID,
+          reactionCallback,
+          true
+        );
+      } else if (typeof api.setMessageReactionMqtt === "function") {
+        // MQTT adapters use the same target message ID but may expose
+        // a thread-aware signature. Prefer the explicit thread ID when
+        // supported by this adapter.
+        try {
+          api.setMessageReactionMqtt(
             dashboardReactionConfig.reaction,
 
             messageID,
-            reactionCallback,
-            true
+            threadId,
+            reactionCallback
           );
-        } else if (typeof api.setMessageReactionMqtt === "function") {
-          // MQTT adapters use the same target message ID but may expose
-          // a thread-aware signature. Prefer the explicit thread ID when
-          // supported by this adapter.
-          try {
-            api.setMessageReactionMqtt(
-              dashboardReactionConfig.reaction,
-
-              messageID,
-              threadId,
-              reactionCallback
-            );
-          } catch (mqttError) {
-            console.warn(
-              "[BANAT] Thread-aware reaction call failed; retrying legacy MQTT signature:",
-              mqttError?.message || mqttError
-            );
-            api.setMessageReactionMqtt(
-              dashboardReactionConfig.reaction,
-              messageID,
-              reactionCallback
-            );
-          }
+        } catch (mqttError) {
+          console.warn(
+            "[BANAT] Thread-aware reaction call failed; retrying legacy MQTT signature:",
+            mqttError?.message || mqttError
+          );
+          api.setMessageReactionMqtt(
+            dashboardReactionConfig.reaction,
+            messageID,
+            reactionCallback
+          );
         }
       }
     } catch (reactionError) {
