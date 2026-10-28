@@ -25,14 +25,14 @@ function normalize(value = {}) {
       : DEFAULTS.suffix_names;
   const suffix_names = [...new Set(rawNames
     .map(name => String(name || "").trim().replace(/^[-@]+/, "").slice(0, 40))
-    .filter(name => name && !/[\\r\\n]/.test(name)))].slice(0, 50);
+    .filter(name => name && !/[\r\n]/.test(name)))].slice(0, 50);
   const rawEmoji = String(value.emoji ?? DEFAULTS.emoji).trim();
   return {
     messages_per_burst: clamp(value.messages_per_burst, 1, 20, DEFAULTS.messages_per_burst),
     delay_seconds: clamp(value.delay_seconds, 1, 30, DEFAULTS.delay_seconds),
     cooldown_seconds: clamp(value.cooldown_seconds, 5, 3600, DEFAULTS.cooldown_seconds),
     content_mode: value.content_mode === "dogmode" ? "dogmode" : "normal",
-    emoji: rawEmoji && !/[\\r\\n]/.test(rawEmoji) ? rawEmoji.slice(0, 16) : DEFAULTS.emoji,
+    emoji: rawEmoji && !/[\r\n]/.test(rawEmoji) ? rawEmoji.slice(0, 16) : DEFAULTS.emoji,
     suffix_names: suffix_names.length ? suffix_names : [...DEFAULTS.suffix_names],
   };
 }
