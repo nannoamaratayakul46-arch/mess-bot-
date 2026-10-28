@@ -2,8 +2,16 @@
 
 const express = require("express");
 const { startTyping, stopTyping } = require("./typingIndicator");
+const DOGMODE_BANATS = require("./dogmodeBanats");
 
-const DEFAULTS = Object.freeze({ messages_per_burst: 5, delay_seconds: 3, cooldown_seconds: 60 });
+const DEFAULTS = Object.freeze({
+  messages_per_burst: 5,
+  delay_seconds: 3,
+  cooldown_seconds: 60,
+  content_mode: "normal",
+  emoji: "😂",
+  suffix_names: Object.freeze(["ope"]),
+});
 const ROASTS = Object.freeze([
   "Ang lakas ng confidence, pero loading pa rin ang comeback. 😂",
   "Ikaw yung plot twist na hinihiling ng lahat na sana na-cut sa edit. 😂",
@@ -22,11 +30,32 @@ const clamp = (value, min, max, fallback) => {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.trunc(n))) : fallback;
 };
 function normalize(value = {}) {
+  const rawNames = Array.isArray(value.suffix_names)
+    ? value.suffix_names
+    : typeof value.suffix_names === "string"
+      ? value.suffix_names.split(",")
+      : DEFAULTS.suffix_names;
+  const suffix_names = [...new Set(rawNames
+    .map(name => String(name || "").trim().replace(/^[-@]+/, "").slice(0, 40))
+    .filter(name => name && !/[\\r\\n]/.test(name)))].slice(0, 50);
+  const rawEmoji = String(value.emoji ?? DEFAULTS.emoji).trim();
   return {
     messages_per_burst: clamp(value.messages_per_burst, 1, 20, DEFAULTS.messages_per_burst),
     delay_seconds: clamp(value.delay_seconds, 1, 30, DEFAULTS.delay_seconds),
     cooldown_seconds: clamp(value.cooldown_seconds, 5, 3600, DEFAULTS.cooldown_seconds),
+    content_mode: value.content_mode === "dogmode" ? "dogmode" : "normal",
+    emoji: rawEmoji && !/[\\r\\n]/.test(rawEmoji) ? rawEmoji.slice(0, 16) : DEFAULTS.emoji,
+    suffix_names: suffix_names.length ? suffix_names : [...DEFAULTS.suffix_names],
   };
+}
+function pickIndex(length, random = Math.random) {
+  return Math.min(length - 1, Math.max(0, Math.floor(random() * length)));
+}
+function buildSpamMessage(config, random = Math.random) {
+  if (config.content_mode !== "dogmode") return "moka ka aso " + config.emoji;
+  const line = DOGMODE_BANATS[pickIndex(DOGMODE_BANATS.length, random)];
+  const name = config.suffix_names[pickIndex(config.suffix_names.length, random)];
+  return line + " " + config.emoji + "\\n\\n-" + name;
 }
 function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function sendMessage(api, text, threadID) {
@@ -126,7 +155,10 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
                 if (ROASTS.length > 1 && index === previous) index = (index + 1) % ROASTS.length;
                 previous = index;
                 try {
-                  const info = await sendMessage(api, ROASTS[index], threadID, send);
+                  const message = buildSpamMessage(config);
+                  const info = typeof send === "function"
+                    ? await send(api, message, threadID)
+                    : await sendMessage(api, message, threadID);
                   reactLaugh(api, info.messageID || info.messageId);
                 } catch (error) {
                   console.warn("[BURST-ROAST] Send failed in group " + threadID + ":", error?.message || error);
@@ -145,4 +177,4 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
   }
   return { registerRoutes, getSettings: () => ({ ...settings }) };
 }
-module.exports = { createBurstRoastSettings, DEFAULTS, normalize };
+module.exports = { createBurstRoastSettings, DEFAULTS, normalize, buildSpamMessage, DOGMODE_BANATS };
