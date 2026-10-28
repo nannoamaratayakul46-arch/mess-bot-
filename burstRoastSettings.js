@@ -1,8 +1,21 @@
 "use strict";
 
 const express = require("express");
+const { startTyping, stopTyping } = require("./typingIndicator");
 
 const DEFAULTS = Object.freeze({ messages_per_burst: 5, delay_seconds: 3, cooldown_seconds: 60 });
+const ROASTS = Object.freeze([
+  "Ang lakas ng confidence, pero loading pa rin ang comeback. 😂",
+  "Ikaw yung plot twist na hinihiling ng lahat na sana na-cut sa edit. 😂",
+  "May potential ka talaga—nakatago lang nang sobrang lalim. 😂",
+  "Hindi ka late, nasa ibang timeline ka lang palagi. 😂",
+  "Ang comeback mo parang Wi-Fi sa bundok: hinahanap, pero wala. 😂",
+  "Main character energy, pero extra yung dialogue. 😂",
+  "Hindi ka bobo, naka-power saving mode lang yung logic mo. 😂",
+  "Yung argument mo may point—kaso hindi pa natin alam kung saan. 😂",
+  "Sobrang rare mo, pati common sense hindi ka mahanap. 😂",
+  "Nag-load na lahat, ikaw na lang yung hindi pa. 😂"
+]);
 const clamp = (value, min, max, fallback) => {
   const n = Number(value);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.trunc(n))) : fallback;
@@ -14,9 +27,29 @@ function normalize(value = {}) {
     cooldown_seconds: clamp(value.cooldown_seconds, 5, 3600, DEFAULTS.cooldown_seconds),
   };
 }
-function createBurstRoastSettings({ db }) {
+function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function sendMessage(api, text, threadID) {
+  return new Promise((resolve, reject) => {
+    try {
+      api.sendMessage(text, threadID, (error, info) => error ? reject(error) : resolve(info || {}));
+    } catch (error) { reject(error); }
+  });
+}
+function reactLaugh(api, messageID) {
+  if (!messageID || typeof api.setMessageReaction !== "function") return;
+  try {
+    api.setMessageReaction("😂", String(messageID), error => {
+      if (error) console.warn("[BURST-ROAST] Auto-laugh reaction failed:", error?.message || error);
+    }, true);
+  } catch (error) {
+    console.warn("[BURST-ROAST] Auto-laugh reaction failed:", error?.message || error);
+  }
+}
+function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () => false }) {
   let settings = { ...DEFAULTS };
   let initialized = false;
+  const lastRunAt = new Map();
+  const activeRuns = new Set();
   async function load() {
     await db.query(`CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
       preference_key TEXT PRIMARY KEY,
@@ -57,6 +90,56 @@ function createBurstRoastSettings({ db }) {
       } catch (error) {
         res.status(500).json({ ok: false, error: "Could not save Burst & Roast settings." });
       }
+    });
+    app.post("/api/dashboard/burst-roast/run", auth, async (req, res) => {
+      const mode = String(req.body?.mode || "");
+      const rawIds = Array.isArray(req.body?.thread_ids) ? req.body.thread_ids : [];
+      const threadIDs = [...new Set(rawIds.map(id => String(id || "").trim()).filter(Boolean))].slice(0, 20);
+      if (!["burst", "roast"].includes(mode)) return res.status(400).json({ ok: false, error: "Choose Burst or Roast." });
+      if (!threadIDs.length) return res.status(400).json({ ok: false, error: "Select at least one group." });
+      if (rawIds.length > 20) return res.status(400).json({ ok: false, error: "Select no more than 20 groups at once." });
+      for (const id of threadIDs) {
+        if (!isKnownGroup(id)) return res.status(400).json({ ok: false, error: "Refresh the group list and select a known group." });
+      }
+      const api = getApi();
+      if (!api || typeof api.sendMessage !== "function") return res.status(503).json({ ok: false, error: "Messenger is not connected." });
+      const config = await ensureLoaded().catch(() => null);
+      if (!config) return res.status(503).json({ ok: false, error: "Burst & Roast settings are unavailable." });
+      const now = Date.now();
+      for (const id of threadIDs) {
+        if (activeRuns.has(id)) return res.status(409).json({ ok: false, error: "A Burst & Roast run is already active in one of the selected groups." });
+        const remaining = config.cooldown_seconds * 1000 - (now - (lastRunAt.get(id) || 0));
+        if (remaining > 0) return res.status(429).json({ ok: false, error: "Cooldown active for a selected group. Try again in " + Math.ceil(remaining / 1000) + " seconds." });
+      }
+      for (const id of threadIDs) { activeRuns.add(id); lastRunAt.set(id, now); }
+      res.json({ ok: true, started: true, groups: threadIDs.length, mode });
+      void (async () => {
+        try {
+          await Promise.all(threadIDs.map(async threadID => {
+            startTyping(api, threadID);
+            try {
+              const count = mode === "burst" ? config.messages_per_burst : 1;
+              let previous = -1;
+              for (let i = 0; i < count; i += 1) {
+                let index = Math.floor(Math.random() * ROASTS.length);
+                if (ROASTS.length > 1 && index === previous) index = (index + 1) % ROASTS.length;
+                previous = index;
+                try {
+                  const info = await sendMessage(api, ROASTS[index], threadID);
+                  reactLaugh(api, info.messageID || info.messageId);
+                } catch (error) {
+                  console.warn("[BURST-ROAST] Send failed in group " + threadID + ":", error?.message || error);
+                  break;
+                }
+                if (i + 1 < count) await wait(config.delay_seconds * 1000);
+              }
+            } finally { stopTyping(api, threadID); activeRuns.delete(threadID); }
+          }));
+        } catch (error) {
+          console.warn("[BURST-ROAST] Run failed:", error?.message || error);
+          for (const id of threadIDs) { activeRuns.delete(id); stopTyping(api, id); }
+        }
+      })();
     });
   }
   return { registerRoutes, getSettings: () => ({ ...settings }) };
