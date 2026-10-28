@@ -102,7 +102,7 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
         if (!isKnownGroup(id)) return res.status(400).json({ ok: false, error: "Refresh the group list and select a known group." });
       }
       const api = getApi();
-      if (!api || (typeof send !== "function" && typeof api.sendMessage !== "function")) return res.status(503).json({ ok: false, error: "Messenger is not connected." });
+      if (!api || typeof send !== "function") return res.status(503).json({ ok: false, error: "Messenger is not connected." });
       const config = await ensureLoaded().catch(() => null);
       if (!config) return res.status(503).json({ ok: false, error: "Burst & Roast settings are unavailable." });
       const now = Date.now();
