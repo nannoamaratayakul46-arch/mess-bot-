@@ -75,6 +75,7 @@ const { createLiveChat } = require("./liveChat");
 const { registerModerationRoutes } = require("./dashboardModeration");
 const { registerTemporaryAdminRoutes } = require("./temporaryGroupAdmins");
 const { registerDatabaseAiCenterRoutes } = require("./dashboardDatabaseAiCenter");
+const { createBurstRoastSettings } = require("./burstRoastSettings");
 
 const {
   ensureNicknameGuardTable,
@@ -3697,6 +3698,8 @@ app.use(dashboardCors);
 
 // Authenticated, read-only Neon inspection and encrypted dashboard AI settings.
 registerDatabaseAiCenterRoutes(app, requireDashboardAccess);
+const burstRoastSettings = createBurstRoastSettings({ db });
+burstRoastSettings.registerRoutes(app, requireDashboardAccess);
 
 const liveChat = createLiveChat({
   getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,
