@@ -34,6 +34,7 @@ function createSharedGcRegistry({ log = (message) => console.log(message) } = {}
       eligible: group?.eligible !== false,
       event_id: String(group?.event_id || ""),
       last_seen_at: Date.now(),
+      allow_reactivate: group?.allow_reactivate === true,
     }], source).then(() => true).catch((error) => {
       log("[SHARED-GC-REGISTRY] Registration sync failed for " + id + ": " + String(error?.message || error).slice(0, 160));
       return false;
@@ -56,7 +57,7 @@ function createSharedGcRegistry({ log = (message) => console.log(message) } = {}
     });
     if (!selfJoined) return false;
     const cached = event?.threadName || event?.thread_name || data.threadName || data.thread_name || "Unnamed group";
-    return publishGroup({ thread_id: threadID, thread_name: cached, event_id: event?.messageID || event?.eventID || "" });
+    return publishGroup({ thread_id: threadID, thread_name: cached, event_id: event?.messageID || event?.eventID || "", allow_reactivate: true });
   }
 
   async function syncExisting(api) {
@@ -104,6 +105,7 @@ function createSharedGcRegistry({ log = (message) => console.log(message) } = {}
         thread_name: String(thread.name || thread.threadName || "Unnamed group").slice(0, 160),
         eligible: true,
         last_seen_at: Date.now(),
+        allow_reactivate: true,
       }));
       // This is intentionally an upsert-only best-effort import. getThreadList
       // caps at 1000 and may be incomplete, so never infer removals from absence.
