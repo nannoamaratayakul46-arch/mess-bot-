@@ -368,7 +368,8 @@ function sendBanatReplyWithTyping(
                       api.setMessageReaction(
                         "😆",
                         String(sentMessageID),
-                        reactionCallback
+                        reactionCallback,
+                        true
                       );
                     } else if (typeof api?.setMessageReactionMqtt === "function") {
                       api.setMessageReactionMqtt(
