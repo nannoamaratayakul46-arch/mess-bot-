@@ -17,6 +17,7 @@ const ROASTS = Object.freeze([
   "Nag-load na lahat, ikaw na lang yung hindi pa. 😂"
 ]);
 const clamp = (value, min, max, fallback) => {
+  if (value == null || value === "") return fallback;
   const n = Number(value);
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.trunc(n))) : fallback;
 };
