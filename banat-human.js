@@ -364,18 +364,20 @@ function sendBanatReplyWithTyping(
                       }
                     };
 
-                    if (typeof api?.setMessageReaction === "function") {
+                    if (typeof api?.setMessageReactionMqtt === "function") {
+                      // ws3-fca@2.0.1 MQTT signature requires threadID before callback.
+                      api.setMessageReactionMqtt(
+                        "😆",
+                        String(sentMessageID),
+                        String(threadID),
+                        reactionCallback
+                      );
+                    } else if (typeof api?.setMessageReaction === "function") {
                       api.setMessageReaction(
                         "😆",
                         String(sentMessageID),
                         reactionCallback,
                         true
-                      );
-                    } else if (typeof api?.setMessageReactionMqtt === "function") {
-                      api.setMessageReactionMqtt(
-                        "😆",
-                        String(sentMessageID),
-                        reactionCallback
                       );
                     } else {
                       console.warn(
