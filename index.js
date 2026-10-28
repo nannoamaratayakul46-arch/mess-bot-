@@ -7482,37 +7482,23 @@ async function handleMessage(
       // "force" flag. Keep it enabled so the reaction is actually written
       // to the target message instead of being silently ignored on some
       // Messenger sessions.
-      if (typeof api.setMessageReaction === "function") {
+      // Restore the original ws3-fca@2.0.1 dispatch order and signature:
+      // MQTT reactions require (reaction, messageID, threadID, callback).
+      // Only use the legacy reaction API when the MQTT method is unavailable.
+      if (typeof api.setMessageReactionMqtt === "function") {
+        api.setMessageReactionMqtt(
+          dashboardReactionConfig.reaction,
+          messageID,
+          threadId,
+          reactionCallback
+        );
+      } else {
         api.setMessageReaction(
           dashboardReactionConfig.reaction,
-
           messageID,
           reactionCallback,
           true
         );
-      } else if (typeof api.setMessageReactionMqtt === "function") {
-        // MQTT adapters use the same target message ID but may expose
-        // a thread-aware signature. Prefer the explicit thread ID when
-        // supported by this adapter.
-        try {
-          api.setMessageReactionMqtt(
-            dashboardReactionConfig.reaction,
-
-            messageID,
-            threadId,
-            reactionCallback
-          );
-        } catch (mqttError) {
-          console.warn(
-            "[BANAT] Thread-aware reaction call failed; retrying legacy MQTT signature:",
-            mqttError?.message || mqttError
-          );
-          api.setMessageReactionMqtt(
-            dashboardReactionConfig.reaction,
-            messageID,
-            reactionCallback
-          );
-        }
       }
     } catch (reactionError) {
       console.error(
