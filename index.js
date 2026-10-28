@@ -3698,7 +3698,7 @@ app.use(dashboardCors);
 
 // Authenticated, read-only Neon inspection and encrypted dashboard AI settings.
 registerDatabaseAiCenterRoutes(app, requireDashboardAccess);
-const burstRoastSettings = createBurstRoastSettings({ db });
+const burstRoastSettings = createBurstRoastSettings({\n  db,\n  getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,\n  isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),\n});
 burstRoastSettings.registerRoutes(app, requireDashboardAccess);
 
 const liveChat = createLiveChat({
