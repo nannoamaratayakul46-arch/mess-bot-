@@ -139,7 +139,7 @@ function createAutoWelcome({ db, getApi = () => null, isKnownGroup = () => true,
     batch.api = api;
     for (const participant of added) {
       const id = String(participant?.userFbId ?? participant?.userFBID ?? participant?.userID ?? participant?.userId ?? participant?.id ?? "").trim();
-      if (!/^\\d{6,32}$/.test(id) || id === botID) continue;
+      if (!/^\d{6,32}$/.test(id) || id === botID) continue;
       if (!batch.participants.has(id)) batch.participants.set(id, participant);
     }
     if (!batch.participants.size) {
@@ -165,12 +165,12 @@ function createAutoWelcome({ db, getApi = () => null, isKnownGroup = () => true,
           : uniqueNames.length === 2
             ? uniqueNames.join(" and ")
             : uniqueNames.slice(0, -1).join(", ") + ", and " + uniqueNames[uniqueNames.length - 1];
-        const message = String(latestSettings.message_template || DEFAULT_MESSAGE).replace(/\\{\\{NAME\\}\\}/g, joinedNames);
+        const message = String(latestSettings.message_template || DEFAULT_MESSAGE).replace(/\{\{NAME\}\}/g, joinedNames);
         let attachment;
         let tempPath;
         try {
           if (latestSettings.media_data_url) {
-            const match = /^data:image\\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)$/.exec(latestSettings.media_data_url);
+            const match = /^data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)$/.exec(latestSettings.media_data_url);
             if (match) {
               const ext = match[1] === "jpeg" ? "jpg" : match[1];
               tempPath = path.join(os.tmpdir(), "auto-welcome-" + crypto.randomBytes(10).toString("hex") + "." + ext);
