@@ -7444,9 +7444,34 @@ async function handleMessage(
   // stopped from entering the normal Banat response pipeline below.
   // ==========================================================
 
+  // Reactions are part of Banat, not a standalone always-on feature.
+  // Enable them only while this group has one of its Banat modes active:
+  // / pool (roast_enabled), \\ pool (slash_pool_enabled), or Jaiden
+  // Target Banat (a saved target, including the explicit ! mode).
+  let banatReactionModeEnabled = false;
+  try {
+    const [threadSettings, savedBanatTarget] = await Promise.all([
+      db.getThreadSettings(threadId),
+      db.getBanatThreadTarget(threadId),
+    ]);
+    banatReactionModeEnabled =
+      threadSettings?.roast_enabled === true ||
+      threadSettings?.slash_pool_enabled === true ||
+      Boolean(String(savedBanatTarget?.target_user_id || "").trim());
+  } catch (reactionSettingsError) {
+    // Fail closed: if Banat state cannot be confirmed, do not react.
+    console.warn(
+      "[BANAT] Skipping laugh reaction because Banat mode could not be verified:",
+      reactionSettingsError?.message || reactionSettingsError
+    );
+  }
+
   const reactionSenderAllowed =
-    (dashboardReactionConfig.eclipse_messages && senderId === eclipseUserID) ||
-    (dashboardReactionConfig.owner_messages && isOwner(senderId));
+    banatReactionModeEnabled &&
+    (
+      (dashboardReactionConfig.eclipse_messages && senderId === eclipseUserID) ||
+      (dashboardReactionConfig.owner_messages && isOwner(senderId))
+    );
 
   if (
     reactionSenderAllowed &&
