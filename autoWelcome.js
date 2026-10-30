@@ -26,6 +26,8 @@ function callSend(api, payload, threadID) {
 
 function createAutoWelcome({ db, getApi = () => null, isKnownGroup = () => true, log = () => {} }) {
   const profileNameCache = new Map();
+  const pendingWelcomeBatches = new Map();
+  const WELCOME_BATCH_WINDOW_MS = 5000;
   async function resolveMemberName(api, id, participant) {
     const direct = String(participant?.fullName || participant?.name || participant?.firstName || "").trim();
     if (direct && !/^\d{6,32}$/.test(direct)) return direct;
@@ -129,30 +131,63 @@ function createAutoWelcome({ db, getApi = () => null, isKnownGroup = () => true,
     let settings;
     try { settings = await getSettings(threadID); } catch (error) { log("[AUTO-WELCOME] DB read failed: " + String(error?.message || error)); return; }
     if (!settings.enabled || !api || typeof api.sendMessage !== "function") return;
+    let batch = pendingWelcomeBatches.get(threadID);
+    if (!batch) {
+      batch = { participants: new Map(), timer: null, api };
+      pendingWelcomeBatches.set(threadID, batch);
+    }
+    batch.api = api;
     for (const participant of added) {
       const id = String(participant?.userFbId ?? participant?.userFBID ?? participant?.userID ?? participant?.userId ?? participant?.id ?? "").trim();
-      if (!/^\d{6,32}$/.test(id) || id === botID) continue;
-      const name = await resolveMemberName(api, id, participant);
-      const message = String(settings.message_template || DEFAULT_MESSAGE).replace(/\{\{NAME\}\}/g, name);
-      let attachment;
-      let tempPath;
-      try {
-        if (settings.media_data_url) {
-          const match = /^data:image\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)$/.exec(settings.media_data_url);
-          if (match) {
-            const ext = match[1] === "jpeg" ? "jpg" : match[1];
-            tempPath = path.join(os.tmpdir(), "auto-welcome-" + crypto.randomBytes(10).toString("hex") + "." + ext);
-            await fs.promises.writeFile(tempPath, Buffer.from(match[2], "base64"), { flag: "wx" });
-            attachment = fs.createReadStream(tempPath);
-          }
-        }
-        await callSend(api, attachment ? { body: message, attachment } : message, threadID);
-      } catch (error) {
-        log("[AUTO-WELCOME] send failed in " + threadID + ": " + String(error?.message || error).slice(0, 160));
-      } finally {
-        if (tempPath) await fs.promises.unlink(tempPath).catch(() => {});
-      }
+      if (!/^\\d{6,32}$/.test(id) || id === botID) continue;
+      if (!batch.participants.has(id)) batch.participants.set(id, participant);
     }
+    if (!batch.participants.size) {
+      if (batch.timer) clearTimeout(batch.timer);
+      pendingWelcomeBatches.delete(threadID);
+      return;
+    }
+
+    // Debounce the burst: every additional join restarts the five-second quiet window.
+    if (batch.timer) clearTimeout(batch.timer);
+    batch.timer = setTimeout(async () => {
+      if (pendingWelcomeBatches.get(threadID) !== batch) return;
+      pendingWelcomeBatches.delete(threadID);
+      try {
+        const latestSettings = await getSettings(threadID);
+        if (!latestSettings.enabled || !batch.api || typeof batch.api.sendMessage !== "function") return;
+        const members = [...batch.participants.entries()];
+        const names = await Promise.all(members.map(([id, participant]) => resolveMemberName(batch.api, id, participant)));
+        const uniqueNames = [...new Set(names.map(name => String(name || "").trim()).filter(Boolean))];
+        if (!uniqueNames.length) return;
+        const joinedNames = uniqueNames.length === 1
+          ? uniqueNames[0]
+          : uniqueNames.length === 2
+            ? uniqueNames.join(" and ")
+            : uniqueNames.slice(0, -1).join(", ") + ", and " + uniqueNames[uniqueNames.length - 1];
+        const message = String(latestSettings.message_template || DEFAULT_MESSAGE).replace(/\\{\\{NAME\\}\\}/g, joinedNames);
+        let attachment;
+        let tempPath;
+        try {
+          if (latestSettings.media_data_url) {
+            const match = /^data:image\\/(png|jpeg|jpg|gif|webp);base64,([A-Za-z0-9+/=]+)$/.exec(latestSettings.media_data_url);
+            if (match) {
+              const ext = match[1] === "jpeg" ? "jpg" : match[1];
+              tempPath = path.join(os.tmpdir(), "auto-welcome-" + crypto.randomBytes(10).toString("hex") + "." + ext);
+              await fs.promises.writeFile(tempPath, Buffer.from(match[2], "base64"), { flag: "wx" });
+              attachment = fs.createReadStream(tempPath);
+            }
+          }
+          await callSend(batch.api, attachment ? { body: message, attachment } : message, threadID);
+          log("[AUTO-WELCOME] sent one batched welcome in " + threadID + " for " + uniqueNames.length + " member(s)");
+        } finally {
+          if (tempPath) await fs.promises.unlink(tempPath).catch(() => {});
+        }
+      } catch (error) {
+        log("[AUTO-WELCOME] batched send failed in " + threadID + ": " + String(error?.message || error).slice(0, 160));
+      }
+    }, WELCOME_BATCH_WINDOW_MS);
+    if (typeof batch.timer.unref === "function") batch.timer.unref();
   }
   return { registerRoutes, onGroupEvent, getSettings };
 }
