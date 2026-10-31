@@ -311,6 +311,7 @@ function createJaidenTargetCountdown(options = {}) {
     state.retryBlocked = false;
     state.nextNumber = 1;
     state.countdownStartedAt = null;
+    state.cancelRecorded = false;
     state.generation += 1;
     state.counting = false;
     await persist(threadKey, state);
