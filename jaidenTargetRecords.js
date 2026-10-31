@@ -74,6 +74,18 @@ function registerRoutes(app, auth) {
       return res.status(500).json({ ok: false, error: 'Could not load Jaiden encounter records.' });
     }
   });
+  app.delete('/api/dashboard/jaiden-target-countdown/records/losses', auth, async (req, res) => {
+    const db = req.app.locals.db || require('./db');
+    try {
+      await ensureTable(db);
+      const result = await db.query("DELETE FROM jaiden_target_encounters WHERE result = 'LOSE'");
+      return res.json({ ok: true, deleted: result.rowCount || 0 });
+    } catch (error) {
+      console.error('[JAIDEN RECORDS] Could not clear loss history:', error?.message || error);
+      return res.status(500).json({ ok: false, error: 'Could not clear Jaiden loss history.' });
+    }
+  });
+
 }
 
 module.exports = { ensureTable, recordEncounter, registerRoutes };
