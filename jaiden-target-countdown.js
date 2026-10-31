@@ -220,7 +220,7 @@ function createJaidenTargetCountdown(options = {}) {
       await removePersisted(threadId, state.targetId);
       if (typeof onComplete === "function") {
         try {
-          await onComplete({ threadId, targetId: state.targetId, targetName, startedAt: Number(state.lockedAt) || startedAt, endedAt, reason: resultsSettings.reason || DEFAULT_RESULT_REASON });
+          await onComplete({ threadId, targetId: state.targetId, targetName, startedAt, endedAt, reason: resultsSettings.reason || DEFAULT_RESULT_REASON });
         } catch (error) {
           console.error("[JAIDEN COUNTDOWN] Could not clear completed target for thread " + threadId + ":", error?.message || error);
         }
@@ -253,7 +253,7 @@ function createJaidenTargetCountdown(options = {}) {
       currentState.counting = false;
       if (!currentState.cancelRecorded && typeof options.onCancel === "function") {
         currentState.cancelRecorded = true;
-        try { await options.onCancel({ threadId: threadKey, targetId: currentState.targetId, targetName: currentState.targetName, startedAt: Number(currentState.lockedAt) || Date.now(), endedAt: Date.now(), result: "LOSE", reason: "TARGET_RETURNED" }); }
+        try { await options.onCancel({ threadId: threadKey, targetId: currentState.targetId, targetName: currentState.targetName, startedAt: Number(currentState.countdownStartedAt) || Number(currentState.lastActivityAt) || Date.now(), endedAt: Date.now(), result: "LOSE", reason: "TARGET_RETURNED" }); }
         catch (error) { console.warn("[JAIDEN COUNTDOWN] Could not record returned-target encounter:", error?.message || error); }
       }
     }
