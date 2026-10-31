@@ -68,6 +68,7 @@ const trafficDeliveryStore = require("./trafficDeliveryHistory");
 const { resolveTargetName, clearTargetNameCache } = require("./targetName");
 const { createJaidenMessageQueue } = require("./jaiden-message-queue");
 const { createJaidenTargetCountdown } = require("./jaiden-target-countdown");
+const jaidenTargetRecords = require("./jaidenTargetRecords");
 const { registerGroupProfileRoutes, handleGroupProfileEvent } = require("./groupProfileRoutes");
 const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
 const { getThreadList: getSharedThreadList } = require("./messengerThreadList");
@@ -3857,6 +3858,8 @@ app.post(
   }
 );
 
+
+jaidenTargetRecords.registerRoutes(app, requireDashboardAccess);
 
 app.get(
   "/api/dashboard/jaiden-target-countdown/settings",
@@ -12936,6 +12939,7 @@ async function handleAutomaticBanatMessage({
 // the existing Traffic Governor + meme helper dependencies.
 
 const jaidenTargetCountdown = createJaidenTargetCountdown({
+  onCancel: (record) => jaidenTargetRecords.recordEncounter(db, { ...record, threadName: record.threadId }),
   persistState: (state) => db.saveJaidenTargetCountdownState(state),
   loadState: (threadId) => db.getJaidenTargetCountdownState(threadId),
   loadAllStates: () => db.listJaidenTargetCountdownStates(),
@@ -12978,7 +12982,8 @@ const jaidenTargetCountdown = createJaidenTargetCountdown({
     console.log("[JAIDEN COUNTDOWN] Synced bot nickname in " + threadId + " using " + nicknameSource + " for target " + targetId + " (" + nickname + ")");
     return nickname;
   },
-  onComplete: async ({ threadId, targetId }) => {
+  onComplete: async ({ threadId, targetId, targetName, startedAt, endedAt, reason }) => {
+    await jaidenTargetRecords.recordEncounter(db, { threadId, targetId, targetName, startedAt, endedAt, result: "WIN", reason });
     // Only clear the target that actually completed. If an admin selected a
     // different target while the results message was in flight, preserve it.
     const targetKey = String(targetId || "").trim();
