@@ -12985,7 +12985,33 @@ async function handleAutomaticBanatMessage({
 // index.js only preserves the legacy call signatures and injects
 // the existing Traffic Governor + meme helper dependencies.
 
+const jaidenMilestoneReactionMessageIds = new Set();
 const jaidenTargetCountdown = createJaidenTargetCountdown({
+  onMilestone: ({ number, threadId, api, messageInfo, shouldReact }) => {
+    const messageID = String(messageInfo?.messageID || messageInfo?.messageId || messageInfo?.message_id || "").trim();
+    if (!messageID || !api || jaidenMilestoneReactionMessageIds.has(messageID)) return;
+    jaidenMilestoneReactionMessageIds.add(messageID);
+    if (jaidenMilestoneReactionMessageIds.size > 500) {
+      const oldest = jaidenMilestoneReactionMessageIds.values().next().value;
+      jaidenMilestoneReactionMessageIds.delete(oldest);
+    }
+    const delayMs = 3000 + Math.floor(Math.random() * 3001);
+    setTimeout(() => {
+      if (typeof shouldReact === "function" && !shouldReact()) return;
+      try {
+        const callback = (error) => {
+          if (error) console.warn("[JAIDEN COUNTDOWN] Milestone reaction failed for " + number + " in " + threadId + ":", error?.message || error);
+        };
+        if (typeof api.setMessageReactionMqtt === "function") {
+          api.setMessageReactionMqtt(dashboardReactionConfig.reaction, messageID, threadId, callback);
+        } else if (typeof api.setMessageReaction === "function") {
+          api.setMessageReaction(dashboardReactionConfig.reaction, messageID, callback, true);
+        }
+      } catch (error) {
+        console.warn("[JAIDEN COUNTDOWN] Milestone reaction error:", error?.message || error);
+      }
+    }, delayMs);
+  },
   onCancel: (record) => jaidenTargetRecords.recordEncounter(db, { ...record, threadName: record.threadId }),
   persistState: (state) => db.saveJaidenTargetCountdownState(state),
   loadState: (threadId) => db.getJaidenTargetCountdownState(threadId),
