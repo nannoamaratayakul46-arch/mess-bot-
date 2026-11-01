@@ -10,6 +10,7 @@ test("Burst & Roast defaults preserve the configured pacing", () => {
   assert.equal(settings.delay_seconds, 3);
   assert.equal(settings.cooldown_seconds, 60);
   assert.equal(settings.content_mode, "normal");
+  assert.equal(settings.custom_message, "moka ka aso");
   assert.equal(settings.emoji, "😂");
   assert.deepEqual(settings.suffix_names, ["rishan", "jam", "aselm"]);
   assert.equal(DEFAULTS.messages_per_burst, 5);
@@ -23,6 +24,7 @@ test("Burst & Roast settings are bounded and mode/name inputs are normalized", (
     delay_seconds: 0,
     cooldown_seconds: 99999,
     content_mode: "dogmode",
+    custom_message: "moka ka aso",
     emoji: "🔥",
     suffix_names: ["-rishan", "jam", "jam", "aselm", "\nignore"],
   }), {
@@ -30,6 +32,7 @@ test("Burst & Roast settings are bounded and mode/name inputs are normalized", (
     delay_seconds: 1,
     cooldown_seconds: 3600,
     content_mode: "dogmode",
+    custom_message: "moka ka aso",
     emoji: "🔥",
     suffix_names: ["rishan", "jam", "aselm"],
   });
@@ -48,6 +51,7 @@ test("invalid Burst & Roast settings fall back to defaults", () => {
     delay_seconds: 3,
     cooldown_seconds: 60,
     content_mode: "normal",
+    custom_message: "moka ka aso",
     emoji: "😂",
     suffix_names: ["rishan", "jam", "aselm"],
   });
@@ -65,4 +69,14 @@ test("Dogmode Spam contains 200 source lines and formats a randomized name on a 
   const random = () => (calls++ === 0 ? 0 : 0.99);
   const cleanFirstLine = DOGMODE_BANATS[0].replace(/\s+😂\s+-ope\s*$/i, "").replace(/\s+-ope\s*$/i, "").trim();
   assert.equal(buildSpamMessage(settings, random), cleanFirstLine + " 😭\n\n-jam");
+});
+
+
+test("Custom Text is preserved exactly and validated", () => {
+  const message = "moka ka aso @jah\\n-ope  "; 
+  const settings = normalize({ content_mode: "custom", custom_message: message });
+  assert.equal(settings.content_mode, "custom");
+  assert.equal(buildSpamMessage(settings), message);
+  assert.equal(normalize({ content_mode: "custom", custom_message: "" }).custom_message, DEFAULTS.custom_message);
+  assert.equal(normalize({ content_mode: "custom", custom_message: "x".repeat(2001) }).custom_message, DEFAULTS.custom_message);
 });

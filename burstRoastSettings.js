@@ -10,6 +10,7 @@ const DEFAULTS = Object.freeze({
   delay_seconds: 3,
   cooldown_seconds: 60,
   content_mode: "normal",
+  custom_message: "moka ka aso",
   emoji: "😂",
   suffix_names: Object.freeze(["rishan", "jam", "aselm"]),
 });
@@ -33,7 +34,8 @@ function normalize(value = {}) {
     messages_per_burst: clamp(value.messages_per_burst, 1, 20, DEFAULTS.messages_per_burst),
     delay_seconds: clamp(value.delay_seconds, 1, 30, DEFAULTS.delay_seconds),
     cooldown_seconds: clamp(value.cooldown_seconds, 5, 3600, DEFAULTS.cooldown_seconds),
-    content_mode: value.content_mode === "dogmode" ? "dogmode" : "normal",
+    content_mode: ["normal", "dogmode", "custom"].includes(value.content_mode) ? value.content_mode : "normal",
+    custom_message: typeof value.custom_message === "string" && value.custom_message.trim() && value.custom_message.length <= 2000 ? value.custom_message : DEFAULTS.custom_message,
     emoji: rawEmoji && !/[\r\n]/.test(rawEmoji) ? rawEmoji.slice(0, 16) : DEFAULTS.emoji,
     suffix_names: suffix_names.length ? suffix_names : [...DEFAULTS.suffix_names],
   };
@@ -42,6 +44,7 @@ function pickIndex(length, random = Math.random) {
   return Math.min(length - 1, Math.max(0, Math.floor(random() * length)));
 }
 function buildSpamMessage(config, random = Math.random) {
+  if (config.content_mode === "custom") return config.custom_message;
   if (config.content_mode !== "dogmode") {
     const line = NORMAL_SPAM_BANATS[pickIndex(NORMAL_SPAM_BANATS.length, random)];
     return line + " " + config.emoji;
@@ -137,7 +140,7 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
         if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
           return res.status(400).json({ ok: false, error: "Invalid Burst & Roast settings snapshot." });
         }
-        const allowed = new Set(["messages_per_burst", "delay_seconds", "cooldown_seconds", "content_mode", "emoji", "suffix_names"]);
+        const allowed = new Set(["messages_per_burst", "delay_seconds", "cooldown_seconds", "content_mode", "custom_message", "emoji", "suffix_names"]);
         if (Object.keys(snapshot).some(key => !allowed.has(key))) {
           return res.status(400).json({ ok: false, error: "Unsupported field in Burst & Roast settings." });
         }
@@ -151,8 +154,11 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
             return res.status(400).json({ ok: false, error: "Invalid " + key + " in Burst & Roast settings." });
           }
         }
-        if (!["normal", "dogmode"].includes(snapshot.content_mode)) {
+        if (!["normal", "dogmode", "custom"].includes(snapshot.content_mode)) {
           return res.status(400).json({ ok: false, error: "Invalid content_mode in Burst & Roast settings." });
+        }
+        if (typeof snapshot.custom_message !== "string" || !snapshot.custom_message.trim() || snapshot.custom_message.length > 2000) {
+          return res.status(400).json({ ok: false, error: "Invalid custom_message in Burst & Roast settings." });
         }
         if (typeof snapshot.emoji !== "string" || !snapshot.emoji.trim() || snapshot.emoji.length > 16 || /[\r\n]/.test(snapshot.emoji)) {
           return res.status(400).json({ ok: false, error: "Invalid emoji in Burst & Roast settings." });
