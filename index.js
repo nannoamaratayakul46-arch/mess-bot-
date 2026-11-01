@@ -10124,7 +10124,7 @@ async function handleMessage(
 
     sendReplyWithTyping(
       api,
-      "╭────── ♡ Z E N I T H ♡ ──────╮\\nA little universe, made for baby.\\nTen months of us, memories, letters, and all the moments still waiting.\\n\\n♡ Step inside: " + baseUrl + "/zenith/\\n╰────── made with love ♡ ──────╯",
+      "╭────── ♡ Z E N I T H ♡ ──────╮\nA little universe, made for baby.\nTen months of us, memories, letters, and all the moments still waiting.\n\n♡ Step inside: " + baseUrl + "/zenith/\n╰────── made with love ♡ ──────╯",
       threadID
     );
     return;
