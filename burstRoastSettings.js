@@ -25,8 +25,9 @@ function normalize(value = {}) {
       ? value.suffix_names.split(",")
       : DEFAULTS.suffix_names;
   const suffix_names = [...new Set(rawNames
+    .filter(name => !/[\r\n]/.test(String(name || "")))
     .map(name => String(name || "").trim().replace(/^[-@]+/, "").slice(0, 40))
-    .filter(name => name && !/[\r\n]/.test(name)))].slice(0, 50);
+    .filter(Boolean))].slice(0, 50);
   const rawEmoji = String(value.emoji ?? DEFAULTS.emoji).trim();
   return {
     messages_per_burst: clamp(value.messages_per_burst, 1, 20, DEFAULTS.messages_per_burst),
