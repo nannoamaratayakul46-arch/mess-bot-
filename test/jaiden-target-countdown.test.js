@@ -150,7 +150,13 @@ test("clears the selected target only after the results message sends successful
   await tracker.onMessage({ api: {}, threadId: "gc-autoclear", senderId: "target-1" });
   await sleep(500);
   assert.equal(sends.length, 101);
-  assert.deepEqual(completed, [{ threadId: "gc-autoclear", targetId: "target-1" }]);
+  assert.equal(completed.length, 1);
+  assert.equal(completed[0].threadId, "gc-autoclear");
+  assert.equal(completed[0].targetId, "target-1");
+  assert.equal(completed[0].targetName, "Ana Santos");
+  assert.ok(completed[0].startedAt > 0);
+  assert.ok(completed[0].endedAt >= completed[0].startedAt);
+  assert.equal(completed[0].reason, DEFAULT_RESULT_REASON);
   tracker.stop();
 });
 
