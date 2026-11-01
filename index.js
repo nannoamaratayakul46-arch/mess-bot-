@@ -4194,6 +4194,24 @@ app.use(
   )
 );
 
+// ZENITH — private-by-unlisted anniversary experience for Baby.
+app.use(
+  "/zenith",
+  express.static(
+    path.join(__dirname, "public", "zenith"),
+    {
+      extensions: ["html"],
+      index: "index.html",
+      maxAge: 0,
+      setHeaders: (res) => {
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("X-Robots-Tag", "noindex, nofollow, noarchive");
+        res.setHeader("Referrer-Policy", "no-referrer");
+      },
+    }
+  )
+);
+
 
 app.get("/", (_req, res) => {
   res.status(200).send(
@@ -10084,6 +10102,35 @@ async function handleMessage(
   }
 
   // ==========================================================
+  // ZENITH — SHARE BABY'S PRIVATE ANNIVERSARY EXPERIENCE
+  // ==========================================================
+  if (text === "!zenith") {
+    if (!isOwner(senderId)) {
+      sendReplyWithTyping(api, "♡ This little universe can only be shared by my owner.", threadID);
+      return;
+    }
+
+    const baseUrl = String(
+      process.env.ECLIPSE_ZENITH_URL || process.env.RENDER_EXTERNAL_URL || ""
+    ).trim().replace(/\/$/, "");
+    if (!baseUrl) {
+      sendReplyWithTyping(
+        api,
+        "♡ ZENITH isn't configured yet. Set ECLIPSE_ZENITH_URL to this bot service's public URL.",
+        threadID
+      );
+      return;
+    }
+
+    sendReplyWithTyping(
+      api,
+      "╭────── ♡ Z E N I T H ♡ ──────╮\\nA little universe, made for baby.\\nTen months of us, memories, letters, and all the moments still waiting.\\n\\n♡ Step inside: " + baseUrl + "/zenith/\\n╰────── made with love ♡ ──────╯",
+      threadID
+    );
+    return;
+  }
+
+  // ==========================================================
   // HELP
   // ==========================================================
 
@@ -12487,7 +12534,7 @@ function isRecognizedBangCommand(body) {
   }
 
   return new Set([
-    "help", "ping", "rpg", "games", "game", "debate", "exam",
+    "help", "ping", "zenith", "rpg", "games", "game", "debate", "exam",
     "cleanup", "owner", "pause", "resume", "watchdog", "gcstatus",
     "music", "broadcast", "answer", "play", "haunt", "heist",
     "incident", "investigations", "investigator", "lost", "trial",
