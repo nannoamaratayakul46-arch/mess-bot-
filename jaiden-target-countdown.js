@@ -164,6 +164,19 @@ function createJaidenTargetCountdown(options = {}) {
           }
           return;
         }
+        // Only selected milestones get a laugh reaction. The callback receives
+        // a generation guard so target return/cancellation suppresses queued reacts.
+        if ([10, 25, 50, 75, 100].includes(number) && typeof options.onMilestone === "function") {
+          try {
+            options.onMilestone({
+              number, threadId, api: state.api,
+              messageInfo: result?.messageInfo || null,
+              shouldReact: () => !stopped && state.generation === generation && states.get(threadId) === state,
+            });
+          } catch (reactionError) {
+            console.warn("[JAIDEN COUNTDOWN] Milestone reaction scheduling failed:", reactionError?.message || reactionError);
+          }
+        }
         if (number < 100) {
           await wait(countDelayMs);
           if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
