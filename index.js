@@ -7485,55 +7485,55 @@ async function handleMessage(
       typeof api.setMessageReaction === "function"
     )
   ) {
-    try {
-      const messageID = String(event.messageID);
-      const reactionLabel =
-        senderId === eclipseUserID ? "bot message" : "admin message";
+    const messageID = String(event.messageID);
+    const reactionLabel =
+      senderId === eclipseUserID ? "bot message" : "admin message";
+    const reactionDelayMs = 3000 + Math.floor(Math.random() * 3001);
 
-      const reactionCallback = (reactionError) => {
-        if (reactionError) {
-          console.error(
-            "[BANAT] Allowed-sender laugh reaction failed:",
-            reactionError
+    // Delay the self/owner laugh reaction so it feels less instantaneous.
+    // The inclusive range is 3,000–6,000 ms and does not block message handling.
+    setTimeout(() => {
+      try {
+        const reactionCallback = (reactionError) => {
+          if (reactionError) {
+            console.error(
+              "[BANAT] Allowed-sender laugh reaction failed:",
+              reactionError
+            );
+          } else {
+            console.log(
+              "[BANAT] Reaction API callback completed without error for " +
+                reactionLabel +
+                " after " + reactionDelayMs + "ms:",
+              messageID
+            );
+          }
+        };
+
+        // ws3-fca MQTT signature: (reaction, messageID, threadID, callback).
+        // Fall back to the legacy method only when MQTT reactions are unavailable.
+        if (typeof api.setMessageReactionMqtt === "function") {
+          api.setMessageReactionMqtt(
+            dashboardReactionConfig.reaction,
+            messageID,
+            threadId,
+            reactionCallback
           );
         } else {
-          console.log(
-            "[BANAT] Reaction API callback completed without error for " +
-              reactionLabel +
-              ":",
-            messageID
+          api.setMessageReaction(
+            dashboardReactionConfig.reaction,
+            messageID,
+            reactionCallback,
+            true
           );
         }
-      };
-
-      // ws3-fca's native reaction API uses the fourth argument as the
-      // "force" flag. Keep it enabled so the reaction is actually written
-      // to the target message instead of being silently ignored on some
-      // Messenger sessions.
-      // Restore the original ws3-fca@2.0.1 dispatch order and signature:
-      // MQTT reactions require (reaction, messageID, threadID, callback).
-      // Only use the legacy reaction API when the MQTT method is unavailable.
-      if (typeof api.setMessageReactionMqtt === "function") {
-        api.setMessageReactionMqtt(
-          dashboardReactionConfig.reaction,
-          messageID,
-          threadId,
-          reactionCallback
-        );
-      } else {
-        api.setMessageReaction(
-          dashboardReactionConfig.reaction,
-          messageID,
-          reactionCallback,
-          true
+      } catch (reactionError) {
+        console.error(
+          "[BANAT] Allowed-sender laugh reaction error:",
+          reactionError
         );
       }
-    } catch (reactionError) {
-      console.error(
-        "[BANAT] Allowed-sender laugh reaction error:",
-        reactionError
-      );
-    }
+    }, reactionDelayMs);
   }
 
   // ECLIPSE's own outgoing messages must never enter the normal Banat
