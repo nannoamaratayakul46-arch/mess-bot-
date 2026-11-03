@@ -7401,6 +7401,7 @@ async function handleMessage(
         api,
         threadId,
         senderId: String(senderID || "").trim(),
+        messageBody: String(event?.body || ""),
       });
     }).catch((error) => {
       console.error("[JAIDEN COUNTDOWN] Activity tracker failed:", error?.message || error);
