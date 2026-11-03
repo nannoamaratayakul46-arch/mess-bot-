@@ -3884,6 +3884,9 @@ app.put(
     const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
     const customNickname = typeof req.body?.customNickname === "string" ? req.body.customNickname.trim() : undefined;
     const targetName = typeof req.body?.targetName === "string" ? req.body.targetName.trim() : undefined;
+    const personalityEnabled = typeof req.body?.personalityEnabled === "boolean" ? req.body.personalityEnabled : undefined;
+    const openingTauntEnabled = typeof req.body?.openingTauntEnabled === "boolean" ? req.body.openingTauntEnabled : undefined;
+    const interleavedTauntsEnabled = typeof req.body?.interleavedTauntsEnabled === "boolean" ? req.body.interleavedTauntsEnabled : undefined;
     if (!template.trim() || template.length > 4000) {
       return res.status(400).json({ ok: false, error: "Message template must be between 1 and 4000 characters." });
     }
@@ -3897,7 +3900,7 @@ app.put(
       return res.status(400).json({ ok: false, error: "Auto Target name must be 80 characters or fewer." });
     }
     try {
-      const settings = await db.setJaidenTargetCountdownSettings({ template, reason, ...(customNickname === undefined ? {} : { customNickname }), ...(targetName === undefined ? {} : { targetName }) });
+      const settings = await db.setJaidenTargetCountdownSettings({ template, reason, ...(customNickname === undefined ? {} : { customNickname }), ...(targetName === undefined ? {} : { targetName }), ...(personalityEnabled === undefined ? {} : { personalityEnabled }), ...(openingTauntEnabled === undefined ? {} : { openingTauntEnabled }), ...(interleavedTauntsEnabled === undefined ? {} : { interleavedTauntsEnabled }) });
       return res.json({ ok: true, settings });
     } catch (error) {
       console.error("[JAIDEN COUNTDOWN] Could not save dashboard settings:", error?.message || error);
@@ -12988,7 +12991,12 @@ async function handleAutomaticBanatMessage({
 
 const jaidenMilestoneReactionMessageIds = new Set();
 const jaidenTargetCountdown = createJaidenTargetCountdown({
-  onPersonalityLine: ({ threadId, targetName, api, context, shouldSend }) => {
+  onPersonalityLine: async ({ threadId, targetName, api, context, shouldSend }) => {
+    if (typeof shouldSend === "function" && !shouldSend()) return false;
+    const settings = await db.getJaidenTargetCountdownSettings();
+    if (!settings.personalityEnabled) return false;
+    if (context === "general" && !settings.openingTauntEnabled) return false;
+    if (context !== "general" && !settings.interleavedTauntsEnabled) return false;
     if (typeof shouldSend === "function" && !shouldSend()) return false;
     const line = pickJaidenAutoTargetLine({ threadId, targetName, context, fallbackName: "target" });
     return new Promise((resolve) => {
