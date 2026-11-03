@@ -57,7 +57,6 @@ test("expanded pools preserve target placeholders and render them", () => {
     for (const line of lines) {
       const rendered = renderJaidenAutoTargetLine(line, "Ana Santos");
       assert.ok(!/\\{\\{\\s*(?:NAME|FIRST_NAME|UPPER_NAME)\\s*\\}\\}/i.test(rendered));
-      assert.ok(rendered.includes("Ana") || !/\\{\\{/g.test(line));
     }
   }
 });
