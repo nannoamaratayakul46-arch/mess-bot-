@@ -258,3 +258,43 @@ test("syncs the bot nickname to the resolved target when countdown begins", asyn
   assert.ok(nicknameSyncs[0].countdownStartedAt > 0);
   tracker.stop();
 });
+
+
+test("sends one opening personality line before the numbers and occasional lines between milestones", async () => {
+  const sends = [];
+  const personality = [];
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 5,
+    countDelayMs: 0,
+    getTarget: async () => ({ target_user_id: "target-personality", target_name: "Ana Santos" }),
+    onPersonalityLine: async (details) => {
+      if (details.shouldSend()) personality.push({ context: details.context, targetName: details.targetName });
+      return true;
+    },
+    send: async (_api, message) => { sends.push(message); return { sent: true }; },
+  });
+  await tracker.onMessage({ api: {}, threadId: "gc-personality", senderId: "target-personality" });
+  await sleep(450);
+  assert.equal(personality[0].context, "general");
+  assert.equal(personality[0].targetName, "Ana Santos");
+  assert.deepEqual(personality.slice(1).map((item) => item.context), ["slow", "slow", "boast", "boast"]);
+  assert.deepEqual(sends.slice(0, 100), Array.from({ length: 100 }, (_, i) => String(i + 1)));
+  tracker.stop();
+});
+
+test("personality callback receives a guard that turns false immediately after target return", async () => {
+  let capturedGuard;
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 5,
+    countDelayMs: 100,
+    getTarget: async () => ({ target_user_id: "target-cancel-personality", target_name: "Target" }),
+    onPersonalityLine: async ({ shouldSend }) => { capturedGuard = shouldSend; },
+    send: async () => ({ sent: true }),
+  });
+  await tracker.onMessage({ api: {}, threadId: "gc-cancel-personality", senderId: "target-cancel-personality" });
+  await sleep(25);
+  assert.equal(capturedGuard(), true);
+  await tracker.onMessage({ api: {}, threadId: "gc-cancel-personality", senderId: "target-cancel-personality" });
+  assert.equal(capturedGuard(), false);
+  tracker.stop();
+});
