@@ -3,7 +3,8 @@
 const INACTIVITY_MS = 5 * 60 * 1000;
 const COUNT_DELAY_MS = 2 * 1000;
 const DEFAULT_RESULT_TEMPLATE = "WIN: {{WIN}}\nLOSE: {{LOSE}}\nREASON: {{REASON}}\nSTART: {{START}}\nEND: {{END}}";
-const DEFAULT_RESULT_REASON = "DI TUMAGOS SA HEV CHALLENGE, NA-OUTPLAY SA COUNTDOWN 😭";\nconst { detectJaidenAutoTargetContext } = require("./jaiden-auto-target-personality");
+const DEFAULT_RESULT_REASON = "DI TUMAGOS SA HEV CHALLENGE, NA-OUTPLAY SA COUNTDOWN 😭";
+const { detectJaidenAutoTargetContext } = require("./jaiden-auto-target-personality");
 
 function createJaidenTargetCountdown(options = {}) {
   const getTarget = options.getTarget;
