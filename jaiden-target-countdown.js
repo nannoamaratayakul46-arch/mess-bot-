@@ -127,19 +127,6 @@ function createJaidenTargetCountdown(options = {}) {
     const startedAt = Number(state.countdownStartedAt) || Date.now();
     state.countdownStartedAt = startedAt;
     await persist(threadId, state);
-    // Send one personality opener before the numeric sequence. It is separate
-    // from the 1-100 messages and uses the same generation guard as every send.
-    if (typeof options.onPersonalityLine === "function" && state.nextNumber <= 1) {
-      try {
-        await options.onPersonalityLine({
-          threadId, targetId: state.targetId, targetName: state.targetName,
-          api: state.api, context: "general",
-          shouldSend: () => !stopped && state.generation === generation && states.get(threadId) === state,
-        });
-      } catch (error) {
-        console.warn("[JAIDEN COUNTDOWN] Opening personality line failed:", error?.message || error);
-      }
-    }
     // Match the known working nickname-sync path at countdown start: resolve
     // the selected target's real display name, then set the bot's group nickname.
     if (typeof syncTargetNickname === "function") {
@@ -150,6 +137,28 @@ function createJaidenTargetCountdown(options = {}) {
         });
       } catch (error) {
         console.warn("[JAIDEN COUNTDOWN] Could not sync bot nickname to selected target:", error?.message || error);
+      }
+    }
+    // Resolve the real Messenger display name before rendering the opener.
+    if (typeof getTargetName === "function") {
+      try {
+        state.targetName = await getTargetName({
+          threadId, targetId: state.targetId, savedName: state.targetName, api: state.api,
+        }) || state.targetName;
+      } catch (error) {
+        console.warn("[JAIDEN COUNTDOWN] Could not resolve target name for opening taunt:", error?.message || error);
+      }
+    }
+    if (typeof options.onPersonalityLine === "function" && state.nextNumber <= 1 &&
+        !stopped && state.generation === generation && states.get(threadId) === state) {
+      try {
+        await options.onPersonalityLine({
+          threadId, targetId: state.targetId, targetName: state.targetName,
+          api: state.api, context: "general",
+          shouldSend: () => !stopped && state.generation === generation && states.get(threadId) === state,
+        });
+      } catch (error) {
+        console.warn("[JAIDEN COUNTDOWN] Opening personality line failed:", error?.message || error);
       }
     }
     try {
