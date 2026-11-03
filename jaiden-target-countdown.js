@@ -127,6 +127,19 @@ function createJaidenTargetCountdown(options = {}) {
     const startedAt = Number(state.countdownStartedAt) || Date.now();
     state.countdownStartedAt = startedAt;
     await persist(threadId, state);
+    // Send one personality opener before the numeric sequence. It is separate
+    // from the 1-100 messages and uses the same generation guard as every send.
+    if (typeof options.onPersonalityLine === "function" && state.nextNumber <= 1) {
+      try {
+        await options.onPersonalityLine({
+          threadId, targetId: state.targetId, targetName: state.targetName,
+          api: state.api, context: "general",
+          shouldSend: () => !stopped && state.generation === generation && states.get(threadId) === state,
+        });
+      } catch (error) {
+        console.warn("[JAIDEN COUNTDOWN] Opening personality line failed:", error?.message || error);
+      }
+    }
     // Match the known working nickname-sync path at countdown start: resolve
     // the selected target's real display name, then set the bot's group nickname.
     if (typeof syncTargetNickname === "function") {
@@ -175,6 +188,21 @@ function createJaidenTargetCountdown(options = {}) {
             });
           } catch (reactionError) {
             console.warn("[JAIDEN COUNTDOWN] Milestone reaction scheduling failed:", reactionError?.message || reactionError);
+          }
+        }
+        // Personality lines are occasional side messages, not part of the
+        // numeric sequence. Dispatch them without awaiting so the 2-second
+        // number cadence is unchanged; the guard suppresses sends after cancel.
+        if ([20, 40, 60, 80].includes(number) && typeof options.onPersonalityLine === "function") {
+          try {
+            const context = number >= 60 ? "boast" : "slow";
+            void Promise.resolve(options.onPersonalityLine({
+              threadId, targetId: state.targetId, targetName: state.targetName,
+              api: state.api, context,
+              shouldSend: () => !stopped && state.generation === generation && states.get(threadId) === state,
+            })).catch((error) => console.warn("[JAIDEN COUNTDOWN] Personality line failed:", error?.message || error));
+          } catch (error) {
+            console.warn("[JAIDEN COUNTDOWN] Personality line scheduling failed:", error?.message || error);
           }
         }
         if (number < 100) {
