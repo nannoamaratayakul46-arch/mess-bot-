@@ -3,7 +3,7 @@
 const INACTIVITY_MS = 5 * 60 * 1000;
 const COUNT_DELAY_MS = 2 * 1000;
 const DEFAULT_RESULT_TEMPLATE = "WIN: {{WIN}}\nLOSE: {{LOSE}}\nREASON: {{REASON}}\nSTART: {{START}}\nEND: {{END}}";
-const DEFAULT_RESULT_REASON = "DI TUMAGOS SA HEV CHALLENGE, NA-OUTPLAY SA COUNTDOWN 😭";
+const DEFAULT_RESULT_REASON = "DI TUMAGOS SA HEV CHALLENGE, NA-OUTPLAY SA COUNTDOWN 😭";\nconst { detectJaidenAutoTargetContext } = require("./jaiden-auto-target-personality");
 
 function createJaidenTargetCountdown(options = {}) {
   const getTarget = options.getTarget;
@@ -154,7 +154,7 @@ function createJaidenTargetCountdown(options = {}) {
       try {
         await options.onPersonalityLine({
           threadId, targetId: state.targetId, targetName: state.targetName,
-          api: state.api, context: "general",
+          api: state.api, context: detectJaidenAutoTargetContext(state.latestTargetMessageBody) || "general",
           shouldSend: () => !stopped && state.generation === generation && states.get(threadId) === state,
         });
       } catch (error) {
@@ -204,7 +204,7 @@ function createJaidenTargetCountdown(options = {}) {
         // number cadence is unchanged; the guard suppresses sends after cancel.
         if ([20, 40, 60, 80].includes(number) && typeof options.onPersonalityLine === "function") {
           try {
-            const context = number >= 60 ? "boast" : "slow";
+            const detectedContext = detectJaidenAutoTargetContext(state.latestTargetMessageBody);\n            const context = detectedContext !== "general" ? detectedContext : (number >= 60 ? "boast" : "slow");
             void Promise.resolve(options.onPersonalityLine({
               threadId, targetId: state.targetId, targetName: state.targetName,
               api: state.api, context,
@@ -289,7 +289,7 @@ function createJaidenTargetCountdown(options = {}) {
     }
   }
 
-  async function onMessage({ api, threadId, senderId }) {
+  async function onMessage({ api, threadId, senderId, messageBody }) {
     if (stopped || !api || !String(threadId || "").trim()) return;
     const threadKey = String(threadId).trim();
     const senderKey = String(senderId || "").trim();
