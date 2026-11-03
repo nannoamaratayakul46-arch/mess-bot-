@@ -243,6 +243,19 @@ const lastByThread = new Map();
 const usedByThread = new Map();
 const MAX_TRACKED_THREADS = 500;
 
+function detectJaidenAutoTargetContext(message) {
+  const text = String(message || "").normalize("NFKC").toLocaleLowerCase("en");
+  if (!text.trim()) return "general";
+  const has = (patterns) => patterns.some((pattern) => pattern.test(text));
+  // Check explicit emotional/intent signals before generic insults.
+  if (has([/\\b(?:hahaha+|ahaha+|hehe+|lmao|lol|😂|🤣)\\b/i, /(?:😂|🤣){1,}/])) return "laugh";
+  if (has([/\\b(?:utos|order|command|sumunod|sundin|tumigil|stop|shut up|wag ka)\\b/i, /\\b(?:do this|listen|obey)\\b/i])) return "command";
+  if (has([/\\b(?:ako ang| ako pinaka|number one|undefeated|champion|malakas ako|panalo ako|flex|angas ko)\\b/i, /\\b(?:best|strongest|top 1|never lose)\\b/i])) return "boast";
+  if (has([/\\b(?:bobo|tanga|gago|inutil|stupid|idiot|weak|mahina|loser|pangit)\\b/i])) return "insult";
+  if (has([/\\b(?:tagal|ang bagal|late|delay|loading|buffer|timeout|bilis|hurry|waiting)\\b/i])) return "slow";
+  return "general";
+}
+
 function cleanTargetName(value) {
   const cleaned = String(value == null ? "" : value)
     .replace(/[\u0000-\u001f\u007f]/g, "")
