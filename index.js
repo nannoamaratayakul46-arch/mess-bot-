@@ -68,6 +68,7 @@ const trafficDeliveryStore = require("./trafficDeliveryHistory");
 const { resolveTargetName, clearTargetNameCache } = require("./targetName");
 const { createJaidenMessageQueue } = require("./jaiden-message-queue");
 const { createJaidenTargetCountdown } = require("./jaiden-target-countdown");
+const { pickJaidenAutoTargetLine } = require("./jaiden-auto-target-personality");
 const jaidenTargetRecords = require("./jaidenTargetRecords");
 const { registerGroupProfileRoutes, handleGroupProfileEvent } = require("./groupProfileRoutes");
 const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
@@ -12987,6 +12988,16 @@ async function handleAutomaticBanatMessage({
 
 const jaidenMilestoneReactionMessageIds = new Set();
 const jaidenTargetCountdown = createJaidenTargetCountdown({
+  onPersonalityLine: ({ threadId, targetName, api, context, shouldSend }) => {
+    if (typeof shouldSend === "function" && !shouldSend()) return false;
+    const line = pickJaidenAutoTargetLine({ threadId, targetName, context, fallbackName: "target" });
+    return new Promise((resolve) => {
+      trafficSendMessage(api, line, threadId, (error) => {
+        if (error) console.warn("[JAIDEN COUNTDOWN] Personality send failed in " + threadId + ":", error?.message || error);
+        resolve(!error);
+      }, null, { shouldSend });
+    });
+  },
   onMilestone: ({ number, threadId, api, messageInfo, shouldReact }) => {
     const messageID = String(messageInfo?.messageID || messageInfo?.messageId || messageInfo?.message_id || "").trim();
     if (!messageID || !api || jaidenMilestoneReactionMessageIds.has(messageID)) return;
