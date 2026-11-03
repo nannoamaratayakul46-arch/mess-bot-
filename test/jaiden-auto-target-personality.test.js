@@ -40,3 +40,24 @@ test("selects from a requested context pool and avoids immediate repeats", () =>
   assert.notEqual(first, second);
   resetJaidenAutoTargetHistory();
 });
+
+test("provides exactly 100 unique lines in every Jaiden context pool", () => {
+  const pools = getJaidenAutoTargetPools();
+  assert.deepEqual(Object.keys(pools).sort(), ["boast", "command", "general", "insult", "laugh", "slow"]);
+  for (const [name, lines] of Object.entries(pools)) {
+    assert.equal(lines.length, 100, `${name} pool should contain 100 lines`);
+    assert.equal(new Set(lines).size, 100, `${name} pool should not contain duplicates`);
+    assert.ok(lines.every((line) => typeof line === "string" && line.trim().length > 0));
+  }
+});
+
+test("expanded pools preserve target placeholders and render them", () => {
+  const pools = getJaidenAutoTargetPools();
+  for (const lines of Object.values(pools)) {
+    for (const line of lines) {
+      const rendered = renderJaidenAutoTargetLine(line, "Ana Santos");
+      assert.ok(!/\\{\\{\\s*(?:NAME|FIRST_NAME|UPPER_NAME)\\s*\\}\\}/i.test(rendered));
+      assert.ok(rendered.includes("Ana") || !/\\{\\{/g.test(line));
+    }
+  }
+});
