@@ -298,3 +298,22 @@ test("personality callback receives a guard that turns false immediately after t
   assert.equal(capturedGuard(), false);
   tracker.stop();
 });
+
+
+test("uses the selected target's latest message to choose the opening taunt context", async () => {
+  const contexts = [];
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 8,
+    countDelayMs: 1000,
+    getTarget: async () => ({ target_user_id: "target-context", target_name: "Ana" }),
+    onPersonalityLine: async ({ context }) => { contexts.push(context); },
+    send: async () => ({ sent: true }),
+  });
+  await tracker.onMessage({
+    api: {}, threadId: "gc-context", senderId: "target-context",
+    messageBody: "HAHAHAHA 😂😂",
+  });
+  await sleep(25);
+  assert.equal(contexts[0], "laugh");
+  tracker.stop();
+});
