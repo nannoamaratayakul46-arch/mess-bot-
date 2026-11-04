@@ -57,7 +57,7 @@ test("expanded pools preserve target placeholders and render them", () => {
   for (const lines of Object.values(pools)) {
     for (const line of lines) {
       const rendered = renderJaidenAutoTargetLine(line, "Ana Santos");
-      assert.ok(!/\\{\\{\\s*(?:NAME|FIRST_NAME|UPPER_NAME)\\s*\\}\\}/i.test(rendered));
+      assert.ok(!/\{\{\s*(?:NAME|FIRST_NAME|UPPER_NAME)\s*\}\}/i.test(rendered));
     }
   }
 });
@@ -72,7 +72,7 @@ test("varies the trailing emoji by context and avoids consecutive repeats", () =
       targetName: "Ana",
       context: "laugh",
     });
-    const match = line.match(/(?:\\p{Extended_Pictographic}\\uFE0F?|\\u2764\\uFE0F)$/u);
+    const match = line.match(/(?:\p{Extended_Pictographic}\uFE0F?|\u2764\uFE0F)$/u);
     assert.ok(match, "every rendered taunt should end with an emoji");
     endings.push(match[0]);
   }
@@ -88,13 +88,13 @@ test("all 600 lines pass basic copy-quality checks", () => {
   for (const [poolName, lines] of Object.entries(pools)) {
     for (const line of lines) {
       assert.equal(line, line.trim(), `${poolName} line should not have outer whitespace`);
-      assert.ok(!/\\s{2,}/.test(line), `${poolName} line should not contain repeated spaces`);
+      assert.ok(!/\s{2,}/.test(line), `${poolName} line should not contain repeated spaces`);
       assert.ok(!/[,;:]$/.test(line), `${poolName} line should not end with a dangling separator`);
-      const placeholders = [...line.matchAll(/\\{\\{\\s*([^{}]+?)\\s*\\}\\}/g)];
+      const placeholders = [...line.matchAll(/\{\{\s*([^{}]+?)\s*\}\}/g)];
       for (const placeholder of placeholders) {
         assert.ok(allowedPlaceholders.has(placeholder[1]), `unknown placeholder: ${placeholder[1]}`);
       }
-      assert.ok(!/\\{\\{[^{}]*$|^[^{}]*\\}\\}/.test(line), `${poolName} line should not contain a broken placeholder`);
+      assert.ok(!/\{\{[^{}]*$|^[^{}]*\}\}/.test(line), `${poolName} line should not contain a broken placeholder`);
     }
   }
 });
