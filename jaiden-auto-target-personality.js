@@ -341,6 +341,7 @@ function resetJaidenAutoTargetHistory(threadId) {
 
 module.exports = {
   DEFAULT_FALLBACK_NAME,
+  detectJaidenAutoTargetContext,
   getJaidenAutoTargetPools,
   pickJaidenAutoTargetLine,
   renderJaidenAutoTargetLine,
