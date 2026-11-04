@@ -263,7 +263,7 @@ function addVariedEmoji(line, usedKey, poolName) {
   emojiByThread.set(usedKey, emoji);
   // Replace only a trailing emoji run; keep meaningful emoji elsewhere in
   // the authored line while ensuring consecutive sends end differently.
-  const withoutTrailingEmoji = String(line).replace(/(?:\\s*[\\p{Extended_Pictographic}\\uFE0F\\u200D]+)+\\s*$/u, "").trimEnd();
+  const withoutTrailingEmoji = String(line).replace(/(?:\s*[\p{Extended_Pictographic}\uFE0F\u200D]+)+\s*$/u, "").trimEnd();
   return withoutTrailingEmoji + emoji;
 }
 
