@@ -356,6 +356,7 @@ function createJaidenTargetCountdown(options = {}) {
       states.set(threadKey, state);
     }
     state.api = api;
+    state.latestTargetMessageBody = String(messageBody || "").slice(0, 2000);
     state.targetName = String(target?.target_name || state.targetName || "").trim();
     state.lastActivityAt = Date.now();
     state.retryNotBeforeAt = 0;
