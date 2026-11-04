@@ -3,7 +3,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
-  detectJaidenAutoTargetContext,\n  getJaidenAutoTargetPools,
+  detectJaidenAutoTargetContext,
+  getJaidenAutoTargetPools,
   pickJaidenAutoTargetLine,
   renderJaidenAutoTargetLine,
   resetJaidenAutoTargetHistory,
