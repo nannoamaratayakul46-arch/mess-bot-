@@ -32,7 +32,7 @@ test("keeps the supplied Jaiden phrases in its own line pool", () => {
 test("selects from a requested context pool and avoids immediate repeats", () => {
   resetJaidenAutoTargetHistory();
   const stripTrailingEmoji = (line) => line
-    .replace(/(?:\\s*[\\p{Extended_Pictographic}\\uFE0F\\u200D]+)+\\s*$/u, "")
+    .replace(/(?:\s*[\p{Extended_Pictographic}\uFE0F\u200D]+)+\s*$/u, "")
     .trimEnd();
   const valid = new Set(getJaidenAutoTargetPools().laugh.map((line) =>
     stripTrailingEmoji(renderJaidenAutoTargetLine(line, "Ana"))
