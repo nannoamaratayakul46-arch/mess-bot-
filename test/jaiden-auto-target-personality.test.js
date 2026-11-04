@@ -99,6 +99,11 @@ test("all 600 lines pass basic copy-quality checks", () => {
       }
       assert.ok(!/\{\{[^{}]*$|^[^{}]*\}\}/.test(line), `${poolName} line should not contain a broken placeholder`);
     }
+    const composed = lines.filter((line) => line.includes(" — "));
+    assert.ok(composed.length >= 80, `${poolName} pool should contain naturally joined Taglish lines`);
+    assert.ok(composed.every((line) => / — \S+(?:\s+\S+){2,}/.test(line)), `${poolName} composed lines should have a complete follow-up phrase`);
+
+    }
   }
 });
 
