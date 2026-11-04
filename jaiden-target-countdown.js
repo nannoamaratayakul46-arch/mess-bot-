@@ -205,7 +205,8 @@ function createJaidenTargetCountdown(options = {}) {
         // number cadence is unchanged; the guard suppresses sends after cancel.
         if ([20, 40, 60, 80].includes(number) && typeof options.onPersonalityLine === "function") {
           try {
-            const detectedContext = detectJaidenAutoTargetContext(state.latestTargetMessageBody);\n            const context = detectedContext !== "general" ? detectedContext : (number >= 60 ? "boast" : "slow");
+            const detectedContext = detectJaidenAutoTargetContext(state.latestTargetMessageBody);
+            const context = detectedContext !== "general" ? detectedContext : (number >= 60 ? "boast" : "slow");
             void Promise.resolve(options.onPersonalityLine({
               threadId, targetId: state.targetId, targetName: state.targetName,
               api: state.api, context,
