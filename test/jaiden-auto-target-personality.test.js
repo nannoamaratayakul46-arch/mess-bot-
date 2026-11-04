@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  detectJaidenAutoTargetContext,
   getJaidenAutoTargetPools,
   pickJaidenAutoTargetLine,
   renderJaidenAutoTargetLine,
@@ -59,4 +60,15 @@ test("expanded pools preserve target placeholders and render them", () => {
       assert.ok(!/\\{\\{\\s*(?:NAME|FIRST_NAME|UPPER_NAME)\\s*\\}\\}/i.test(rendered));
     }
   }
+});
+
+
+test("detects the target message context without changing unknown messages", () => {
+  assert.equal(detectJaidenAutoTargetContext("HAHAHAHA 😂😂"), "laugh");
+  assert.equal(detectJaidenAutoTargetContext("utos ka nang utos, sumunod ka"), "command");
+  assert.equal(detectJaidenAutoTargetContext("ako ang champion, undefeated ako"), "boast");
+  assert.equal(detectJaidenAutoTargetContext("bobo at tanga ka"), "insult");
+  assert.equal(detectJaidenAutoTargetContext("ang tagal mo mag-reply, loading"), "slow");
+  assert.equal(detectJaidenAutoTargetContext("kumusta na kayo?"), "general");
+  assert.equal(detectJaidenAutoTargetContext(""), "general");
 });
