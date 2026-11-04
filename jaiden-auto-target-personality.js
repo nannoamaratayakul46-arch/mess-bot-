@@ -334,6 +334,7 @@ function pickJaidenAutoTargetLine(options = {}) {
     const oldest = lastByThread.keys().next().value;
     lastByThread.delete(oldest);
     usedByThread.delete(oldest);
+    emojiByThread.delete(oldest);
   }
   const rendered = renderJaidenAutoTargetLine(
     selected,
