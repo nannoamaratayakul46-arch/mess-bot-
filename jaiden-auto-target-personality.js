@@ -241,7 +241,31 @@ const CONTEXT_ALIASES = Object.freeze({
 
 const lastByThread = new Map();
 const usedByThread = new Map();
+const emojiByThread = new Map();
 const MAX_TRACKED_THREADS = 500;
+
+const EMOJI_VARIANTS = Object.freeze({
+  general: ["😂", "☄️", "💀", "🥷", "😭", "⚡"],
+  insult: ["🤡", "💀", "☠️", "🥴", "😭", "😂"],
+  laugh: ["😂", "🤣", "😭", "💀", "😹", "☠️"],
+  command: ["🫡", "⚠️", "☝️", "💀", "😂", "🚨"],
+  boast: ["👑", "🥶", "🔥", "💯", "☄️", "😂"],
+  slow: ["🐢", "⏳", "💤", "🫠", "😂", "☄️"],
+});
+
+function addVariedEmoji(line, usedKey, poolName) {
+  const variants = EMOJI_VARIANTS[poolName] || EMOJI_VARIANTS.general;
+  const previous = emojiByThread.get(usedKey);
+  const candidates = variants.filter((emoji) => emoji !== previous);
+  const choices = candidates.length ? candidates : variants;
+  const emoji = choices[Math.floor(Math.random() * choices.length)];
+  emojiByThread.delete(usedKey);
+  emojiByThread.set(usedKey, emoji);
+  // Replace only a trailing emoji run; keep meaningful emoji elsewhere in
+  // the authored line while ensuring consecutive sends end differently.
+  const withoutTrailingEmoji = String(line).replace(/(?:\\s*[\\p{Extended_Pictographic}\\uFE0F\\u200D]+)+\\s*$/u, "").trimEnd();
+  return withoutTrailingEmoji + emoji;
+}
 
 function detectJaidenAutoTargetContext(message) {
   const text = String(message || "").normalize("NFKC").toLocaleLowerCase("en");
@@ -311,11 +335,12 @@ function pickJaidenAutoTargetLine(options = {}) {
     lastByThread.delete(oldest);
     usedByThread.delete(oldest);
   }
-  return renderJaidenAutoTargetLine(
+  const rendered = renderJaidenAutoTargetLine(
     selected,
     options.targetName,
     options.fallbackName
   );
+  return addVariedEmoji(rendered, usedKey, poolName);
 }
 
 function getJaidenAutoTargetPools() {
@@ -328,6 +353,7 @@ function resetJaidenAutoTargetHistory(threadId) {
   if (threadId == null) {
     lastByThread.clear();
     usedByThread.clear();
+    emojiByThread.clear();
     return;
   }
   const prefix = String(threadId) + ":";
@@ -335,6 +361,7 @@ function resetJaidenAutoTargetHistory(threadId) {
     if (key.startsWith(prefix)) {
       lastByThread.delete(key);
       usedByThread.delete(key);
+      emojiByThread.delete(key);
     }
   }
 }
