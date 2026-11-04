@@ -23,199 +23,199 @@ function buildLinePool(existing, openings, endings) {
 const LINE_POOLS = Object.freeze({
   general: buildLinePool(
     [
-        "{{NAME}} moka tanga😂😂☄️☄️",
-        "boss {{NAME}} amo moko☄️☄️😂",
-        "bumagal ata si {{NAME}} gago☄️☄️☄️😂",
-        "HEV ABI OWNS {{UPPER_NAME}}🥷🩸🩸",
-        "{{NAME}} wag ka magtago jan☄️☄️😂",
-        "pota {{NAME}} malapad noo mo☄️☄️😂",
-        "{{FIRST_NAME}} ano na, bumigay ka na ba?😂☄️",
-        "kanino ka ba lumalaban dito {{NAME}}☄️😂",
-        "boss {{NAME}} mo na nga natalo ka pa☄️☄️😂",
-        "bilisan mo naman {{NAME}}, parang naglalakad utak mo☄️😂",
-        "wag ka na magtago {{NAME}}, alam na namin galawan mo☄️☄️😂",
-        "sige pa {{NAME}} boss, natatawa na kami sayo☄️😂",
-        "iba talaga tama mo pag si HEV ABI kaharap mo, {{NAME}}☄️☄️"
+      "{{NAME}} moka tanga😂😂☄️☄️",
+      "boss {{NAME}} amo moko☄️☄️😂",
+      "bumagal ata si {{NAME}} gago☄️☄️☄️😂",
+      "HEV ABI OWNS {{UPPER_NAME}}🥷🩸🩸",
+      "{{NAME}} wag ka magtago jan☄️☄️😂",
+      "pota {{NAME}} malapad noo mo☄️☄️😂",
+      "{{FIRST_NAME}} ano na, bumigay ka na ba?😂☄️",
+      "kanino ka ba lumalaban dito {{NAME}}☄️😂",
+      "boss {{NAME}} mo na nga natalo ka pa☄️☄️😂",
+      "bilisan mo naman {{NAME}}, parang naglalakad utak mo☄️😂",
+      "wag ka na magtago {{NAME}}, alam na namin galawan mo☄️☄️😂",
+      "sige pa {{NAME}} boss, natatawa na kami sayo☄️😂",
+      "iba talaga tama mo pag si HEV ABI kaharap mo, {{NAME}}☄️☄️"
     ],
     [
-        "{{NAME}} akala mo ba hindi namin napansin",
-        "boss {{NAME}} eto na naman tayo sa eksena mong",
-        "{{FIRST_NAME}} tahimik ka bigla, parang",
-        "HEV ABI na naman ang laman ng isip ni {{NAME}},",
-        "{{NAME}} ang tapang mo sa chat pero",
-        "bossing {{NAME}} may bagong entry ka na naman sa",
-        "{{NAME}} kahit anong angas mo,",
-        "uy {{FIRST_NAME}}, mukhang kailangan mo ng",
-        "{{NAME}} nagparamdam ka lang para",
-        "HEV ABI check muna, {{NAME}} baka"
+      "{{NAME}}, ang reply mo —",
+      "Uy {{FIRST_NAME}}, ang comeback mo —",
+      "Boss {{NAME}}, todo angas ka —",
+      "{{NAME}}, ang dami mong sinabi —",
+      "HEV ABI ang kaharap mo, {{NAME}} —",
+      "{{NAME}}, akala mo may impact —",
+      "Bossing {{NAME}}, todo effort ka —",
+      "{{NAME}}, sa dami ng banat mo —",
+      "{{FIRST_NAME}}, nagparamdam ka pa —",
+      "{{NAME}}, mukhang seryoso ka —"
     ],
     [
-        "puro intro, walang ending😂☄️",
-        "nasa loading screen pa rin ang comeback mo😂",
-        "parang draft na hindi na na-save☄️😂",
-        "puro ingay pero bitin ang punchline😂☄️",
-        "naghahanap pa rin ng tamang timing🥷😂",
-        "napa-second look tuloy buong GC☄️",
-        "parang nag-buffer pati confidence mo😂",
-        "ang bilis mawala ng yabang mo rito☄️😂",
-        "may audience ka pero walang applause😂",
-        "subukan mo ulit pag ready na ang banat mo☄️"
+      "pero hanggang intro ka lang 😂☄️",
+      "kaso wala pa ring solid na punto 😂",
+      "pero mas mabilis pa mag-load ang comeback mo kaysa dumating 😂",
+      "kaso parang draft pa rin ang final answer mo ☄️",
+      "pero tahimik ang GC pagkatapos mong magsalita 😂",
+      "kaso mas malakas pa ang confidence kaysa ebidensya ☄️😂",
+      "pero hindi pa rin kumpleto ang punchline mo 😂",
+      "kaso wala pang resibong sumasabay sa yabang mo ☄️",
+      "pero mukhang ikaw lang ang impressed sa sarili mo 😂",
+      "kaso bitin na naman ang ending ng kwento mo ☄️😂"
     ]
   ),
   insult: buildLinePool(
     [
-        "may point ka sana {{NAME}}, kaso naiwan ata sa draft☄️😂",
-        "{{NAME}} lakas ng loob mo, nasaan yung laman ng sinabi mo?☄️☄️😂",
-        "gets ka namin {{FIRST_NAME}}, hindi lang namin makita yung sense😂☄️",
-        "{{NAME}} nag-reply ka na naman pero wala pa ring nadagdag sa usapan☄️😂"
+      "may point ka sana {{NAME}}, kaso naiwan ata sa draft☄️😂",
+      "{{NAME}} lakas ng loob mo, nasaan yung laman ng sinabi mo?☄️☄️😂",
+      "gets ka namin {{FIRST_NAME}}, hindi lang namin makita yung sense😂☄️",
+      "{{NAME}} nag-reply ka na naman pero wala pa ring nadagdag sa usapan☄️😂"
     ],
     [
-        "{{NAME}} ang argumento mo ay parang",
-        "{{FIRST_NAME}} may sense sana yung sinabi mo kung",
-        "boss {{NAME}} ang lakas ng confidence mo,",
-        "{{NAME}} nag-type ka nang mahaba para",
-        "{{NAME}} parang nag-research ka pero",
-        "uy {{FIRST_NAME}}, yung logic mo",
-        "{{NAME}} ang point mo yata ay",
-        "bossing {{NAME}} kahit i-replay natin,",
-        "{{NAME}} ang reply mo ay",
-        "{{FIRST_NAME}} hindi naman masama magkamali,"
+      "{{NAME}}, ang argumento mo —",
+      "{{FIRST_NAME}}, ang logic mo —",
+      "Boss {{NAME}}, ang paliwanag mo —",
+      "{{NAME}}, kahit pahabain mo pa —",
+      "Uy {{FIRST_NAME}}, ang point mo —",
+      "{{NAME}}, sa dami ng sinabi mo —",
+      "Bossing {{NAME}}, ang depensa mo —",
+      "{{NAME}}, kung susuriin ang reply mo —",
+      "{{FIRST_NAME}}, ang explanation mo —",
+      "{{NAME}}, ang pinagmamalaki mong argumento —"
     ],
     [
-        "nawala sa unang sentence😂☄️",
-        "hindi pa rin makita ang main point😂",
-        "nauna pa ang yabang kaysa ebidensya☄️😂",
-        "mas maraming typo kaysa paliwanag😂",
-        "kulang pa sa final answer☄️",
-        "parang hiniram lang sa comment section😂",
-        "may simula pero walang direksyon☄️😂",
-        "hindi umabot sa conclusion😂",
-        "mas bagay pang draft kaysa argumento☄️",
-        "bawi ka na lang sa next reply😂"
+      "parang hinanap muna ang sense bago ipinadala 😂",
+      "pero hindi pa rin makita kung saan papunta ☄️",
+      "parang confidence lang ang kumpleto, kulang ang detalye 😂",
+      "pero mas malinaw pa ang typing indicator kaysa punto mo ☄️😂",
+      "parang headline na walang laman ang article 😂",
+      "pero walang ebidensyang sumuporta sa claim mo ☄️",
+      "parang sinulat habang hindi pa tapos mag-isip 😂",
+      "pero paikot-ikot pa rin sa parehong palusot ☄️😂",
+      "parang may simula pero walang matinong konklusyon 😂",
+      "pero kahit ulitin natin, hindi pa rin nagiging convincing ☄️"
     ]
   ),
   laugh: buildLinePool(
     [
-        "tawa ka pa {{NAME}}, yun na ba pinakamalakas mong ambag?😂☄️☄️",
-        "{{NAME}} HAHAHA buti pa tawa mo may energy, argumento wala☄️😂",
-        "sige {{FIRST_NAME}}, tawa ka muna habang naghahanap ka ng comeback😂☄️"
+      "tawa ka pa {{NAME}}, yun na ba pinakamalakas mong ambag?😂☄️☄️",
+      "{{NAME}} HAHAHA buti pa tawa mo may energy, argumento wala☄️😂",
+      "sige {{FIRST_NAME}}, tawa ka muna habang naghahanap ka ng comeback😂☄️"
     ],
     [
-        "HAHAHA {{NAME}} tawa ka nang tawa,",
-        "{{FIRST_NAME}} ang saya mo yata,",
-        "{{NAME}} kung tawa ang laban,",
-        "boss {{NAME}} sige lang tumawa,",
-        "{{NAME}} pati emoji mo",
-        "HAHAHA bossing, {{NAME}}",
-        "{{FIRST_NAME}} mukhang laugh trip ka na naman,",
-        "{{NAME}} tawa muna bago",
-        "uy {{NAME}}, ang lakas ng tawa mo,",
-        "{{NAME}} may sound effects pa"
+      "HAHAHA {{NAME}}, ang lakas ng tawa mo —",
+      "{{FIRST_NAME}}, enjoy na enjoy ka —",
+      "Boss {{NAME}}, sige lang sa kakatawa —",
+      "{{NAME}}, pati emoji mo —",
+      "HAHAHA {{FIRST_NAME}}, mukhang aliw na aliw ka —",
+      "{{NAME}}, tawa ka muna —",
+      "Uy {{NAME}}, may sound effects pa —",
+      "Bossing {{NAME}}, tuloy mo lang ang tawa —",
+      "{{FIRST_NAME}}, parang laugh trip na naman —",
+      "{{NAME}}, ang saya mo yata —"
     ],
     [
-        "pero nasaan ang comeback?😂☄️",
-        "kami na ang naghihintay sa punchline😂",
-        "baka matabunan na ang argumento mo😂☄️",
-        "kahit tawa mo may sariling cooldown😂",
-        "isang solid na reply naman diyan☄️😂",
-        "hindi counted ang tawa bilang sagot😂",
-        "parang naka-loop na ang reaction mo😂☄️",
-        "balik ka pag may bagong banat😂",
-        "pati GC napatingin sa tawa mo😂",
-        "pero wala pa ring point na lumalabas☄️"
+      "pero wala pa ring comeback na kasunod 😂",
+      "kaso hindi counted ang tawa bilang sagot ☄️",
+      "pero kami pa rin ang naghihintay sa punchline 😂",
+      "kaso mas marami pang emoji kaysa paliwanag 😂☄️",
+      "pero hindi nabubura ng tawa ang pagkatalo mo 😂",
+      "kaso hindi nagiging argumento ang HAHAHA ☄️",
+      "pero parang naka-loop na ang reaction mo 😂",
+      "kaso wala pa ring bagong ambag sa usapan ☄️😂",
+      "pero pati GC naghihintay na matapos ang laugh track 😂",
+      "kaso mas mabilis ang tawa mo kaysa utak ng reply mo ☄️"
     ]
   ),
   command: buildLinePool(
     [
-        "utos ka nang utos {{NAME}}, akala mo may command privilege ka☄️😂",
-        "{{NAME}} kalma, hindi ikaw ang admin ng utak ko☄️☄️😂",
-        "noted boss {{NAME}}, isasama ko sa listahan ng walang epekto😂☄️"
+      "utos ka nang utos {{NAME}}, akala mo may command privilege ka☄️😂",
+      "{{NAME}} kalma, hindi ikaw ang admin ng utak ko☄️☄️😂",
+      "noted boss {{NAME}}, isasama ko sa listahan ng walang epekto😂☄️"
     ],
     [
-        "{{NAME}} utos ka nang utos,",
-        "boss {{NAME}} hindi porket nag-capital letters ka,",
-        "{{FIRST_NAME}} kalma lang sa pag-uutos,",
-        "{{NAME}} akala mo may admin panel ka,",
-        "uy boss {{NAME}},",
-        "{{NAME}} noted ang request mo,",
-        "bossing {{NAME}} bago ka mag-demand,",
-        "{{NAME}} hindi lahat ng sinabi mo",
-        "{{FIRST_NAME}} may command ka na naman,",
-        "{{NAME}} pwede kang mag-request pero"
+      "{{NAME}}, utos ka nang utos —",
+      "Boss {{NAME}}, hindi porket naka-caps lock ka —",
+      "{{FIRST_NAME}}, kalma lang sa pag-uutos —",
+      "{{NAME}}, akala mo may admin panel ka —",
+      "Uy boss {{NAME}}, bago ka mag-demand —",
+      "{{NAME}}, noted ang request mo —",
+      "Bossing {{NAME}}, bago ka magbigay ng command —",
+      "{{NAME}}, puwede kang mag-request —",
+      "{{FIRST_NAME}}, hindi lahat ng sinabi mo —",
+      "{{NAME}}, kung gusto mong masunod —"
     ],
     [
-        "wala kang shortcut dito😂☄️",
-        "hindi automatic na susunod ang mundo😂",
-        "check mo muna kung may permission ka☄️😂",
-        "hindi ako naka-auto-approve sa yabang😂",
-        "ilagay mo muna sa suggestion box😂☄️",
-        "hindi kasama sa settings ang ego mo😂",
-        "pila muna bago mag-utos☄️",
-        "hindi lahat ng caps lock ay authority😂",
-        "may limit din ang boss mode mo😂☄️",
-        "respeto muna bago request😂"
+      "hindi ibig sabihin ikaw na ang masusunod 😂",
+      "may kailangan ka pa ring patunayan ☄️",
+      "hindi automatic na susunod ang buong GC 😂",
+      "check mo muna kung may permission ka ☄️😂",
+      "respeto muna bago sunod-sunod na utos 😂",
+      "hindi kasama sa settings ang ego mo ☄️",
+      "pila muna bago mag-utos 😂",
+      "hindi lahat ng caps lock ay authority ☄️😂",
+      "mas okay kung maayos ang pagkakasabi mo 😂",
+      "tandaan mong request pa rin iyan, hindi batas ☄️"
     ]
   ),
   boast: buildLinePool(
     [
-        "angas mo naman {{NAME}}, akala ko may kasunod na proof☄️😂",
-        "{{NAME}} champion ka na sa kwento mo, sa actual kaya?☄️☄️😂",
-        "HEV ABI OWNS {{UPPER_NAME}}, kahit ilang beses mo pang i-announce🥷🩸🩸"
+      "angas mo naman {{NAME}}, akala ko may kasunod na proof☄️😂",
+      "{{NAME}} champion ka na sa kwento mo, sa actual kaya?☄️☄️😂",
+      "HEV ABI OWNS {{UPPER_NAME}}, kahit ilang beses mo pang i-announce🥷🩸🩸"
     ],
     [
-        "{{NAME}} ang taas ng flex mo,",
-        "boss {{NAME}} champion ka sa kwento,",
-        "{{FIRST_NAME}} ang dami mong claims,",
-        "{{NAME}} kung trophy ang yabang,",
-        "HEV ABI narinig ang flex mo, {{NAME}},",
-        "{{NAME}} puro highlight ang kwento mo,",
-        "uy {{NAME}}, mukhang undefeated ka raw,",
-        "bossing {{NAME}} ang lakas ng intro mo,",
-        "{{NAME}} ang record mo sa sariling kwento,",
-        "{{FIRST_NAME}} sige, i-announce mo pa"
+      "{{NAME}}, ang taas ng flex mo —",
+      "Boss {{NAME}}, champion ka sa kwento —",
+      "{{FIRST_NAME}}, ang dami mong claims —",
+      "{{NAME}}, kung trophy ang yabang —",
+      "HEV ABI narinig ang flex mo, {{NAME}} —",
+      "{{NAME}}, puro highlight ang kwento mo —",
+      "Uy {{NAME}}, undefeated ka raw —",
+      "Bossing {{NAME}}, ang lakas ng intro mo —",
+      "{{NAME}}, ang record mo sa sariling kwento —",
+      "{{FIRST_NAME}}, sige, i-announce mo pa —"
     ],
     [
-        "nasaan naman ang replay?😂☄️",
-        "pahingi naman ng proof para kumpleto😂",
-        "pero wala pang scoreboard na makita☄️😂",
-        "sa actual round tayo mag-usap😂",
-        "parang trailer na walang movie😂☄️",
-        "baka fan fiction ang stats mo😂",
-        "puro headline, kulang sa result☄️😂",
-        "naghihintay pa ang resibo😂",
-        "kahit echo mo napagod na kakapalakpak😂",
-        "next time may evidence naman😂☄️"
+      "pero nasaan naman ang replay? 😂☄️",
+      "kaso wala pang scoreboard na sumusuporta 😂",
+      "pero puro claims at wala pang resibo ☄️",
+      "kaso sa actual round tayo mag-usap 😂",
+      "parang trailer na walang movie ☄️😂",
+      "pero hindi pa lumalabas ang totoong resulta 😂",
+      "kaso headline lang ang meron, walang proof ☄️",
+      "pero kahit isang konkretong example wala 😂",
+      "parang fan fiction ang stats mo ☄️😂",
+      "kaso naghihintay pa rin kami ng ebidensya 😂"
     ]
   ),
   slow: buildLinePool(
     [
-        "bumagal ka ata {{NAME}}, pati reply mo nag-buffer☄️☄️😂",
-        "{{NAME}} bilisan mo, naghihintay pa yung punchline mo😂☄️",
-        "loading pa rin ba {{FIRST_NAME}}? kanina pa kami nandito☄️😂"
+      "bumagal ka ata {{NAME}}, pati reply mo nag-buffer☄️☄️😂",
+      "{{NAME}} bilisan mo, naghihintay pa yung punchline mo😂☄️",
+      "loading pa rin ba {{FIRST_NAME}}? kanina pa kami nandito☄️😂"
     ],
     [
-        "{{NAME}} ang tagal ng reply mo,",
-        "{{FIRST_NAME}} nag-loading ka na naman,",
-        "boss {{NAME}} parang naka-dial-up ang",
-        "{{NAME}} baka kailangan mo ng restart,",
-        "uy {{NAME}}, nag-timeout na yata",
-        "{{NAME}} habang naghihintay kami,",
-        "bossing {{NAME}} ang bagal ng pacing mo,",
-        "{{FIRST_NAME}} baka nasa buffering screen ka,",
-        "{{NAME}} ang comeback mo yata ay",
-        "{{NAME}} bilisan mo nang konti,"
+      "{{NAME}}, ang tagal ng reply mo —",
+      "{{FIRST_NAME}}, nag-loading ka na naman —",
+      "Boss {{NAME}}, parang naka-dial-up ang sagot mo —",
+      "{{NAME}}, baka kailangan mo ng restart —",
+      "Uy {{NAME}}, nag-timeout na yata —",
+      "{{NAME}}, habang naghihintay kami —",
+      "Bossing {{NAME}}, ang bagal ng pacing mo —",
+      "{{FIRST_NAME}}, baka nasa buffering screen ka —",
+      "{{NAME}}, ang comeback mo yata —",
+      "{{NAME}}, bilisan mo nang konti —"
     ],
     [
-        "pati notification namin inantok😂☄️",
-        "may loading icon pa rin sa utak ng reply😂",
-        "kahit oras nag-overtime na kakahintay☄️😂",
-        "parang update na stuck sa 1 percent😂",
-        "naka-pause pa rin ang punchline mo☄️",
-        "bumalik ka pag tapos na mag-load😂",
-        "nag-timeout na ang audience mo😂☄️",
-        "pati seen status mo naghintay😂",
-        "mas mabilis pa ang typing indicator kaysa sa'yo😂",
-        "baka kailangan mo ng mas stable na signal☄️😂"
+      "pati notification namin inantok na 😂",
+      "mas matagal pa sa update na stuck sa one percent ☄️",
+      "parang naka-pause pa rin ang punchline mo 😂",
+      "pati audience mo nag-timeout na ☄️😂",
+      "mas mabilis pa ang typing indicator kaysa sagot mo 😂",
+      "kanina pa naghihintay ang buong GC ☄️",
+      "parang kailangan mo ng mas stable na signal 😂",
+      "hindi na namin alam kung reply pa ba ang hinihintay ☄️😂",
+      "baka bukas pa dumating ang final answer mo 😂",
+      "kahit oras nag-overtime na kakahintay ☄️"
     ]
   ),
 });
@@ -241,7 +241,31 @@ const CONTEXT_ALIASES = Object.freeze({
 
 const lastByThread = new Map();
 const usedByThread = new Map();
+const emojiByThread = new Map();
 const MAX_TRACKED_THREADS = 500;
+
+const EMOJI_VARIANTS = Object.freeze({
+  general: ["😂", "☄️", "💀", "🥷", "😭", "⚡"],
+  insult: ["🤡", "💀", "☠️", "🥴", "😭", "😂"],
+  laugh: ["😂", "🤣", "😭", "💀", "😹", "☠️"],
+  command: ["🫡", "⚠️", "☝️", "💀", "😂", "🚨"],
+  boast: ["👑", "🥶", "🔥", "💯", "☄️", "😂"],
+  slow: ["🐢", "⏳", "💤", "🫠", "😂", "☄️"],
+});
+
+function addVariedEmoji(line, usedKey, poolName) {
+  const variants = EMOJI_VARIANTS[poolName] || EMOJI_VARIANTS.general;
+  const previous = emojiByThread.get(usedKey);
+  const candidates = variants.filter((emoji) => emoji !== previous);
+  const choices = candidates.length ? candidates : variants;
+  const emoji = choices[Math.floor(Math.random() * choices.length)];
+  emojiByThread.delete(usedKey);
+  emojiByThread.set(usedKey, emoji);
+  // Replace only a trailing emoji run; keep meaningful emoji elsewhere in
+  // the authored line while ensuring consecutive sends end differently.
+  const withoutTrailingEmoji = String(line).replace(/(?:\s*[\p{Extended_Pictographic}\uFE0F\u200D]+)+\s*$/u, "").trimEnd();
+  return withoutTrailingEmoji + emoji;
+}
 
 function detectJaidenAutoTargetContext(message) {
   const text = String(message || "").normalize("NFKC").toLocaleLowerCase("en");
@@ -310,12 +334,14 @@ function pickJaidenAutoTargetLine(options = {}) {
     const oldest = lastByThread.keys().next().value;
     lastByThread.delete(oldest);
     usedByThread.delete(oldest);
+    emojiByThread.delete(oldest);
   }
-  return renderJaidenAutoTargetLine(
+  const rendered = renderJaidenAutoTargetLine(
     selected,
     options.targetName,
     options.fallbackName
   );
+  return addVariedEmoji(rendered, usedKey, poolName);
 }
 
 function getJaidenAutoTargetPools() {
@@ -328,6 +354,7 @@ function resetJaidenAutoTargetHistory(threadId) {
   if (threadId == null) {
     lastByThread.clear();
     usedByThread.clear();
+    emojiByThread.clear();
     return;
   }
   const prefix = String(threadId) + ":";
@@ -335,6 +362,7 @@ function resetJaidenAutoTargetHistory(threadId) {
     if (key.startsWith(prefix)) {
       lastByThread.delete(key);
       usedByThread.delete(key);
+      emojiByThread.delete(key);
     }
   }
 }
