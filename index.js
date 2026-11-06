@@ -68,7 +68,9 @@ const trafficDeliveryStore = require("./trafficDeliveryHistory");
 const { resolveTargetName, clearTargetNameCache } = require("./targetName");
 const { createJaidenMessageQueue } = require("./jaiden-message-queue");
 const { createJaidenTargetCountdown } = require("./jaiden-target-countdown");
-const { pickJaidenAutoTargetLine } = require("./jaiden-auto-target-personality");
+const jaidenAutoTargetPersonality = require("./jaiden-auto-target-personality");
+const { pickJaidenAutoTargetLine } = jaidenAutoTargetPersonality;
+const { createJaidenTargetPersonalitySettings } = require("./jaidenTargetPersonalitySettings");
 const jaidenTargetRecords = require("./jaidenTargetRecords");
 const { registerGroupProfileRoutes, handleGroupProfileEvent } = require("./groupProfileRoutes");
 const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
@@ -3861,6 +3863,15 @@ app.post(
 
 
 jaidenTargetRecords.registerRoutes(app, requireDashboardAccess);
+
+const jaidenTargetPersonalitySettings = createJaidenTargetPersonalitySettings({
+  db,
+  personality: jaidenAutoTargetPersonality,
+});
+jaidenTargetPersonalitySettings.registerRoutes(app, requireDashboardAccess);
+void jaidenTargetPersonalitySettings.load().catch(error => {
+  console.warn("[JAIDEN BANAT] Could not initialize saved personality settings:", error?.message || error);
+});
 
 app.get(
   "/api/dashboard/jaiden-target-countdown/settings",
