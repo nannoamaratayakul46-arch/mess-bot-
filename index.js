@@ -3683,6 +3683,7 @@ app.use(express.json({
   type: req =>
     !/^\/api\/dashboard\/groups\/[^/]+\/profile$/.test(req.path) &&
     !/^\/api\/dashboard\/auto-welcome(?:\/|$)/.test(req.path) &&
+    !/^\/api\/dashboard\/jaiden-auto-target\/personality$/.test(req.path) &&
     Boolean(req.is("application/json")),
 }));
 
