@@ -3869,9 +3869,6 @@ const jaidenTargetPersonalitySettings = createJaidenTargetPersonalitySettings({
   personality: jaidenAutoTargetPersonality,
 });
 jaidenTargetPersonalitySettings.registerRoutes(app, requireDashboardAccess);
-void jaidenTargetPersonalitySettings.load().catch(error => {
-  console.warn("[JAIDEN BANAT] Could not initialize saved personality settings:", error?.message || error);
-});
 
 app.get(
   "/api/dashboard/jaiden-target-countdown/settings",
@@ -6272,6 +6269,11 @@ async function loadPersistedFacebookSessionState() {
   try {
     await db.connect();
     await loadDashboardReactionConfig();
+    try {
+      await jaidenTargetPersonalitySettings.load();
+    } catch (error) {
+      console.warn("[JAIDEN BANAT] Could not initialize saved personality settings:", error?.message || error);
+    }
 
     const encrypted = await db.getMessengerSessionState();
     if (!encrypted) {
