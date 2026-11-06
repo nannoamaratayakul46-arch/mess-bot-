@@ -220,6 +220,41 @@ const LINE_POOLS = Object.freeze({
   ),
 });
 
+let activeLinePools = LINE_POOLS;
+let activeEnabledCategories = Object.fromEntries(
+  Object.keys(LINE_POOLS).map((name) => [name, true])
+);
+
+function getDefaultJaidenAutoTargetPools() {
+  return Object.fromEntries(
+    Object.entries(LINE_POOLS).map(([name, lines]) => [name, lines.slice()])
+  );
+}
+
+function setJaidenAutoTargetConfiguration(configuration = {}) {
+  const nextPools = {};
+  const nextEnabled = {};
+  for (const name of Object.keys(LINE_POOLS)) {
+    const candidate = configuration.lines && configuration.lines[name];
+    const lines = Array.isArray(candidate)
+      ? candidate.map((line) => String(line || "").trim()).filter(Boolean)
+      : LINE_POOLS[name].slice();
+    nextPools[name] = Object.freeze(lines.length ? lines : LINE_POOLS[name].slice());
+    nextEnabled[name] = typeof configuration.enabledCategories?.[name] === "boolean"
+      ? configuration.enabledCategories[name]
+      : true;
+  }
+  if (!Object.values(nextEnabled).some(Boolean)) {
+    throw new Error("At least one Jaiden Auto Target Banat category must remain enabled.");
+  }
+  activeLinePools = Object.freeze(nextPools);
+  activeEnabledCategories = Object.freeze(nextEnabled);
+  return {
+    lines: Object.fromEntries(Object.entries(activeLinePools).map(([name, lines]) => [name, lines.slice()])),
+    enabledCategories: { ...activeEnabledCategories },
+  };
+}
+
 const CONTEXT_ALIASES = Object.freeze({
   insult: "insult",
   insulted: "insult",
@@ -310,8 +345,14 @@ function renderJaidenAutoTargetLine(template, targetName, fallbackName = DEFAULT
 function pickJaidenAutoTargetLine(options = {}) {
   const threadId = String(options.threadId || "global");
   const contextKey = String(options.context || "general").trim().toLowerCase();
-  const poolName = CONTEXT_ALIASES[contextKey] || "general";
-  const pool = LINE_POOLS[poolName];
+  const requestedPoolName = CONTEXT_ALIASES[contextKey] || "general";
+  const fallbackPoolName = activeEnabledCategories.general
+    ? "general"
+    : Object.keys(activeLinePools).find((name) => activeEnabledCategories[name]) || "general";
+  const poolName = activeEnabledCategories[requestedPoolName]
+    ? requestedPoolName
+    : fallbackPoolName;
+  const pool = activeLinePools[poolName] || LINE_POOLS.general;
   const usedKey = threadId + ":" + poolName;
   const used = usedByThread.get(usedKey) || new Set();
   let candidates = pool.filter((line) => !used.has(line));
@@ -346,7 +387,7 @@ function pickJaidenAutoTargetLine(options = {}) {
 
 function getJaidenAutoTargetPools() {
   return Object.fromEntries(
-    Object.entries(LINE_POOLS).map(([name, lines]) => [name, lines.slice()])
+    Object.entries(activeLinePools).map(([name, lines]) => [name, lines.slice()])
   );
 }
 
@@ -370,7 +411,9 @@ function resetJaidenAutoTargetHistory(threadId) {
 module.exports = {
   DEFAULT_FALLBACK_NAME,
   detectJaidenAutoTargetContext,
+  getDefaultJaidenAutoTargetPools,
   getJaidenAutoTargetPools,
+  setJaidenAutoTargetConfiguration,
   pickJaidenAutoTargetLine,
   renderJaidenAutoTargetLine,
   resetJaidenAutoTargetHistory,
