@@ -69,13 +69,16 @@ function createJaidenTargetPersonalitySettings({ db, personality, log = console.
   let writeVersion = 0;
   async function ensureTable() {
     if (!tableReady) {
-      tableReady = db.query(`
+      tableReady = (async () => {
+        if (typeof db.connect === "function") await db.connect();
+        await db.query(`
         CREATE TABLE IF NOT EXISTS eclipse_jaiden_auto_target_personality (
           id INTEGER PRIMARY KEY CHECK (id = 1),
           settings JSONB NOT NULL,
           updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
-      `).catch((error) => {
+      `);
+      })().catch((error) => {
         tableReady = null;
         throw error;
       });
