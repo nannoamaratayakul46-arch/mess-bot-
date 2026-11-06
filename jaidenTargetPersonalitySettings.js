@@ -1,5 +1,7 @@
 "use strict";
 
+const express = require("express");
+
 const CATEGORIES = Object.freeze(["general", "insult", "laugh", "command", "boast", "slow"]);
 const PREFERENCE_KEY = "jaiden_auto_target_personality";
 const MAX_LINES_PER_CATEGORY = 200;
@@ -137,7 +139,7 @@ function createJaidenTargetPersonalitySettings({ db, personality, log = console.
       }
     });
 
-    app.put("/api/dashboard/jaiden-auto-target/personality", auth, async (req, res) => {
+    app.put("/api/dashboard/jaiden-auto-target/personality", express.json({ limit: "2mb" }), auth, async (req, res) => {
       try {
         const settings = await save(req.body || {});
         return res.json({ ok: true, settings });
