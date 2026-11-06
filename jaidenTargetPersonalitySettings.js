@@ -139,7 +139,7 @@ function createJaidenTargetPersonalitySettings({ db, personality, log = console.
       }
     });
 
-    app.put("/api/dashboard/jaiden-auto-target/personality", express.json({ limit: "2mb" }), auth, async (req, res) => {
+    app.put("/api/dashboard/jaiden-auto-target/personality", auth, express.json({ limit: "2mb" }), async (req, res) => {
       try {
         const settings = await save(req.body || {});
         return res.json({ ok: true, settings });
