@@ -66,6 +66,7 @@ function createJaidenTargetPersonalitySettings({ db, personality, log = console.
   }
 
   let tableReady = null;
+  let writeVersion = 0;
   async function ensureTable() {
     if (!tableReady) {
       tableReady = db.query(`
@@ -100,8 +101,11 @@ function createJaidenTargetPersonalitySettings({ db, personality, log = console.
   }
 
   async function load() {
+    const versionAtStart = writeVersion;
     const settings = await readSettings();
-    personality.setJaidenAutoTargetConfiguration(settings);
+    if (versionAtStart === writeVersion) {
+      personality.setJaidenAutoTargetConfiguration(settings);
+    }
     return settings;
   }
 
@@ -114,6 +118,7 @@ function createJaidenTargetPersonalitySettings({ db, personality, log = console.
       VALUES (1, $1::jsonb, NOW())
       ON CONFLICT (id) DO UPDATE SET settings = EXCLUDED.settings, updated_at = NOW()
     `, [JSON.stringify(settings)]);
+    writeVersion += 1;
     personality.setJaidenAutoTargetConfiguration(settings);
     return settings;
   }
