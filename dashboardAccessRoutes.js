@@ -165,7 +165,7 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
 
   app.post("/api/access/bootstrap", rateLimit, legacyAuth, async (req, res) => {
     try {
-      const owner = await access.bootstrapOwner({ passkey: req.body?.passkey });
+      const owner = await access.setupOwnerCredentials({ passkey: req.body?.passkey });
       res.setHeader("Cache-Control", "no-store");
       return res.status(201).json({ ok: true, account: owner });
     } catch (error) { return sendError(res, error); }
