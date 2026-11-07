@@ -19,7 +19,7 @@ test("CSRF comparison is constant-time for equal-length values and rejects missi
   assert.equal(safeEqual("short", "longer"), false);
 });
 
-test("owner bootstrap creates only the first owner and persists a password hash", async () => {
+test("owner bootstrap creates the first owner with hashed Passkey and Secret Code credentials", async () => {
   const calls = [];
   const access = createDashboardAccess({
     query: async (sql, params) => {
@@ -27,11 +27,17 @@ test("owner bootstrap creates only the first owner and persists a password hash"
       return { rows: [{ id: 1, email: params[0], role: "owner", status: "active" }], rowCount: 1 };
     },
   });
-  const owner = await access.bootstrapOwner({ email: "OWNER@example.com", password: "a sufficiently long passphrase" });
+  const passkey = "owner-passkey-manually-entered-2026";
+  const owner = await access.bootstrapOwner({ passkey });
   assert.equal(owner.role, "owner");
+  assert.equal(owner.id, 1);
+  assert.equal(typeof owner.secretCode, "string");
+  assert.equal(owner.secretCode.length, 43);
   assert.equal(calls.length, 1);
   assert.match(calls[0].sql, /WHERE NOT EXISTS/);
-  assert.notEqual(calls[0].params[1], "a sufficiently long passphrase");
+  assert.match(calls[0].params[1], /^scrypt\\$16384\\$8\\$1\\$/);
+  assert.match(calls[0].params[3], /^scrypt\\$16384\\$8\\$1\\$/);
+  assert.match(calls[0].params[4], /^scrypt\\$16384\\$8\\$1\\$/);
 });
 
 test("only owners can list or update friend accounts; owner role cannot be assigned", async () => {
@@ -190,8 +196,7 @@ test("revoked invitations cannot be redeemed", async () => {
   await assert.rejects(
     () => access.redeemInvitation({
       token: "x".repeat(48),
-      email: "friend@example.com",
-      password: "a sufficiently long passphrase",
+      passkey: "friend-passkey-manually-entered-2026",
     }),
     error => error.code === "INVITATION_INVALID"
   );
