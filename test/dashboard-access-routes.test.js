@@ -3,7 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { parseCookies, safeEqual, createDashboardAccessRoutes } = require("../dashboardAccessRoutes");
-const { createDashboardAccess } = require("../dashboardAccess");
+const { createDashboardAccess, verifyPassword } = require("../dashboardAccess");
 
 test("cookie parser handles encoded values and malformed cookies safely", () => {
   const cookies = parseCookies("a=one; eclipse_dashboard_session=abc%2F123; broken=%E0%A4%A");
@@ -38,6 +38,27 @@ test("owner bootstrap creates the first owner with hashed Passkey and Secret Cod
   assert.match(calls[0].params[1], /^scrypt\$16384\$8\$1\$/);
   assert.match(calls[0].params[3], /^scrypt\$16384\$8\$1\$/);
   assert.match(calls[0].params[4], /^scrypt\$16384\$8\$1\$/);
+});
+
+
+test("owner bootstrap stores the manually supplied Secret Code as a hash", async () => {
+  let storedSecretHash = "";
+  const access = createDashboardAccess({
+    query: async (sql, params) => {
+      if (/SELECT id FROM eclipse_dashboard_accounts WHERE role = 'owner'/.test(sql)) return { rows: [{ id: 1 }], rowCount: 1 };
+      if (/UPDATE eclipse_dashboard_accounts SET password_hash/.test(sql)) {
+        storedSecretHash = params[4];
+        return { rows: [{ id: 1, email: "owner@local.invalid", role: "owner", status: "active" }], rowCount: 1 };
+      }
+      throw new Error("Unexpected query: " + sql);
+    },
+  });
+  const passkey = "owner-passkey-manually-entered-2026";
+  const secretCode = "my-private-secret-word-2026";
+  const owner = await access.setupOwnerCredentials({ passkey, secretCode });
+  assert.equal(owner.secretCode, secretCode);
+  assert.equal(await verifyPassword(secretCode, storedSecretHash), true);
+  assert.equal(await verifyPassword("not-the-secret-code", storedSecretHash), false);
 });
 
 test("only owners can list or update friend accounts; owner role cannot be assigned", async () => {

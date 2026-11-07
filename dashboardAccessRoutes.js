@@ -163,9 +163,14 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
     ]);
   }
 
-  app.post("/api/access/bootstrap", rateLimit, legacyAuth, async (req, res) => {
+  app.post("/api/access/bootstrap", rateLimit, async (req, res) => {
+    const bootstrapCode = String(process.env.ECLIPSE_OWNER_BOOTSTRAP_CODE || "").trim();
+    if (bootstrapCode.length < 16) return res.status(503).json({ ok: false, error: "Owner setup is not enabled. Configure a 16+ character ECLIPSE_OWNER_BOOTSTRAP_CODE temporarily in the backend service." });
+    if (!safeEqual(req.body?.secretCode, bootstrapCode)) {
+      return res.status(401).json({ ok: false, error: "The Secret Code does not match the temporary owner setup code." });
+    }
     try {
-      const owner = await access.setupOwnerCredentials({ passkey: req.body?.passkey });
+      const owner = await access.setupOwnerCredentials({ passkey: req.body?.passkey, secretCode: req.body?.secretCode });
       res.setHeader("Cache-Control", "no-store");
       return res.status(201).json({ ok: true, account: owner });
     } catch (error) { return sendError(res, error); }

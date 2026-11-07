@@ -124,17 +124,23 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
     return passkey;
   }
 
-  async function createCredentials(passkeyInput) {
+  function normalizeSecretCode(value) {
+    const secretCode = String(value || "").trim();
+    if (secretCode.length < 16 || secretCode.length > 256) throw new Error("Secret Code must be 16 to 256 characters.");
+    return secretCode;
+  }
+
+  async function createCredentials(passkeyInput, secretCodeInput) {
     const passkey = normalizePasskey(passkeyInput);
-    const secretCode = createOpaqueToken();
+    const secretCode = secretCodeInput === undefined ? createOpaqueToken() : normalizeSecretCode(secretCodeInput);
     const lookupHash = hashToken(passkey);
     const passkeyHash = await hashPassword(passkey);
     const secretCodeHash = await hashPassword(secretCode);
     return { lookupHash, passkeyHash, secretCodeHash, secretCode };
   }
 
-  async function bootstrapOwner({ passkey } = {}) {
-    const credentials = await createCredentials(passkey);
+  async function bootstrapOwner({ passkey, secretCode } = {}) {
+    const credentials = await createCredentials(passkey, secretCode);
     const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
     const passwordHash = await hashPassword(createOpaqueToken());
     const result = await query(
@@ -149,10 +155,10 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
     return { ...result.rows[0], secretCode: credentials.secretCode };
   }
 
-  async function setupOwnerCredentials({ passkey } = {}) {
+  async function setupOwnerCredentials({ passkey, secretCode } = {}) {
     const existing = await query("SELECT id FROM eclipse_dashboard_accounts WHERE role = 'owner' AND status = 'active' LIMIT 1");
-    if (!existing.rows?.[0]) return bootstrapOwner({ passkey });
-    const credentials = await createCredentials(passkey);
+    if (!existing.rows?.[0]) return bootstrapOwner({ passkey, secretCode });
+    const credentials = await createCredentials(passkey, secretCode);
     if (existing.rows?.[0]) {
       const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
       const passwordHash = await hashPassword(createOpaqueToken());
