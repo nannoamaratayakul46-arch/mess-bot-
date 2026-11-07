@@ -29,7 +29,7 @@ test("password hashes verify without storing plaintext", async () => {
 });
 
 test("password and email validation reject weak or malformed input", async () => {
-  await assert.rejects(() => hashPassword("short"), /12 and 1024/);
+  await assert.rejects(() => hashPassword("short"), /9 and 1024/);
   assert.equal(normalizeEmail("  FRIEND@EXAMPLE.COM "), "friend@example.com");
   assert.throws(() => normalizeEmail("not-an-email"), /valid email/);
 });

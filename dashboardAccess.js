@@ -4,7 +4,7 @@ const crypto = require("node:crypto");
 const { promisify } = require("node:util");
 
 const scrypt = promisify(crypto.scrypt);
-const PASSWORD_MIN_LENGTH = 12;
+const PASSWORD_MIN_LENGTH = 9;
 const PASSWORD_MAX_LENGTH = 1024;
 const DEFAULT_SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
@@ -28,7 +28,7 @@ function hashToken(token) {
 async function hashPassword(password) {
   const value = String(password || "");
   if (value.length < PASSWORD_MIN_LENGTH || value.length > PASSWORD_MAX_LENGTH) {
-    throw new Error("Password must be between 12 and 1024 characters.");
+    throw new Error("Credential must be between 9 and 1024 characters.");
   }
   const salt = crypto.randomBytes(16);
   const derived = await scrypt(value, salt, 64, { N: 16384, r: 8, p: 1, maxmem: 64 * 1024 * 1024 });
@@ -120,56 +120,44 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
 
   function normalizePasskey(value) {
     const passkey = String(value || "").trim();
-    if (passkey.length < 20 || passkey.length > 256) throw new Error("Passkey must be 20 to 256 characters.");
+    if (passkey.length < 9 || passkey.length > 256) throw new Error("Passkey must be 9 to 256 characters.");
     return passkey;
   }
 
-  function normalizeSecretCode(value) {
-    const secretCode = String(value || "").trim();
-    if (secretCode.length < 16 || secretCode.length > 256) throw new Error("Secret Code must be 16 to 256 characters.");
-    return secretCode;
-  }
-
-  async function createCredentials(passkeyInput, secretCodeInput) {
+  async function createCredentials(passkeyInput) {
     const passkey = normalizePasskey(passkeyInput);
-    const secretCode = secretCodeInput === undefined ? createOpaqueToken() : normalizeSecretCode(secretCodeInput);
     const lookupHash = hashToken(passkey);
     const passkeyHash = await hashPassword(passkey);
-    const secretCodeHash = await hashPassword(secretCode);
-    return { lookupHash, passkeyHash, secretCodeHash, secretCode };
+    return { lookupHash, passkeyHash };
   }
 
-  async function bootstrapOwner({ passkey, secretCode } = {}) {
-    const credentials = await createCredentials(passkey, secretCode);
+  async function bootstrapOwner({ passkey } = {}) {
+    const credentials = await createCredentials(passkey);
     const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
     const passwordHash = await hashPassword(createOpaqueToken());
     const result = await query(
-      "INSERT INTO eclipse_dashboard_accounts (email, password_hash, passkey_lookup_hash, passkey_hash, secret_code_hash, role, status) SELECT $1, $2, $3, $4, $5, 'owner', 'active' WHERE NOT EXISTS (SELECT 1 FROM eclipse_dashboard_accounts) RETURNING id, email, role, status",
-      [email, passwordHash, credentials.lookupHash, credentials.passkeyHash, credentials.secretCodeHash]
+      "INSERT INTO eclipse_dashboard_accounts (email, password_hash, passkey_lookup_hash, passkey_hash, secret_code_hash, role, status) SELECT $1, $2, $3, $4, NULL, 'owner', 'active' WHERE NOT EXISTS (SELECT 1 FROM eclipse_dashboard_accounts WHERE role = 'owner') RETURNING id, email, role, status",
+      [email, passwordHash, credentials.lookupHash, credentials.passkeyHash]
     );
     if (!result.rows?.[0]) {
       const error = new Error("Owner account has already been initialized.");
       error.code = "OWNER_ALREADY_INITIALIZED";
       throw error;
     }
-    return { ...result.rows[0], secretCode: credentials.secretCode };
+    return result.rows[0];
   }
 
-  async function setupOwnerCredentials({ passkey, secretCode } = {}) {
-    const existing = await query("SELECT id FROM eclipse_dashboard_accounts WHERE role = 'owner' AND status = 'active' LIMIT 1");
-    if (!existing.rows?.[0]) return bootstrapOwner({ passkey, secretCode });
-    const credentials = await createCredentials(passkey, secretCode);
-    if (existing.rows?.[0]) {
-      const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
-      const passwordHash = await hashPassword(createOpaqueToken());
-      const updated = await query(
-        "UPDATE eclipse_dashboard_accounts SET password_hash = $2, passkey_lookup_hash = $3, passkey_hash = $4, secret_code_hash = $5, updated_at = NOW() WHERE id = $1 RETURNING id, email, role, status",
-        [existing.rows[0].id, passwordHash, credentials.lookupHash, credentials.passkeyHash, credentials.secretCodeHash]
-      );
-      return { ...updated.rows[0], secretCode: credentials.secretCode };
-    }
-    const owner = await bootstrapOwner({ passkey });
-    return owner;
+  async function setupOwnerCredentials({ passkey } = {}) {
+    const credentials = await createCredentials(passkey);
+    const existing = await query("SELECT id FROM eclipse_dashboard_accounts WHERE role = 'owner' LIMIT 1");
+    if (!existing.rows?.[0]) return bootstrapOwner({ passkey });
+    const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
+    const passwordHash = await hashPassword(createOpaqueToken());
+    const updated = await query(
+      "UPDATE eclipse_dashboard_accounts SET email = $2, password_hash = $3, passkey_lookup_hash = $4, passkey_hash = $5, secret_code_hash = NULL, status = 'active', updated_at = NOW() WHERE id = $1 RETURNING id, email, role, status",
+      [existing.rows[0].id, email, passwordHash, credentials.lookupHash, credentials.passkeyHash]
+    );
+    return updated.rows[0];
   }
 
   async function listAccounts(actor) {
@@ -251,26 +239,26 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
         RETURNING role
       )
       INSERT INTO eclipse_dashboard_accounts (email, password_hash, passkey_lookup_hash, passkey_hash, secret_code_hash, role)
-      SELECT $2, $3, $5, $6, $7, role FROM redeemed
+      SELECT $2, $3, $5, $6, NULL, role FROM redeemed
       RETURNING id, email, role, status
-    `, [hashToken(rawToken), email, passwordHash, now(), credentials.lookupHash, credentials.passkeyHash, credentials.secretCodeHash]);
+    `, [hashToken(rawToken), email, passwordHash, now(), credentials.lookupHash, credentials.passkeyHash]);
     if (!result.rows?.[0]) {
       const error = new Error("Invitation is invalid or expired, or the email is already registered.");
       error.code = "INVITATION_INVALID";
       throw error;
     }
-    return { ...result.rows[0], secretCode: credentials.secretCode };
+    return result.rows[0];
   }
 
-  async function login({ passkey, secretCode } = {}) {
+  async function login({ passkey } = {}) {
     const normalizedPasskey = normalizePasskey(passkey);
     const result = await query(
-      "SELECT id, email, passkey_hash, secret_code_hash, role, status FROM eclipse_dashboard_accounts WHERE passkey_lookup_hash = $1 LIMIT 1",
+      "SELECT id, email, passkey_hash, role, status FROM eclipse_dashboard_accounts WHERE passkey_lookup_hash = $1 LIMIT 1",
       [hashToken(normalizedPasskey)]
     );
     const account = result.rows?.[0];
-    if (!account || account.status !== "active" || !(await verifyPassword(normalizedPasskey, account.passkey_hash)) || !(await verifyPassword(secretCode, account.secret_code_hash))) {
-      const error = new Error("Passkey or Secret Code is incorrect.");
+    if (!account || account.status !== "active" || !(await verifyPassword(normalizedPasskey, account.passkey_hash))) {
+      const error = new Error("Passkey is incorrect.");
       error.code = "AUTH_INVALID";
       throw error;
     }

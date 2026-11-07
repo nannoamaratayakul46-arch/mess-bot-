@@ -19,7 +19,7 @@ test("CSRF comparison is constant-time for equal-length values and rejects missi
   assert.equal(safeEqual("short", "longer"), false);
 });
 
-test("owner bootstrap creates the first owner with hashed Passkey and Secret Code credentials", async () => {
+test("owner bootstrap creates the first owner with a hashed Passkey only", async () => {
   const calls = [];
   const access = createDashboardAccess({
     query: async (sql, params) => {
@@ -31,34 +31,36 @@ test("owner bootstrap creates the first owner with hashed Passkey and Secret Cod
   const owner = await access.bootstrapOwner({ passkey });
   assert.equal(owner.role, "owner");
   assert.equal(owner.id, 1);
-  assert.equal(typeof owner.secretCode, "string");
-  assert.equal(owner.secretCode.length, 43);
+  assert.equal(owner.secretCode, undefined);
   assert.equal(calls.length, 1);
   assert.match(calls[0].sql, /WHERE NOT EXISTS/);
+  assert.match(calls[0].sql, /secret_code_hash, role, status\) SELECT \$1, \$2, \$3, \$4, NULL/);
+  assert.equal(calls[0].params.length, 4);
   assert.match(calls[0].params[1], /^scrypt\$16384\$8\$1\$/);
   assert.match(calls[0].params[3], /^scrypt\$16384\$8\$1\$/);
-  assert.match(calls[0].params[4], /^scrypt\$16384\$8\$1\$/);
 });
 
-
-test("owner bootstrap stores the manually supplied Secret Code as a hash", async () => {
-  let storedSecretHash = "";
+test("owner setup resets the existing owner's Passkey and clears legacy Secret Code data", async () => {
+  let storedPasskeyHash = "";
+  let updateSql = "";
   const access = createDashboardAccess({
     query: async (sql, params) => {
       if (/SELECT id FROM eclipse_dashboard_accounts WHERE role = 'owner'/.test(sql)) return { rows: [{ id: 1 }], rowCount: 1 };
-      if (/UPDATE eclipse_dashboard_accounts SET password_hash/.test(sql)) {
-        storedSecretHash = params[4];
+      if (/UPDATE eclipse_dashboard_accounts SET email/.test(sql)) {
+        updateSql = sql;
+        storedPasskeyHash = params[4];
         return { rows: [{ id: 1, email: "owner@local.invalid", role: "owner", status: "active" }], rowCount: 1 };
       }
       throw new Error("Unexpected query: " + sql);
     },
   });
   const passkey = "owner-passkey-manually-entered-2026";
-  const secretCode = "my-private-secret-word-2026";
-  const owner = await access.setupOwnerCredentials({ passkey, secretCode });
-  assert.equal(owner.secretCode, secretCode);
-  assert.equal(await verifyPassword(secretCode, storedSecretHash), true);
-  assert.equal(await verifyPassword("not-the-secret-code", storedSecretHash), false);
+  const owner = await access.setupOwnerCredentials({ passkey });
+  assert.equal(owner.role, "owner");
+  assert.equal(owner.secretCode, undefined);
+  assert.match(updateSql, /secret_code_hash = NULL/);
+  assert.equal(await verifyPassword(passkey, storedPasskeyHash), true);
+  assert.equal(await verifyPassword("incorrect-passkey", storedPasskeyHash), false);
 });
 
 test("only owners can list or update friend accounts; owner role cannot be assigned", async () => {
