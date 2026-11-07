@@ -61,11 +61,19 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
         id BIGSERIAL PRIMARY KEY,
         email TEXT NOT NULL UNIQUE,
         password_hash TEXT NOT NULL,
+        passkey_lookup_hash TEXT UNIQUE,
+        passkey_hash TEXT,
+        secret_code_hash TEXT,
         role TEXT NOT NULL CHECK (role IN ('owner', 'operator', 'viewer')),
         status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active', 'disabled')),
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE eclipse_dashboard_accounts ADD COLUMN IF NOT EXISTS passkey_lookup_hash TEXT;
+      ALTER TABLE eclipse_dashboard_accounts ADD COLUMN IF NOT EXISTS passkey_hash TEXT;
+      ALTER TABLE eclipse_dashboard_accounts ADD COLUMN IF NOT EXISTS secret_code_hash TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS eclipse_dashboard_accounts_passkey_lookup_idx
+        ON eclipse_dashboard_accounts(passkey_lookup_hash) WHERE passkey_lookup_hash IS NOT NULL;
       CREATE TABLE IF NOT EXISTS eclipse_dashboard_invitations (
         id BIGSERIAL PRIMARY KEY,
         token_hash TEXT NOT NULL UNIQUE,
@@ -110,19 +118,52 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
     }
   }
 
-  async function bootstrapOwner({ email, password } = {}) {
-    const normalizedEmail = normalizeEmail(email);
-    const passwordHash = await hashPassword(password);
+  function normalizePasskey(value) {
+    const passkey = String(value || "").trim();
+    if (passkey.length < 20 || passkey.length > 256) throw new Error("Passkey must be 20 to 256 characters.");
+    return passkey;
+  }
+
+  async function createCredentials(passkeyInput) {
+    const passkey = normalizePasskey(passkeyInput);
+    const secretCode = createOpaqueToken();
+    const lookupHash = hashToken(passkey);
+    const passkeyHash = await hashPassword(passkey);
+    const secretCodeHash = await hashPassword(secretCode);
+    return { lookupHash, passkeyHash, secretCodeHash, secretCode };
+  }
+
+  async function bootstrapOwner({ passkey } = {}) {
+    const credentials = await createCredentials(passkey);
+    const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
+    const passwordHash = await hashPassword(createOpaqueToken());
     const result = await query(
-      "INSERT INTO eclipse_dashboard_accounts (email, password_hash, role, status) SELECT $1, $2, 'owner', 'active' WHERE NOT EXISTS (SELECT 1 FROM eclipse_dashboard_accounts) RETURNING id, email, role, status",
-      [normalizedEmail, passwordHash]
+      "INSERT INTO eclipse_dashboard_accounts (email, password_hash, passkey_lookup_hash, passkey_hash, secret_code_hash, role, status) SELECT $1, $2, $3, $4, $5, 'owner', 'active' WHERE NOT EXISTS (SELECT 1 FROM eclipse_dashboard_accounts) RETURNING id, email, role, status",
+      [email, passwordHash, credentials.lookupHash, credentials.passkeyHash, credentials.secretCodeHash]
     );
     if (!result.rows?.[0]) {
       const error = new Error("Owner account has already been initialized.");
       error.code = "OWNER_ALREADY_INITIALIZED";
       throw error;
     }
-    return result.rows[0];
+    return { ...result.rows[0], secretCode: credentials.secretCode };
+  }
+
+  async function setupOwnerCredentials({ passkey } = {}) {
+    const existing = await query("SELECT id FROM eclipse_dashboard_accounts WHERE role = 'owner' AND status = 'active' LIMIT 1");
+    if (!existing.rows?.[0]) return bootstrapOwner({ passkey });
+    const credentials = await createCredentials(passkey);
+    if (existing.rows?.[0]) {
+      const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
+      const passwordHash = await hashPassword(createOpaqueToken());
+      const updated = await query(
+        "UPDATE eclipse_dashboard_accounts SET password_hash = $2, passkey_lookup_hash = $3, passkey_hash = $4, secret_code_hash = $5, updated_at = NOW() WHERE id = $1 RETURNING id, email, role, status",
+        [existing.rows[0].id, passwordHash, credentials.lookupHash, credentials.passkeyHash, credentials.secretCodeHash]
+      );
+      return { ...updated.rows[0], secretCode: credentials.secretCode };
+    }
+    const owner = await bootstrapOwner({ passkey });
+    return owner;
   }
 
   async function listAccounts(actor) {
@@ -190,11 +231,12 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
     return { ...result.rows[0], status: "revoked" };
   }
 
-  async function redeemInvitation({ token, email, password } = {}) {
+  async function redeemInvitation({ token, passkey } = {}) {
     const rawToken = String(token || "").trim();
     if (rawToken.length < 40 || rawToken.length > 100) throw new Error("Invitation is invalid or expired.");
-    const normalizedEmail = normalizeEmail(email);
-    const passwordHash = await hashPassword(password);
+    const credentials = await createCredentials(passkey);
+    const email = "eclipse-user-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
+    const passwordHash = await hashPassword(createOpaqueToken());
     const result = await query(`
       WITH redeemed AS (
         UPDATE eclipse_dashboard_invitations
@@ -202,27 +244,27 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
         WHERE token_hash = $1 AND redeemed_at IS NULL AND revoked_at IS NULL AND expires_at > to_timestamp($4 / 1000.0)
         RETURNING role
       )
-      INSERT INTO eclipse_dashboard_accounts (email, password_hash, role)
-      SELECT $2, $3, role FROM redeemed
+      INSERT INTO eclipse_dashboard_accounts (email, password_hash, passkey_lookup_hash, passkey_hash, secret_code_hash, role)
+      SELECT $2, $3, $5, $6, $7, role FROM redeemed
       RETURNING id, email, role, status
-    `, [hashToken(rawToken), normalizedEmail, passwordHash, now()]);
+    `, [hashToken(rawToken), email, passwordHash, now(), credentials.lookupHash, credentials.passkeyHash, credentials.secretCodeHash]);
     if (!result.rows?.[0]) {
       const error = new Error("Invitation is invalid or expired, or the email is already registered.");
       error.code = "INVITATION_INVALID";
       throw error;
     }
-    return result.rows[0];
+    return { ...result.rows[0], secretCode: credentials.secretCode };
   }
 
-  async function login({ email, password } = {}) {
-    const normalizedEmail = normalizeEmail(email);
+  async function login({ passkey, secretCode } = {}) {
+    const normalizedPasskey = normalizePasskey(passkey);
     const result = await query(
-      "SELECT id, email, password_hash, role, status FROM eclipse_dashboard_accounts WHERE email = $1 LIMIT 1",
-      [normalizedEmail]
+      "SELECT id, email, passkey_hash, secret_code_hash, role, status FROM eclipse_dashboard_accounts WHERE passkey_lookup_hash = $1 LIMIT 1",
+      [hashToken(normalizedPasskey)]
     );
     const account = result.rows?.[0];
-    if (!account || account.status !== "active" || !(await verifyPassword(password, account.password_hash))) {
-      const error = new Error("Email or password is incorrect.");
+    if (!account || account.status !== "active" || !(await verifyPassword(normalizedPasskey, account.passkey_hash)) || !(await verifyPassword(secretCode, account.secret_code_hash))) {
+      const error = new Error("Passkey or Secret Code is incorrect.");
       error.code = "AUTH_INVALID";
       throw error;
     }
@@ -274,7 +316,7 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
     return Number(result.rowCount || 0);
   }
 
-  return { ensureSchema, bootstrapOwner, listAccounts, updateAccount, createInvitation, listInvitations, revokeInvitation, redeemInvitation, login, authenticate, revokeSession, revokeAllSessions };
+  return { ensureSchema, bootstrapOwner, setupOwnerCredentials, listAccounts, updateAccount, createInvitation, listInvitations, revokeInvitation, redeemInvitation, login, authenticate, revokeSession, revokeAllSessions };
 }
 
 module.exports = {

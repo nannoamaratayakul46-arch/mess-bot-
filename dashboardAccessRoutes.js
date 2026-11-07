@@ -165,7 +165,7 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
 
   app.post("/api/access/bootstrap", rateLimit, legacyAuth, async (req, res) => {
     try {
-      const owner = await access.bootstrapOwner({ email: req.body?.email, password: req.body?.password });
+      const owner = await access.setupOwnerCredentials({ passkey: req.body?.passkey });
       res.setHeader("Cache-Control", "no-store");
       return res.status(201).json({ ok: true, account: owner });
     } catch (error) { return sendError(res, error); }
@@ -173,7 +173,7 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
 
   app.post("/api/access/login", rateLimit, async (req, res) => {
     try {
-      const result = await access.login({ email: req.body?.email, password: req.body?.password });
+      const result = await access.login({ passkey: req.body?.passkey, secretCode: req.body?.secretCode });
       const csrfToken = crypto.randomBytes(32).toString("base64url");
       setSessionCookies(res, result.token, csrfToken, result.expiresAt);
       res.setHeader("Cache-Control", "no-store");
@@ -183,7 +183,7 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
 
   app.post("/api/access/invitations/redeem", rateLimit, async (req, res) => {
     try {
-      const account = await access.redeemInvitation({ token: req.body?.token, email: req.body?.email, password: req.body?.password });
+      const account = await access.redeemInvitation({ token: req.body?.token, passkey: req.body?.passkey });
       res.setHeader("Cache-Control", "no-store");
       return res.status(201).json({ ok: true, account });
     } catch (error) { return sendError(res, error); }
