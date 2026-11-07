@@ -35,9 +35,9 @@ test("owner bootstrap creates the first owner with hashed Passkey and Secret Cod
   assert.equal(owner.secretCode.length, 43);
   assert.equal(calls.length, 1);
   assert.match(calls[0].sql, /WHERE NOT EXISTS/);
-  assert.match(calls[0].params[1], /^scrypt\\$16384\\$8\\$1\\$/);
-  assert.match(calls[0].params[3], /^scrypt\\$16384\\$8\\$1\\$/);
-  assert.match(calls[0].params[4], /^scrypt\\$16384\\$8\\$1\\$/);
+  assert.match(calls[0].params[1], /^scrypt\$16384\$8\$1\$/);
+  assert.match(calls[0].params[3], /^scrypt\$16384\$8\$1\$/);
+  assert.match(calls[0].params[4], /^scrypt\$16384\$8\$1\$/);
 });
 
 test("only owners can list or update friend accounts; owner role cannot be assigned", async () => {
