@@ -145,8 +145,9 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
   }
 
   async function setupOwnerCredentials({ passkey } = {}) {
-    const credentials = await createCredentials(passkey);
     const existing = await query("SELECT id FROM eclipse_dashboard_accounts WHERE role = 'owner' AND status = 'active' LIMIT 1");
+    if (!existing.rows?.[0]) return bootstrapOwner({ passkey });
+    const credentials = await createCredentials(passkey);
     if (existing.rows?.[0]) {
       const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
       const passwordHash = await hashPassword(createOpaqueToken());
