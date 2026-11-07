@@ -67,7 +67,11 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
   }
 
   function readSession(req) {
-    return parseCookies(req.headers?.cookie)[SESSION_COOKIE] || "";
+    const cookieToken = parseCookies(req.headers?.cookie)[SESSION_COOKIE] || "";
+    if (cookieToken) return cookieToken;
+    const authorization = String(req.headers?.authorization || "");
+    const match = authorization.match(/^Bearer\s+(.+)$/i);
+    return match ? match[1].trim() : "";
   }
 
   async function requireSession(req, res, next) {
@@ -83,6 +87,10 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
 
   function requireCsrf(req, res, next) {
     if (!isAllowedOrigin(req)) return res.status(403).json({ ok: false, error: "Request origin is not allowed." });
+    // A validated Bearer session is sent explicitly by same-origin dashboard
+    // JavaScript, so it cannot be attached by a cross-site HTML form.
+    const authorization = String(req.headers?.authorization || "");
+    if (/^Bearer\\s+.+$/i.test(authorization) && req.dashboardAccount) return next();
     const cookies = parseCookies(req.headers?.cookie);
     const cookieToken = cookies[CSRF_COOKIE];
     const headerToken = req.headers?.["x-eclipse-csrf-token"];
@@ -183,7 +191,9 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
       const csrfToken = crypto.randomBytes(32).toString("base64url");
       setSessionCookies(res, result.token, csrfToken, result.expiresAt);
       res.setHeader("Cache-Control", "no-store");
-      return res.json({ ok: true, account: result.account, expiresAt: result.expiresAt, csrfToken });
+      // The dashboard keeps this bearer token in memory only as a first-party
+      // fallback when a browser refuses to retain the session cookie.
+      return res.json({ ok: true, account: result.account, expiresAt: result.expiresAt, csrfToken, sessionToken: result.token });
     } catch (error) { return sendError(res, error); }
   });
 
