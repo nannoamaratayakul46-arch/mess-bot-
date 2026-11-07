@@ -69,6 +69,11 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
         created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
         updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
+      ALTER TABLE eclipse_dashboard_accounts ADD COLUMN IF NOT EXISTS passkey_lookup_hash TEXT;
+      ALTER TABLE eclipse_dashboard_accounts ADD COLUMN IF NOT EXISTS passkey_hash TEXT;
+      ALTER TABLE eclipse_dashboard_accounts ADD COLUMN IF NOT EXISTS secret_code_hash TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS eclipse_dashboard_accounts_passkey_lookup_idx
+        ON eclipse_dashboard_accounts(passkey_lookup_hash) WHERE passkey_lookup_hash IS NOT NULL;
       CREATE TABLE IF NOT EXISTS eclipse_dashboard_invitations (
         id BIGSERIAL PRIMARY KEY,
         token_hash TEXT NOT NULL UNIQUE,
@@ -152,8 +157,8 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
       const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
       const passwordHash = await hashPassword(createOpaqueToken());
       const updated = await query(
-        "UPDATE eclipse_dashboard_accounts SET email = $2, password_hash = $3, passkey_lookup_hash = $4, passkey_hash = $5, secret_code_hash = $6, updated_at = NOW() WHERE id = $1 RETURNING id, email, role, status",
-        [existing.rows[0].id, email, passwordHash, credentials.lookupHash, credentials.passkeyHash, credentials.secretCodeHash]
+        "UPDATE eclipse_dashboard_accounts SET password_hash = $2, passkey_lookup_hash = $3, passkey_hash = $4, secret_code_hash = $5, updated_at = NOW() WHERE id = $1 RETURNING id, email, role, status",
+        [existing.rows[0].id, passwordHash, credentials.lookupHash, credentials.passkeyHash, credentials.secretCodeHash]
       );
       return { ...updated.rows[0], secretCode: credentials.secretCode };
     }
