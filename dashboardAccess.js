@@ -144,6 +144,22 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
     return { ...result.rows[0], secretCode: credentials.secretCode };
   }
 
+  async function setupOwnerCredentials({ passkey } = {}) {
+    const credentials = await createCredentials(passkey);
+    const existing = await query("SELECT id FROM eclipse_dashboard_accounts WHERE role = 'owner' AND status = 'active' LIMIT 1");
+    if (existing.rows?.[0]) {
+      const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
+      const passwordHash = await hashPassword(createOpaqueToken());
+      const updated = await query(
+        "UPDATE eclipse_dashboard_accounts SET email = $2, password_hash = $3, passkey_lookup_hash = $4, passkey_hash = $5, secret_code_hash = $6, updated_at = NOW() WHERE id = $1 RETURNING id, email, role, status",
+        [existing.rows[0].id, email, passwordHash, credentials.lookupHash, credentials.passkeyHash, credentials.secretCodeHash]
+      );
+      return { ...updated.rows[0], secretCode: credentials.secretCode };
+    }
+    const owner = await bootstrapOwner({ passkey });
+    return owner;
+  }
+
   async function listAccounts(actor) {
     requireOwner(actor);
     const result = await query("SELECT id, email, role, status, created_at, updated_at FROM eclipse_dashboard_accounts ORDER BY created_at ASC");
@@ -294,7 +310,7 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
     return Number(result.rowCount || 0);
   }
 
-  return { ensureSchema, bootstrapOwner, listAccounts, updateAccount, createInvitation, listInvitations, revokeInvitation, redeemInvitation, login, authenticate, revokeSession, revokeAllSessions };
+  return { ensureSchema, bootstrapOwner, setupOwnerCredentials, listAccounts, updateAccount, createInvitation, listInvitations, revokeInvitation, redeemInvitation, login, authenticate, revokeSession, revokeAllSessions };
 }
 
 module.exports = {
