@@ -61,6 +61,7 @@ const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
 const { createDashboardSecurity } = require("./dashboardSecurity");
+const { createDashboardAccessRoutes } = require("./dashboardAccessRoutes");
 const { login } = require("ws3-fca");
 
 const db = require("./db");
@@ -3696,11 +3697,35 @@ function dashboardCors(req, res, next) {
   return dashboardSecurity.cors(req, res, next);
 }
 
+let dashboardSessionAuthorizer = null;
+
 function requireDashboardAccess(req, res, next) {
+  if (dashboardSessionAuthorizer) return dashboardSessionAuthorizer(req, res, next);
   return dashboardSecurity.requireAccess(req, res, next);
 }
 
 app.use(dashboardCors);
+app.use(dashboardCors);
+
+// Individual friend accounts are opt-in until the owner completes a controlled
+// rollout. The existing shared-key dashboard auth remains active for all
+// existing routes until each route has an explicit role/permission mapping.
+if (/^(1|true|yes|on)$/i.test(process.env.ECLIPSE_DASHBOARD_ACCESS_ENABLED || "")) {
+  const dashboardAccessRoutes = createDashboardAccessRoutes({
+    app,
+    db,
+    legacyAuth: dashboardSecurity.requireAccess.bind(dashboardSecurity),
+  });
+  // Session-authenticated friends use the centralized role policy. Requests
+  // without a friend session continue through the legacy shared-key gate.
+  dashboardSessionAuthorizer = dashboardAccessRoutes.authorizeExistingRoute;
+  dashboardAccessRoutes.schemaReady.then(() => {
+    console.log("[DASHBOARD ACCESS] Account/session schema is ready.");
+  }).catch(error => {
+    console.error("[DASHBOARD ACCESS] Schema initialization failed:", String(error?.code || error?.name || "ACCESS_SCHEMA_FAILED"));
+  });
+}
+
 
 // Authenticated, read-only Neon inspection and encrypted dashboard AI settings.
 registerDatabaseAiCenterRoutes(app, requireDashboardAccess);
