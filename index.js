@@ -3690,7 +3690,7 @@ app.use(express.json({
 
 const dashboardSecurity = createDashboardSecurity({
   apiKey: process.env.ECLIPSE_DASHBOARD_API_KEY,
-  allowedOrigins: process.env.ECLIPSE_DASHBOARD_ORIGIN || "https://messenger-bot-admin-1.onrender.com",
+  allowedOrigins: process.env.ECLIPSE_DASHBOARD_ORIGIN || "https://messenger-bot-admin-6wlf.onrender.com",
 });
 
 function dashboardCors(req, res, next) {
@@ -3705,19 +3705,16 @@ function requireDashboardAccess(req, res, next) {
 }
 
 app.use(dashboardCors);
-app.use(dashboardCors);
 
-// Individual friend accounts are opt-in until the owner completes a controlled
-// rollout. The existing shared-key dashboard auth remains active for all
-// existing routes until each route has an explicit role/permission mapping.
+// Individual account sessions are the only authentication method for normal
+// dashboard routes. The shared Dashboard API Key is reserved for owner setup
+// and Passkey reset through /api/access/bootstrap.
 if (/^(1|true|yes|on)$/i.test(process.env.ECLIPSE_DASHBOARD_ACCESS_ENABLED || "")) {
   const dashboardAccessRoutes = createDashboardAccessRoutes({
     app,
     db,
-    legacyAuth: dashboardSecurity.requireAccess.bind(dashboardSecurity),
   });
-  // Session-authenticated friends use the centralized role policy. Requests
-  // without a friend session continue through the legacy shared-key gate.
+  // All existing dashboard routes now use the centralized account/role policy.
   dashboardSessionAuthorizer = dashboardAccessRoutes.authorizeExistingRoute;
   dashboardAccessRoutes.schemaReady.then(() => {
     console.log("[DASHBOARD ACCESS] Account/session schema is ready.");

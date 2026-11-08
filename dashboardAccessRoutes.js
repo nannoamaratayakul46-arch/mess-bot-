@@ -121,14 +121,22 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
   function isAllowedOrigin(req) {
     const origin = String(req.headers?.origin || "").trim();
     if (!origin) return false;
-    const allowed = String(process.env.ECLIPSE_DASHBOARD_ORIGIN || "")
-      .split(",").map(value => value.trim()).filter(Boolean);
+    const allowed = String(process.env.ECLIPSE_DASHBOARD_ORIGIN || "https://messenger-bot-admin-6wlf.onrender.com")
+      .split(",").map(value => {
+        try {
+          const parsed = new URL(value.trim());
+          return parsed.origin === "null" ? parsed.protocol + "//" + parsed.host : parsed.origin;
+        } catch { return ""; }
+      }).filter(Boolean);
     return allowed.includes(origin);
   }
 
   async function authorizeExistingRoute(req, res, next) {
     const token = readSession(req);
-    if (!token) return legacyAuth ? legacyAuth(req, res, next) : res.status(401).json({ ok: false, error: "Dashboard login required." });
+    // The shared Dashboard API Key is intentionally not accepted on normal
+    // dashboard routes. It is reserved for the explicit owner bootstrap/reset
+    // endpoint above; all runtime access requires an individual account session.
+    if (!token) return res.status(401).json({ ok: false, error: "Dashboard login required." });
     try {
       const account = await access.authenticate(token);
       if (!account) return res.status(401).json({ ok: false, error: "Dashboard login required." });

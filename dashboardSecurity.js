@@ -6,7 +6,14 @@ const DEFAULT_MAX_FAILURES = 10;
 const MAX_TRACKED_IPS = 5000;
 
 function parseOrigins(value) {
-  return new Set(String(value || "").split(",").map(origin => origin.trim()).filter(origin => origin && origin !== "*"));
+  return new Set(String(value || "").split(",").map(origin => {
+    const trimmed = origin.trim().replace(/\/$/, "");
+    if (!trimmed || trimmed === "*") return "";
+    try {
+      const parsed = new URL(trimmed);
+      return parsed.origin === "null" ? parsed.protocol + "//" + parsed.host : parsed.origin;
+    } catch { return ""; }
+  }).filter(Boolean));
 }
 
 function createDashboardSecurity({ apiKey = "", allowedOrigins = "", now = Date.now, maxFailures = DEFAULT_MAX_FAILURES, windowMs = DEFAULT_FAILURE_WINDOW_MS } = {}) {

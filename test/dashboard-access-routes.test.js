@@ -46,7 +46,7 @@ test("owner setup resets the existing owner's Passkey and clears legacy Secret C
   const access = createDashboardAccess({
     query: async (sql, params) => {
       if (/SELECT id FROM eclipse_dashboard_accounts WHERE role = 'owner'/.test(sql)) return { rows: [{ id: 1 }], rowCount: 1 };
-      if (/UPDATE eclipse_dashboard_accounts SET email/.test(sql)) {
+      if (/WITH updated AS/.test(sql) && /UPDATE eclipse_dashboard_accounts/.test(sql) && /UPDATE eclipse_dashboard_sessions/.test(sql)) {
         updateSql = sql;
         storedPasskeyHash = params[4];
         return { rows: [{ id: 1, email: "owner@local.invalid", role: "owner", status: "active" }], rowCount: 1 };
@@ -59,6 +59,7 @@ test("owner setup resets the existing owner's Passkey and clears legacy Secret C
   assert.equal(owner.role, "owner");
   assert.equal(owner.secretCode, undefined);
   assert.match(updateSql, /secret_code_hash = NULL/);
+  assert.match(updateSql, /UPDATE eclipse_dashboard_sessions[\s\S]*revoked_at = NOW\(\)/);
   assert.equal(await verifyPassword(passkey, storedPasskeyHash), true);
   assert.equal(await verifyPassword("incorrect-passkey", storedPasskeyHash), false);
 });
@@ -131,6 +132,44 @@ test("friend route policy allows Viewer reads but denies mutations", async () =>
   }
 });
 
+test("normal dashboard routes reject the shared API key when no account session is present", async () => {
+  let legacyAuthCalled = false;
+  const routes = createDashboardAccessRoutes({
+    app: fakeApp(),
+    db: { query: async () => ({ rows: [], rowCount: 0 }) },
+    legacyAuth: (_req, res, next) => { legacyAuthCalled = true; return next(); },
+  });
+  await routes.schemaReady;
+  const req = { method: "GET", path: "/api/dashboard/status", headers: { "x-eclipse-dashboard-key": "legacy-shared-key" } };
+  const res = fakeResponse();
+  let continued = false;
+  await routes.authorizeExistingRoute(req, res, () => { continued = true; });
+  assert.equal(continued, false);
+  assert.equal(legacyAuthCalled, false);
+  assert.equal(res.statusCode, 401);
+});
+
+test("normal dashboard routes accept a valid Bearer account session", async () => {
+  const routes = createDashboardAccessRoutes({
+    app: fakeApp(),
+    db: {
+      query: async sql => {
+        if (/SELECT a\.id, a\.email, a\.role, a\.status, s\.id AS session_id/.test(sql)) {
+          return { rows: [{ id: 11, email: "owner@local.invalid", role: "owner", status: "active", session_id: 22 }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 1 };
+      },
+    },
+  });
+  await routes.schemaReady;
+  const req = { method: "GET", path: "/api/dashboard/status", headers: { authorization: "Bearer " + "z".repeat(43) } };
+  const res = fakeResponse();
+  let continued = false;
+  await routes.authorizeExistingRoute(req, res, () => { continued = true; });
+  assert.equal(continued, true);
+  assert.equal(req.dashboardAccount.id, 11);
+});
+
 test("Operator mutations require an allowed Origin and matching CSRF token", async () => {
   const previousOrigin = process.env.ECLIPSE_DASHBOARD_ORIGIN;
   process.env.ECLIPSE_DASHBOARD_ORIGIN = "https://dashboard.example";
@@ -169,6 +208,39 @@ test("Operator mutations require an allowed Origin and matching CSRF token", asy
   }
 });
 
+
+test("Bearer mutations still require an allowlisted Origin", async () => {
+  const previousOrigin = process.env.ECLIPSE_DASHBOARD_ORIGIN;
+  process.env.ECLIPSE_DASHBOARD_ORIGIN = "https://dashboard.example/";
+  try {
+    const routes = createDashboardAccessRoutes({
+      app: fakeApp(),
+      db: {
+        query: async sql => {
+          if (/SELECT a\.id, a\.email, a\.role, a\.status, s\.id AS session_id/.test(sql)) {
+            return { rows: [{ id: 12, email: "operator@example.com", role: "operator", status: "active", session_id: 23 }], rowCount: 1 };
+          }
+          return { rows: [], rowCount: 1 };
+        },
+      },
+    });
+    await routes.schemaReady;
+    const headers = { authorization: "Bearer " + "q".repeat(43), origin: "https://dashboard.example" };
+    const allowedReq = { method: "POST", path: "/api/dashboard/bot/stop", headers };
+    const allowedRes = fakeResponse();
+    let continued = false;
+    await routes.authorizeExistingRoute(allowedReq, allowedRes, () => { continued = true; });
+    assert.equal(continued, true);
+
+    const deniedReq = { ...allowedReq, headers: { ...headers, origin: "https://attacker.example" } };
+    const deniedRes = fakeResponse();
+    await routes.authorizeExistingRoute(deniedReq, deniedRes, () => {});
+    assert.equal(deniedRes.statusCode, 403);
+  } finally {
+    if (previousOrigin === undefined) delete process.env.ECLIPSE_DASHBOARD_ORIGIN;
+    else process.env.ECLIPSE_DASHBOARD_ORIGIN = previousOrigin;
+  }
+});
 
 test("only owners can list invitations and invitation listings never expose token hashes", async () => {
   const calls = [];

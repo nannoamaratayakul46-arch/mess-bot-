@@ -154,9 +154,22 @@ function createDashboardAccess({ query, now = Date.now, sessionTtlMs = DEFAULT_S
     const email = "eclipse-owner-" + credentials.lookupHash.slice(0, 32) + "@local.invalid";
     const passwordHash = await hashPassword(createOpaqueToken());
     const updated = await query(
-      "UPDATE eclipse_dashboard_accounts SET email = $2, password_hash = $3, passkey_lookup_hash = $4, passkey_hash = $5, secret_code_hash = NULL, status = 'active', updated_at = NOW() WHERE id = $1 RETURNING id, email, role, status",
+      `WITH updated AS (
+        UPDATE eclipse_dashboard_accounts
+        SET email = $2, password_hash = $3, passkey_lookup_hash = $4, passkey_hash = $5,
+          secret_code_hash = NULL, status = 'active', updated_at = NOW()
+        WHERE id = $1
+        RETURNING id, email, role, status
+      ), revoked AS (
+        UPDATE eclipse_dashboard_sessions
+        SET revoked_at = NOW()
+        WHERE account_id IN (SELECT id FROM updated) AND revoked_at IS NULL
+        RETURNING id
+      )
+      SELECT id, email, role, status FROM updated`,
       [existing.rows[0].id, email, passwordHash, credentials.lookupHash, credentials.passkeyHash]
     );
+    if (!updated.rows?.[0]) throw new Error("Owner account could not be updated.");
     return updated.rows[0];
   }
 
