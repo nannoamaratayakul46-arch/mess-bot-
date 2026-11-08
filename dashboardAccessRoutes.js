@@ -132,10 +132,18 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
   }
 
   async function authorizeExistingRoute(req, res, next) {
+    // Preserve the original owner login: a supplied shared key is validated by
+    // dashboardSecurity (constant-time comparison + failed-attempt rate limit).
+    // Global dashboardCors still enforces the configured origin allowlist.
+    const sharedKey = String(req.headers?.["x-eclipse-dashboard-key"] || "").trim();
+    if (sharedKey) {
+      if (typeof legacyAuth !== "function") {
+        return res.status(503).json({ ok: false, error: "Dashboard API key authentication is unavailable." });
+      }
+      return legacyAuth(req, res, next);
+    }
+
     const token = readSession(req);
-    // The shared Dashboard API Key is intentionally not accepted on normal
-    // dashboard routes. It is reserved for the explicit owner bootstrap/reset
-    // endpoint above; all runtime access requires an individual account session.
     if (!token) return res.status(401).json({ ok: false, error: "Dashboard login required." });
     try {
       const account = await access.authenticate(token);

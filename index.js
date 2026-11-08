@@ -3713,6 +3713,7 @@ if (/^(1|true|yes|on)$/i.test(process.env.ECLIPSE_DASHBOARD_ACCESS_ENABLED || ""
   const dashboardAccessRoutes = createDashboardAccessRoutes({
     app,
     db,
+    legacyAuth: dashboardSecurity.requireAccess,
   });
   // All existing dashboard routes now use the centralized account/role policy.
   dashboardSessionAuthorizer = dashboardAccessRoutes.authorizeExistingRoute;

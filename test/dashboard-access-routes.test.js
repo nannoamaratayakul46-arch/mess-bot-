@@ -132,21 +132,20 @@ test("friend route policy allows Viewer reads but denies mutations", async () =>
   }
 });
 
-test("normal dashboard routes reject the shared API key when no account session is present", async () => {
+test("normal dashboard routes delegate shared-key authentication to dashboardSecurity", async () => {
   let legacyAuthCalled = false;
   const routes = createDashboardAccessRoutes({
     app: fakeApp(),
     db: { query: async () => ({ rows: [], rowCount: 0 }) },
-    legacyAuth: (_req, res, next) => { legacyAuthCalled = true; return next(); },
+    legacyAuth: (_req, _res, next) => { legacyAuthCalled = true; return next(); },
   });
   await routes.schemaReady;
   const req = { method: "GET", path: "/api/dashboard/status", headers: { "x-eclipse-dashboard-key": "legacy-shared-key" } };
   const res = fakeResponse();
   let continued = false;
   await routes.authorizeExistingRoute(req, res, () => { continued = true; });
-  assert.equal(continued, false);
-  assert.equal(legacyAuthCalled, false);
-  assert.equal(res.statusCode, 401);
+  assert.equal(continued, true);
+  assert.equal(legacyAuthCalled, true);
 });
 
 test("normal dashboard routes accept a valid Bearer account session", async () => {
