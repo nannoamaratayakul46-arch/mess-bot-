@@ -4164,6 +4164,7 @@ const DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS = {
   customNickname: "",
   targetName: "",
   personalityEnabled: true,
+  newBanatEnabled: true,
   openingTauntEnabled: true,
   interleavedTauntsEnabled: true,
 };
@@ -4184,6 +4185,7 @@ async function ensureJaidenTargetCountdownSettingsTable() {
       .then(() => requireConn().query("ALTER TABLE jaiden_target_countdown_settings ADD COLUMN IF NOT EXISTS personality_enabled BOOLEAN NOT NULL DEFAULT TRUE"))
       .then(() => requireConn().query("ALTER TABLE jaiden_target_countdown_settings ADD COLUMN IF NOT EXISTS opening_taunt_enabled BOOLEAN NOT NULL DEFAULT TRUE"))
       .then(() => requireConn().query("ALTER TABLE jaiden_target_countdown_settings ADD COLUMN IF NOT EXISTS interleaved_taunts_enabled BOOLEAN NOT NULL DEFAULT TRUE"))
+      .then(() => requireConn().query("ALTER TABLE jaiden_target_countdown_settings ADD COLUMN IF NOT EXISTS new_banat_enabled BOOLEAN NOT NULL DEFAULT TRUE"))
       .catch(error => {
       jaidenTargetCountdownSettingsTableReady = null;
       throw error;
@@ -4195,7 +4197,7 @@ async function ensureJaidenTargetCountdownSettingsTable() {
 async function getJaidenTargetCountdownSettings() {
   await ensureJaidenTargetCountdownSettingsTable();
   const { rows } = await requireConn().query(
-    "SELECT template, reason, custom_nickname, target_name, personality_enabled, opening_taunt_enabled, interleaved_taunts_enabled FROM jaiden_target_countdown_settings WHERE id = 1"
+    "SELECT template, reason, custom_nickname, target_name, personality_enabled, opening_taunt_enabled, interleaved_taunts_enabled, new_banat_enabled FROM jaiden_target_countdown_settings WHERE id = 1"
   );
   const row = rows[0];
   return {
@@ -4204,6 +4206,7 @@ async function getJaidenTargetCountdownSettings() {
     customNickname: typeof row?.custom_nickname === "string" ? row.custom_nickname : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.customNickname,
     targetName: typeof row?.target_name === "string" ? row.target_name : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.targetName,
     personalityEnabled: typeof row?.personality_enabled === "boolean" ? row.personality_enabled : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.personalityEnabled,
+    newBanatEnabled: typeof row?.new_banat_enabled === "boolean" ? row.new_banat_enabled : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.newBanatEnabled,
     openingTauntEnabled: typeof row?.opening_taunt_enabled === "boolean" ? row.opening_taunt_enabled : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.openingTauntEnabled,
     interleavedTauntsEnabled: typeof row?.interleaved_taunts_enabled === "boolean" ? row.interleaved_taunts_enabled : DEFAULT_JAIDEN_TARGET_COUNTDOWN_SETTINGS.interleavedTauntsEnabled,
   };
@@ -4216,6 +4219,7 @@ async function setJaidenTargetCountdownSettings(settings = {}) {
   const customNickname = typeof settings.customNickname === "string" ? settings.customNickname.trim() : current.customNickname;
   const targetName = typeof settings.targetName === "string" ? settings.targetName.trim() : current.targetName;
   const personalityEnabled = typeof settings.personalityEnabled === "boolean" ? settings.personalityEnabled : current.personalityEnabled;
+  const newBanatEnabled = typeof settings.newBanatEnabled === "boolean" ? settings.newBanatEnabled : current.newBanatEnabled;
   const openingTauntEnabled = typeof settings.openingTauntEnabled === "boolean" ? settings.openingTauntEnabled : current.openingTauntEnabled;
   const interleavedTauntsEnabled = typeof settings.interleavedTauntsEnabled === "boolean" ? settings.interleavedTauntsEnabled : current.interleavedTauntsEnabled;
   if (!template.trim() || template.length > 4000) throw new Error("Countdown message template must be between 1 and 4000 characters.");
@@ -4223,8 +4227,8 @@ async function setJaidenTargetCountdownSettings(settings = {}) {
   if (customNickname.length > 80) throw new Error("Custom nickname must be 80 characters or fewer.");
   if (targetName.length > 80) throw new Error("Auto Target name must be 80 characters or fewer.");
   await requireConn().query(`
-    INSERT INTO jaiden_target_countdown_settings (id, template, reason, custom_nickname, target_name, personality_enabled, opening_taunt_enabled, interleaved_taunts_enabled, updated_at)
-    VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8)
+    INSERT INTO jaiden_target_countdown_settings (id, template, reason, custom_nickname, target_name, personality_enabled, opening_taunt_enabled, interleaved_taunts_enabled, new_banat_enabled, updated_at)
+    VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)
     ON CONFLICT (id) DO UPDATE SET
       template = EXCLUDED.template,
       reason = EXCLUDED.reason,
@@ -4233,9 +4237,10 @@ async function setJaidenTargetCountdownSettings(settings = {}) {
       personality_enabled = EXCLUDED.personality_enabled,
       opening_taunt_enabled = EXCLUDED.opening_taunt_enabled,
       interleaved_taunts_enabled = EXCLUDED.interleaved_taunts_enabled,
+      new_banat_enabled = EXCLUDED.new_banat_enabled,
       updated_at = EXCLUDED.updated_at
-  `, [template, reason, customNickname, targetName, personalityEnabled, openingTauntEnabled, interleavedTauntsEnabled, Date.now()]);
-  return { template, reason, customNickname, targetName, personalityEnabled, openingTauntEnabled, interleavedTauntsEnabled };
+  `, [template, reason, customNickname, targetName, personalityEnabled, openingTauntEnabled, interleavedTauntsEnabled, newBanatEnabled, Date.now()]);
+  return { template, reason, customNickname, targetName, personalityEnabled, newBanatEnabled, openingTauntEnabled, interleavedTauntsEnabled };
 }
 
 // ╔══════════════════════════════════════════════════════════╗
