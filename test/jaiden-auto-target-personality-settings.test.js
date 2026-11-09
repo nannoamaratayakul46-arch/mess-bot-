@@ -53,6 +53,7 @@ test("disabled context categories fall back to an enabled pool immediately", () 
       threadId: "dashboard-editor-test",
       targetName: "Ana Santos",
       context: "insult",
+      useCustomPools: true,
     });
     assert.match(reply, /CUSTOM Ana Santos/);
   } finally {
