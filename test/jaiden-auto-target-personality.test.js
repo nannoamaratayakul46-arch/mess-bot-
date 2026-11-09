@@ -4,7 +4,9 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
   detectJaidenAutoTargetContext,
+  getDefaultJaidenAutoTargetPools,
   getJaidenAutoTargetPools,
+  setJaidenAutoTargetConfiguration,
   pickJaidenAutoTargetLine,
   renderJaidenAutoTargetLine,
   resetJaidenAutoTargetHistory,
@@ -43,6 +45,44 @@ test("selects from a requested context pool and avoids immediate repeats", () =>
   assert.ok(valid.has(stripTrailingEmoji(second)));
   assert.notEqual(first, second);
   resetJaidenAutoTargetHistory();
+});
+
+test("New Banat selection uses editable pools while original mode keeps built-in pools", () => {
+  const defaults = getDefaultJaidenAutoTargetPools();
+  const customLines = {
+    general: ["CUSTOM NEW BANAT {{NAME}}"],
+    insult: ["CUSTOM INSULT {{NAME}}"],
+    laugh: ["CUSTOM LAUGH {{NAME}}"],
+    command: ["CUSTOM COMMAND {{NAME}}"],
+    boast: ["CUSTOM BOAST {{NAME}}"],
+    slow: ["CUSTOM SLOW {{NAME}}"],
+  };
+  const enabledCategories = {
+    general: true, insult: false, laugh: false,
+    command: false, boast: false, slow: false,
+  };
+  try {
+    setJaidenAutoTargetConfiguration({ lines: customLines, enabledCategories });
+    const custom = pickJaidenAutoTargetLine({
+      threadId: "new-banat-source-test",
+      targetName: "Ana",
+      context: "insult",
+      useCustomPools: true,
+    });
+    const original = pickJaidenAutoTargetLine({
+      threadId: "original-banat-source-test",
+      targetName: "Ana",
+      context: "general",
+    });
+    assert.match(custom, /CUSTOM NEW BANAT Ana/);
+    assert.doesNotMatch(original, /CUSTOM NEW BANAT/);
+  } finally {
+    setJaidenAutoTargetConfiguration({
+      lines: defaults,
+      enabledCategories: Object.fromEntries(Object.keys(defaults).map(name => [name, true])),
+    });
+    resetJaidenAutoTargetHistory();
+  }
 });
 
 test("provides exactly 100 unique lines in every Jaiden context pool", () => {
