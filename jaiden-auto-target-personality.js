@@ -345,15 +345,20 @@ function renderJaidenAutoTargetLine(template, targetName, fallbackName = DEFAULT
 function pickJaidenAutoTargetLine(options = {}) {
   const threadId = String(options.threadId || "global");
   const contextKey = String(options.context || "general").trim().toLowerCase();
+  const useCustomPools = options.useCustomPools === true;
+  const pools = useCustomPools ? activeLinePools : LINE_POOLS;
+  const enabledCategories = useCustomPools
+    ? activeEnabledCategories
+    : Object.fromEntries(Object.keys(LINE_POOLS).map((name) => [name, true]));
   const requestedPoolName = CONTEXT_ALIASES[contextKey] || "general";
-  const fallbackPoolName = activeEnabledCategories.general
+  const fallbackPoolName = enabledCategories.general
     ? "general"
-    : Object.keys(activeLinePools).find((name) => activeEnabledCategories[name]) || "general";
-  const poolName = activeEnabledCategories[requestedPoolName]
+    : Object.keys(pools).find((name) => enabledCategories[name]) || "general";
+  const poolName = enabledCategories[requestedPoolName]
     ? requestedPoolName
     : fallbackPoolName;
-  const pool = activeLinePools[poolName] || LINE_POOLS.general;
-  const usedKey = threadId + ":" + poolName;
+  const pool = pools[poolName] || pools.general;
+  const usedKey = threadId + ":" + (useCustomPools ? "new:" : "original:") + poolName;
   const used = usedByThread.get(usedKey) || new Set();
   let candidates = pool.filter((line) => !used.has(line));
   if (!candidates.length) {
