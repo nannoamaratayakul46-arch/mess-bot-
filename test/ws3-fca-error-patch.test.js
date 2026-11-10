@@ -55,7 +55,8 @@ test("ws3-fca 2.0.1 package-root parser preserves exhausted HTTP failure details
     statusCode: 500,
     body: JSON.stringify({ error: "temporary upstream failure" }),
     request: { uri: { protocol: "https:", hostname: "www.facebook.com", pathname: "/messaging/send/" },
-      headers: { "content-type": "application/x-www-form-urlencoded" }, formData: {} },
+      method: "POST", headers: { "content-type": "application/x-www-form-urlencoded" }, formData: {} },
+    headers: { "content-type": "text/html; charset=utf-8" },
   };
   await assert.rejects(
     parseAndCheckLogin({ jar: {} }, { post: async () => response }, 5)(response),
@@ -65,6 +66,10 @@ test("ws3-fca 2.0.1 package-root parser preserves exhausted HTTP failure details
       const summary = JSON.parse(error.responseSummary);
       assert.equal(summary.statusCode, 500);
       assert.equal(summary.error, "temporary upstream failure");
+      assert.equal(summary.requestMethod, "POST");
+      assert.equal(summary.requestHost, "www.facebook.com");
+      assert.equal(summary.requestPath, "/messaging/send/");
+      assert.equal(summary.responseContentType, "text/html");
       return true;
     }
   );
@@ -75,8 +80,15 @@ test("ws3-fca non-200 response is not silently returned as an empty result", asy
   const sandbox = { module: { exports: {} }, setTimeout };
   vm.runInNewContext(patched + "\\nmodule.exports = parseAndCheckLogin;", sandbox);
   await assert.rejects(
-    sandbox.module.exports({ jar: {} }, {}, 0)({ statusCode: 404, body: "not found" }),
-    error => error.code === "WS3_HTTP_404" && error.statusCode === 404
+    sandbox.module.exports({ jar: {} }, {}, 0)({ statusCode: 404, body: "<html>Not found</html>", headers: { "content-type": "text/html" }, request: { method: "POST", uri: { hostname: "www.facebook.com", pathname: "/messaging/send/" } } }),
+    error => {
+      assert.equal(error.code, "WS3_HTTP_404");
+      assert.equal(error.statusCode, 404);
+      const summary = JSON.parse(error.responseSummary);
+      assert.equal(summary.bodyFormat, "html");
+      assert.equal(summary.requestPath, "/messaging/send/");
+      return true;
+    }
   );
 });
 
