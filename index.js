@@ -81,6 +81,8 @@ const { registerModerationRoutes } = require("./dashboardModeration");
 const { registerTemporaryAdminRoutes } = require("./temporaryGroupAdmins");
 const { registerDatabaseAiCenterRoutes } = require("./dashboardDatabaseAiCenter");
 const { createBurstRoastSettings } = require("./burstRoastSettings");
+const { createPmCenter } = require("./pmCenter");
+const { createPmBattles } = require("./pmBattles");
 
 const {
   ensureNicknameGuardTable,
@@ -3741,6 +3743,29 @@ const liveChat = createLiveChat({
 });
 liveChat.registerRoutes(app, requireDashboardAccess);
 
+// Manual, single-recipient private messaging from the owner dashboard.
+const pmCenter = createPmCenter({
+  getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,
+  isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
+  resolveMembers: (api, threadId) => resolveGroupMembers(api, threadId),
+  send: (api, message, recipientId) => sendMessengerMessage(api, message, recipientId),
+});
+pmCenter.registerRoutes(app, requireDashboardAccess);
+
+const pmBattles = createPmBattles({
+  db,
+  getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,
+  isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
+  resolveMembers: (api, threadId) => resolveGroupMembers(api, threadId),
+  send: (api, message, recipientId) => sendMessengerMessage(api, message, recipientId),
+  getHybridReply: async ({ api, event, text, senderId, threadId }) => {
+    const triggerReply = await getTriggerReply(text, senderId, threadId, api, event);
+    if (triggerReply) return triggerReply;
+    return getBanatConversationReply(text, senderId, threadId, api, event);
+  },
+});
+pmBattles.registerRoutes(app, requireDashboardAccess);
+
 // Group profile uploads use a route-scoped JSON parser with a larger bounded limit.
 registerGroupProfileRoutes(app, {
   auth: requireDashboardAccess,
@@ -7337,12 +7362,12 @@ function attemptLogin() {
               }
             );
 
-            void handleMessage(
-              api,
-              event
-            ).catch((error) => {
+            void pmBattles.handleIncoming(api, event).then((handled) => {
+              if (handled) return;
+              return handleMessage(api, event);
+            }).catch((error) => {
               console.error(
-                "[MESSAGE ROUTER] Unhandled command/message handler failure:",
+                "[MESSAGE ROUTER] Unhandled PM Battle/message handler failure:",
                 error?.stack || error?.message || error
               );
             });
