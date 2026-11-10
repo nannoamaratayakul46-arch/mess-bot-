@@ -1728,31 +1728,55 @@ async function trafficProcessQueue() {
               // rejection can be distinguished from a session/HTTP failure.
               // Never serialize the full error/response: it may contain cookies
               // or request/session data.
+              // Inspect a bounded set of data descriptors across the prototype chain.
+              // Do not invoke getters or serialize arbitrary ws3-fca request/response objects.
+              const readSafeErrorField = (target, key) => {
+                let current = target;
+                for (let depth = 0; current && depth < 4; depth++) {
+                  let descriptor;
+                  try { descriptor = Object.getOwnPropertyDescriptor(current, key); } catch { return undefined; }
+                  if (descriptor) return Object.prototype.hasOwnProperty.call(descriptor, "value")
+                    ? descriptor.value : undefined;
+                  try { current = Object.getPrototypeOf(current); } catch { return undefined; }
+                }
+                return undefined;
+              };
               const safeErrorObject = (value) => {
                 if (!value || typeof value !== "object" || Array.isArray(value)) return value;
-                const allowedKeys = new Set([
-                  "code", "errorCode", "type", "message", "error_description",
-                  "errorDescription", "error_user_title", "error_user_msg",
+                const allowedKeys = [
+                  "code", "errorCode", "type", "name", "message", "error_description",
+                  "errorDescription", "errorSummary", "error_user_title", "error_user_msg",
                   "error_subcode", "errorSubcode", "status", "statusCode",
-                ]);
+                ];
                 const safe = {};
-                for (const [key, item] of Object.entries(value)) {
-                  if (
-                    allowedKeys.has(key) &&
-                    (typeof item === "string" || typeof item === "number" || typeof item === "boolean")
-                  ) safe[key] = String(item).slice(0, 240);
+                for (const key of allowedKeys) {
+                  const item = readSafeErrorField(value, key);
+                  if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+                    safe[key] = String(item).slice(0, 180);
+                  }
                 }
-                return Object.keys(safe).length ? JSON.stringify(safe) : "[object with no safe diagnostic fields]";
+                const shape = [];
+                try { shape.push(...Object.getOwnPropertyNames(value).slice(0, 20)); } catch {}
+                let proto = null;
+                try { proto = Object.getPrototypeOf(value); } catch {}
+                if (proto && proto !== Object.prototype) {
+                  try { shape.push(...Object.getOwnPropertyNames(proto).slice(0, 10).map(key => "prototype:" + key)); } catch {}
+                }
+                if (shape.length) safe.available_properties = [...new Set(shape)].slice(0, 24);
+                return Object.keys(safe).length ? JSON.stringify(safe).slice(0, 360) : "[structured object; no safe data fields]";
               };
               const diagnosticFields = [
-                ["message", error?.message],
-                ["errorDescription", safeErrorObject(error?.errorDescription)],
-                ["error", safeErrorObject(error?.error)],
+                ["message", readSafeErrorField(error, "message")],
+                ["errorDescription", safeErrorObject(readSafeErrorField(error, "errorDescription"))],
+                ["errorSummary", readSafeErrorField(error, "errorSummary")],
+                ["error", safeErrorObject(readSafeErrorField(error, "error"))],
+                ["nestedError", readSafeErrorField(error, "error")],
                 ["errorValue", typeof error === "string" || typeof error === "number" ? error : null],
-                ["statusCode", error?.statusCode ?? error?.status],
-                ["causeCode", error?.cause?.code],
-                ["causeMessage", error?.cause?.message],
-                ["responseStatus", error?.response?.status ?? error?.response?.statusCode],
+                ["statusCode", readSafeErrorField(error, "statusCode") ?? readSafeErrorField(error, "status")],
+                ["causeCode", readSafeErrorField(readSafeErrorField(error, "cause"), "code")],
+                ["causeMessage", readSafeErrorField(readSafeErrorField(error, "cause"), "message")],
+                ["responseStatus", readSafeErrorField(readSafeErrorField(error, "response"), "status") ?? readSafeErrorField(readSafeErrorField(error, "response"), "statusCode")],
+                ["errorShape", safeErrorObject(error)],
               ].filter(([, value]) => value !== undefined && value !== null && String(value).trim());
               // Log only payload metadata, never message text, IDs, attachments, or raw request data.
               // This distinguishes reply-reference failures from plain text/attachment failures.

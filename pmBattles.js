@@ -62,45 +62,69 @@ function createPmBattles({
     if (typeof error === "string") return error.trim().slice(0, 300) || "Unknown error";
     if (typeof error !== "object") return String(error).slice(0, 300);
 
-    const candidates = [
-      error.message,
-      error.errorDescription,
-      error.error_description,
-      error.error_user_msg,
-      error.error_user_title,
-      error.error?.message,
-      error.error?.errorDescription,
-      error.error?.error_description,
-      error.cause?.message,
-    ];
-    const details = candidates
-      .filter(value => typeof value === "string" && value.trim())
-      .map(value => value.trim());
-    if (details.length) return [...new Set(details)].join(" | ").slice(0, 300);
-
+    // Read only data descriptors. This captures non-enumerable/prototype fields
+    // without invoking arbitrary getters on library error objects.
+    const readSafe = (target, key) => {
+      let current = target;
+      for (let depth = 0; current && depth < 4; depth++) {
+        let descriptor;
+        try { descriptor = Object.getOwnPropertyDescriptor(current, key); } catch { return undefined; }
+        if (descriptor) return Object.prototype.hasOwnProperty.call(descriptor, "value")
+          ? descriptor.value : undefined;
+        try { current = Object.getPrototypeOf(current); } catch { return undefined; }
+      }
+      return undefined;
+    };
+    const safeValue = value => (
+      typeof value === "string" || typeof value === "number" || typeof value === "boolean"
+    ) ? String(value).trim().slice(0, 160) : "";
     const safe = {};
     const allowed = [
-      "code", "errorCode", "errorDescription", "error_description",
-      "error_user_title", "error_user_msg", "errorSubcode", "error_subcode",
-      "status", "statusCode", "type",
+      "message", "errorDescription", "error_description", "errorSummary",
+      "error_user_title", "error_user_msg", "code", "errorCode",
+      "errorSubcode", "error_subcode", "status", "statusCode", "type", "name",
     ];
     for (const key of allowed) {
-      const value = error[key];
-      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
-        safe[key] = String(value).slice(0, 160);
-      }
+      const value = safeValue(readSafe(error, key));
+      if (value) safe[key] = value;
     }
-    if (error.error && typeof error.error === "object" && !Array.isArray(error.error)) {
-      for (const key of ["code", "errorCode", "errorDescription", "error_description", "message"]) {
-        const value = error.error[key];
-        if ((typeof value === "string" || typeof value === "number") && safe["nested_" + key] === undefined) {
-          safe["nested_" + key] = String(value).slice(0, 160);
+
+    for (const nestedKey of ["error", "cause", "response", "data"]) {
+      const nested = readSafe(error, nestedKey);
+      if (nestedKey === "error") {
+        const scalar = safeValue(nested);
+        if (scalar) safe.nested_error = scalar;
+      }
+      if (!nested || typeof nested !== "object" || Array.isArray(nested)) continue;
+      for (const key of allowed) {
+        const value = safeValue(readSafe(nested, key));
+        if (value && safe["nested_" + nestedKey + "_" + key] === undefined) {
+          safe["nested_" + nestedKey + "_" + key] = value;
         }
       }
     }
+
+    const detail = safe.message || safe.errorDescription || safe.error_description ||
+      safe.errorSummary || safe.error_user_msg || safe.error_user_title;
+    if (detail) {
+      const codes = [safe.code || safe.errorCode, safe.errorSubcode || safe.error_subcode]
+        .filter(Boolean);
+      return (detail + (codes.length ? " (code " + codes.join("/") + ")" : "")).slice(0, 300);
+    }
+
+    // Report shape, not values, when the library supplies an opaque object.
+    const shape = [];
+    try { shape.push(...Object.getOwnPropertyNames(error).slice(0, 24)); } catch {}
+    let proto = null;
+    try { proto = Object.getPrototypeOf(error); } catch {}
+    if (proto && proto !== Object.prototype) {
+      try { shape.push(...Object.getOwnPropertyNames(proto).slice(0, 12).map(key => "prototype:" + key)); } catch {}
+    }
+    if (Object.keys(safe).length) safe.fields = Object.keys(safe).slice(0, 20);
+    if (shape.length) safe.available_properties = [...new Set(shape)].slice(0, 30);
     return Object.keys(safe).length
       ? JSON.stringify(safe).slice(0, 300)
-      : "Structured Messenger error; no readable diagnostic fields";
+      : "Structured Messenger error; property inspection unavailable";
   }
 
   function markError(stage, error) {
