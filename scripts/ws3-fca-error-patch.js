@@ -12,7 +12,7 @@ function patchSource(source) {
   const parseHeader = /function\s+parseAndCheckLogin\s*\(ctx,\s*http,\s*retryCount\)\s*\{/;
   if (parseHeader.test(updated) && updated.includes(LEGACY_PARSE_MARKER)) {
     // Replace the V1 helper block; otherwise its later declaration overrides V2.
-    const legacyHelpers = /\\n[ \\t]*\\/\\/ ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1[\\s\\S]*?function eclipseHttpError\\(data, code\\) \\{[\\s\\S]*?\\n[ \\t]*\\}\\n/;
+    const legacyHelpers = /\n[ \t]*\/\/ ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1[\s\S]*?function eclipseHttpError\(data, code\) \{[\s\S]*?\n[ \t]*\}\n/;
     updated = updated.replace(legacyHelpers, "\\n");
   }
   if (parseHeader.test(updated) && !updated.includes(PARSE_MARKER)) {
