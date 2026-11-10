@@ -119,6 +119,6 @@ function parseAndCheckLogin(ctx, http, retryCount) {
   const upgraded = patchSource(legacy);
   assert.match(upgraded, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V2/);
   assert.doesNotMatch(upgraded, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1/);
-  assert.equal((upgraded.match(/function eclipseResponseSummary\\(/g) || []).length, 1);
-  assert.match(upgraded, /requestHost: typeof data\\?\\.request\\?\\.uri\\?\\.hostname/);
+  assert.equal((upgraded.match(/function eclipseResponseSummary\(/g) || []).length, 1);
+  assert.match(upgraded, /requestHost: typeof data\?\.request\?\.uri\?\.hostname/);
 });
