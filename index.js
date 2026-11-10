@@ -1,5 +1,7 @@
 "use strict";
 
+const { invokeMessengerSend } = require("./messengerSendRouting");
+
 // "/" is an admin-only Banat toggle. Keep unauthorized-attempt state at
 // module scope so it survives individual message-handler invocations.
 const unauthorizedSlashAttempts = new Map();
@@ -1611,6 +1613,10 @@ function trafficQueueSend(api, message, threadID, callback, replyToMessageID = n
     callback,
     replyToMessageID: replyToMessageID || null,
     shouldSend: typeof options.shouldSend === "function" ? options.shouldSend : null,
+    // ws3-fca's sendMessage defaults to inferring single-user vs group from
+    // threadID length. PM recipient IDs can exceed that heuristic's limit.
+    // Callers may explicitly identify a private recipient with isGroup=false.
+    isGroup: typeof options.isGroup === "boolean" ? options.isGroup : null,
     enqueuedAt: trafficNow(),
   });
 
@@ -1860,20 +1866,7 @@ async function trafficProcessQueue() {
               finish(error, messageInfo);
             };
 
-            if (job.replyToMessageID) {
-              job.api.sendMessage(
-                job.message,
-                job.threadID,
-                sendCallback,
-                job.replyToMessageID
-              );
-            } else {
-              job.api.sendMessage(
-                job.message,
-                job.threadID,
-                sendCallback
-              );
-            }
+            invokeMessengerSend(job.api, job, sendCallback);
           } catch (error) {
             clearTimeout(timeout);
             finish(error);
@@ -2441,11 +2434,12 @@ function withTimeout(
 function sendMessengerMessage(
   api,
   message,
-  threadID
+  threadID,
+  options = {}
 ) {
   return new Promise((resolve, reject) => {
     try {
-      trafficSendMessage(api, 
+      trafficSendMessage(api,
         message,
         threadID,
         (error, messageInfo) => {
@@ -2456,7 +2450,9 @@ function sendMessengerMessage(
               messageInfo || null
             );
           }
-        }
+        },
+        null,
+        options
       );
     } catch (error) {
       reject(error);
@@ -3773,7 +3769,9 @@ const pmCenter = createPmCenter({
   getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,
   isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
   resolveMembers: (api, threadId) => resolveGroupMembers(api, threadId),
-  send: (api, message, recipientId) => sendMessengerMessage(api, message, recipientId),
+  // This is a user ID selected from a GC member list, never a group thread ID.
+  // Override ws3-fca's length-based routing heuristic for PM delivery.
+  send: (api, message, recipientId) => sendMessengerMessage(api, message, recipientId, { isGroup: false }),
 });
 pmCenter.registerRoutes(app, requireDashboardAccess);
 
@@ -3782,7 +3780,8 @@ const pmBattles = createPmBattles({
   getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,
   isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
   resolveMembers: (api, threadId) => resolveGroupMembers(api, threadId),
-  send: (api, message, recipientId) => sendMessengerMessage(api, message, recipientId),
+  // PM Battles targets a selected GC member, so force ws3-fca's single-user route.
+  send: (api, message, recipientId) => sendMessengerMessage(api, message, recipientId, { isGroup: false }),
   getHybridReply: async ({ api, event, text, senderId, threadId }) => {
     const triggerReply = await getTriggerReply(text, senderId, threadId, api, event);
     if (triggerReply) return triggerReply;
