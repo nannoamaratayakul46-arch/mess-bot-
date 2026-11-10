@@ -41,7 +41,7 @@ function parseAndCheckLogin(ctx, http, retryCount) {
 
 test("ws3-fca 2.0.1 package-root parser preserves exhausted HTTP failure details", async () => {
   const patched = patchSource(ws3ParserFixture);
-  assert.match(patched, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V2/);
+  assert.match(patched, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V3/);
   assert.match(patched, /WS3_HTTP_RETRY_EXHAUSTED/);
   assert.match(patched, /responseSummary = eclipseResponseSummary\(data\)/);
   assert.match(patched, /data\.statusCode === 404\) throw eclipseHttpError/);
@@ -49,7 +49,7 @@ test("ws3-fca 2.0.1 package-root parser preserves exhausted HTTP failure details
   assert.equal(patchSource(patched), patched, "patch must be idempotent");
 
   const sandbox = { module: { exports: {} }, setTimeout };
-  vm.runInNewContext(patched + "\\nmodule.exports = parseAndCheckLogin;", sandbox);
+  vm.runInNewContext(patched + "\nmodule.exports = parseAndCheckLogin;", sandbox);
   const parseAndCheckLogin = sandbox.module.exports;
   const response = {
     statusCode: 500,
@@ -78,7 +78,7 @@ test("ws3-fca 2.0.1 package-root parser preserves exhausted HTTP failure details
 test("ws3-fca non-200 response is not silently returned as an empty result", async () => {
   const patched = patchSource(ws3ParserFixture);
   const sandbox = { module: { exports: {} }, setTimeout };
-  vm.runInNewContext(patched + "\\nmodule.exports = parseAndCheckLogin;", sandbox);
+  vm.runInNewContext(patched + "\nmodule.exports = parseAndCheckLogin;", sandbox);
   await assert.rejects(
     sandbox.module.exports({ jar: {} }, {}, 0)({ statusCode: 404, body: "<html>Not found</html>", headers: { "content-type": "text/html" }, request: { method: "POST", uri: { hostname: "www.facebook.com", pathname: "/messaging/send/" } } }),
     error => {
@@ -87,6 +87,30 @@ test("ws3-fca non-200 response is not silently returned as an empty result", asy
       const summary = JSON.parse(error.responseSummary);
       assert.equal(summary.bodyFormat, "html");
       assert.equal(summary.requestPath, "/messaging/send/");
+      return true;
+    }
+  );
+});
+
+
+test("ws3-fca HTML response snippet is bounded and sanitized", async () => {
+  const patched = patchSource(ws3ParserFixture);
+  const sandbox = { module: { exports: {} }, setTimeout };
+  vm.runInNewContext(patched + "\nmodule.exports = parseAndCheckLogin;", sandbox);
+  const body = '<!doctype html><html><head><title>Facebook error</title><script>secret-token</script></head><body><h1>Not found</h1><p>https://example.com/private?token=abc</p></body></html>';
+  await assert.rejects(
+    sandbox.module.exports({ jar: {} }, {}, 0)({
+      statusCode: 404, body,
+      headers: { "content-type": "text/html; charset=utf-8" },
+      request: { method: "POST", uri: { hostname: "www.facebook.com", pathname: "/messaging/send/" } }
+    }),
+    error => {
+      const summary = JSON.parse(error.responseSummary);
+      assert.equal(summary.bodyFormat, "html");
+      assert.ok(summary.bodySnippet.length <= 120);
+      assert.match(summary.bodySnippet, /Facebook error/);
+      assert.match(summary.bodySnippet, /Not found/);
+      assert.doesNotMatch(summary.bodySnippet, /secret-token|example\.com|abc/);
       return true;
     }
   );
@@ -117,7 +141,7 @@ function parseAndCheckLogin(ctx, http, retryCount) {
 }
 `;
   const upgraded = patchSource(legacy);
-  assert.match(upgraded, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V2/);
+  assert.match(upgraded, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V3/);
   assert.doesNotMatch(upgraded, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1/);
   assert.equal((upgraded.match(/function eclipseResponseSummary\(/g) || []).length, 1);
   assert.match(upgraded, /requestHost: typeof data\?\.request\?\.uri\?\.hostname/);

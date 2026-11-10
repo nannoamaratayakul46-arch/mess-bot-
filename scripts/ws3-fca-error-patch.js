@@ -1,8 +1,8 @@
 "use strict";
 
 const CUSTOM_ERROR = /new\s+utils\.CustomError\s*\(/g;
-const LEGACY_PARSE_MARKER = "ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1";
-const PARSE_MARKER = "ECLIPSE_WS3_HTTP_DIAGNOSTICS_V2";
+const LEGACY_PARSE_MARKERS = ["ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1", "ECLIPSE_WS3_HTTP_DIAGNOSTICS_V2"];
+const PARSE_MARKER = "ECLIPSE_WS3_HTTP_DIAGNOSTICS_V3";
 
 function patchSource(source) {
   let updated = String(source || "").replace(CUSTOM_ERROR, "new Error(");
@@ -10,24 +10,44 @@ function patchSource(source) {
   // Preserve safe HTTP response metadata before ws3-fca turns it into an
   // empty result that sendMessage.js masks as "Send message failed.".
   const parseHeader = /function\s+parseAndCheckLogin\s*\(ctx,\s*http,\s*retryCount\)\s*\{/;
-  if (parseHeader.test(updated) && updated.includes(LEGACY_PARSE_MARKER)) {
-    // Replace the V1 helper block; otherwise its later declaration overrides V2.
-    const legacyHelpers = /\n[ \t]*\/\/ ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1[\s\S]*?function eclipseHttpError\(data, code\) \{[\s\S]*?\n[ \t]*\}\n/;
+  if (parseHeader.test(updated) && LEGACY_PARSE_MARKERS.some(marker => updated.includes(marker))) {
+    // Remove the previous helper block before injecting the current version.
+    const legacyHelpers = /\n[ \t]*\/\/ ECLIPSE_WS3_HTTP_DIAGNOSTICS_V[12][\s\S]*?function eclipseHttpError\(data, code\) \{[\s\S]*?\n[ \t]*\}\n/;
     updated = updated.replace(legacyHelpers, "\n");
   }
   if (parseHeader.test(updated) && !updated.includes(PARSE_MARKER)) {
     const helpers = [
       "",
       "  // " + PARSE_MARKER,
+      "  function eclipseHtmlTextSnippet(data) {",
+      "    const contentType = String(data?.headers?.[\"content-type\"] || data?.headers?.[\"Content-Type\"] || \"\");",
+      "    const body = typeof data?.body === \"string\" ? data.body : \"\";",
+      "    if (!/text\\/html|application\\/xhtml\\+xml/i.test(contentType) &&",
+      "        !/^\\s*<!doctype\\s+html|^\\s*<html\\b|^\\s*<head\\b|^\\s*<title\\b/i.test(body)) return null;",
+      "    const text = body",
+      "      .replace(/<!--[\\s\\S]*?-->/g, \" \")",
+      "      .replace(/<(script|style)\\b[^>]*>[\\s\\S]*?<\\/\\1>/gi, \" \")",
+      "      .replace(/<[^>]*>/g, \" \")",
+      "      .replace(/&#(\\d+);/g, (_m, n) => String.fromCodePoint(Math.min(Number(n), 0x10ffff)))",
+      "      .replace(/&#x([0-9a-f]+);/gi, (_m, n) => String.fromCodePoint(Math.min(parseInt(n, 16), 0x10ffff)))",
+      "      .replace(/&nbsp;/gi, \" \").replace(/&amp;/gi, \"&\")",
+      "      .replace(/&lt;/gi, \"<\").replace(/&gt;/gi, \">\")",
+      "      .replace(/&quot;/gi, '\"').replace(/&#39;|&apos;/gi, \"'\")",
+      "      .replace(/https?:\\/\\/[^\\s]+/gi, \"[url]\")",
+      "      .replace(/(?:cookie|token|authorization|password|passwd|session)(?:\\s*[:=]\\s*)[^\\s,;]+/gi, \"[redacted]\")",
+      "      .replace(/\\s+/g, \" \").trim();",
+      "    return text ? text.slice(0, 120) : null;",
+      "  }",
       "  function eclipseResponseSummary(data) {",
       "    const summary = {",
       "      statusCode: Number(data && data.statusCode) || null,",
       "      bodyLength: typeof data?.body === \"string\" ? data.body.length : null,",
-      "      bodyFormat: typeof data?.body !== \"string\" ? (data?.body && typeof data.body === \"object\" ? \"object\" : \"unknown\") : (/^\\s*</.test(data.body) ? \"html\" : /^\\s*[\\[{]/.test(data.body) ? \"json-or-structured\" : \"text\"),",
+      "      bodyFormat: typeof data?.body !== \"string\" ? (data?.body && typeof data.body === \"object\" ? \"object\" : \"unknown\") : (/text\\/html|application\\/xhtml\\+xml/i.test(String(data?.headers?.[\"content-type\"] || data?.headers?.[\"Content-Type\"] || \"\")) || /^\\s*<!doctype\\s+html|^\\s*<html\\b|^\\s*<head\\b|^\\s*<title\\b/i.test(data.body) ? \"html\" : /^\\s*[\\[{]/.test(data.body) ? \"json-or-structured\" : \"text\"),",
       "      requestMethod: typeof data?.request?.method === \"string\" ? data.request.method.slice(0, 12) : null,",
       "      requestHost: typeof data?.request?.uri?.hostname === \"string\" ? data.request.uri.hostname.slice(0, 100) : null,",
       "      requestPath: typeof data?.request?.uri?.pathname === \"string\" ? data.request.uri.pathname.replace(/[^A-Za-z0-9_./-]/g, \"\").slice(0, 160) : null,",
       "      responseContentType: typeof data?.headers?.[\"content-type\"] === \"string\" ? data.headers[\"content-type\"].split(\";\")[0].slice(0, 80) : null,",
+      "      bodySnippet: eclipseHtmlTextSnippet(data),",
       "    };",
       "    if (typeof data?.body === \"string\") {",
       "      try {",
