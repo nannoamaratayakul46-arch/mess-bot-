@@ -82,7 +82,7 @@ function createPmBattles({
     const allowed = [
       "message", "errorDescription", "error_description", "errorSummary",
       "error_user_title", "error_user_msg", "code", "errorCode",
-      "errorSubcode", "error_subcode", "status", "statusCode", "type", "name",
+      "errorSubcode", "error_subcode", "status", "statusCode", "responseSummary", "type", "name",
     ];
     for (const key of allowed) {
       const value = safeValue(readSafe(error, key));
@@ -107,9 +107,11 @@ function createPmBattles({
     const detail = safe.message || safe.errorDescription || safe.error_description ||
       safe.errorSummary || safe.error_user_msg || safe.error_user_title;
     if (detail) {
-      const codes = [safe.code || safe.errorCode, safe.errorSubcode || safe.error_subcode]
+      const codes = [safe.code || safe.errorCode, safe.errorSubcode || safe.error_subcode,
+        safe.statusCode ? "HTTP " + safe.statusCode : ""]
         .filter(Boolean);
-      return (detail + (codes.length ? " (code " + codes.join("/") + ")" : "")).slice(0, 300);
+      const responseDetail = safe.responseSummary ? " response=" + safe.responseSummary : "";
+      return (detail + (codes.length ? " (" + codes.join("/") + ")" : "") + responseDetail).slice(0, 300);
     }
 
     // Report shape, not values, when the library supplies an opaque object.

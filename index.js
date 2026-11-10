@@ -1746,7 +1746,7 @@ async function trafficProcessQueue() {
                 const allowedKeys = [
                   "code", "errorCode", "type", "name", "message", "error_description",
                   "errorDescription", "errorSummary", "error_user_title", "error_user_msg",
-                  "error_subcode", "errorSubcode", "status", "statusCode",
+                  "error_subcode", "errorSubcode", "status", "statusCode", "responseSummary",
                 ];
                 const safe = {};
                 for (const key of allowedKeys) {
@@ -1770,6 +1770,7 @@ async function trafficProcessQueue() {
                 ["errorDescription", safeErrorObject(readSafeErrorField(error, "errorDescription"))],
                 ["errorSummary", readSafeErrorField(error, "errorSummary")],
                 ["error", safeErrorObject(readSafeErrorField(error, "error"))],
+                ["responseSummary", readSafeErrorField(error, "responseSummary")],
                 ["nestedError", readSafeErrorField(error, "error")],
                 ["errorValue", typeof error === "string" || typeof error === "number" ? error : null],
                 ["statusCode", readSafeErrorField(error, "statusCode") ?? readSafeErrorField(error, "status")],
