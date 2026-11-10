@@ -41,7 +41,7 @@ function parseAndCheckLogin(ctx, http, retryCount) {
 
 test("ws3-fca 2.0.1 package-root parser preserves exhausted HTTP failure details", async () => {
   const patched = patchSource(ws3ParserFixture);
-  assert.match(patched, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1/);
+  assert.match(patched, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V2/);
   assert.match(patched, /WS3_HTTP_RETRY_EXHAUSTED/);
   assert.match(patched, /responseSummary = eclipseResponseSummary\(data\)/);
   assert.match(patched, /data\.statusCode === 404\) throw eclipseHttpError/);
@@ -97,4 +97,28 @@ test("ws3-fca send payload guard remains idempotent", () => {
   const patched = patchSource(source);
   assert.match(patched, /Messenger send response missing payload\.actions/);
   assert.equal(patchSource(patched), patched);
+});
+
+test("ws3-fca cached V1 diagnostics are upgraded without duplicate stale helpers", () => {
+  const legacy = `
+function parseAndCheckLogin(ctx, http, retryCount) {
+  // ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1
+  function eclipseResponseSummary(data) {
+    return JSON.stringify({ statusCode: Number(data && data.statusCode) || null, bodyLength: null });
+  }
+  function eclipseHttpError(data, code) {
+    const error = new Error("old diagnostics");
+    error.code = code;
+    error.responseSummary = eclipseResponseSummary(data);
+    return error;
+  }
+  if (data.statusCode === 404) return;
+  if (data.statusCode !== 200) throw new Error("old status handling");
+}
+`;
+  const upgraded = patchSource(legacy);
+  assert.match(upgraded, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V2/);
+  assert.doesNotMatch(upgraded, /ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1/);
+  assert.equal((upgraded.match(/function eclipseResponseSummary\\(/g) || []).length, 1);
+  assert.match(upgraded, /requestHost: typeof data\\?\\.request\\?\\.uri\\?\\.hostname/);
 });
