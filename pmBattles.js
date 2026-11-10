@@ -5,11 +5,31 @@ const STOP_RE = /^(?:stop|stop bot|tama na|tigil|ayoko na|wag na|huwag na|leave 
 const MAX_TURNS = 20;
 const IDLE_TIMEOUT_MS = 30 * 60_000;
 const MIN_REPLY_GAP_MS = 8_000;
+const MIN_COGNITIVE_DELAY_MS = 300;
+const MAX_COGNITIVE_DELAY_MS = 1_800;
 const ALLOWED_REACTIONS = new Set(["😂", "😆", "🤣", "😭", "💀", "❤️", "🔥", "👍"]);
+
+function calculateCognitiveDelayMs(text, options = {}) {
+  const value = String(text || "").trim();
+  const words = value ? value.split(/\s+/).length : 0;
+  const lines = value ? value.split(/\n+/).length : 0;
+  const clauses = (value.match(/[,.!?;:]/g) || []).length;
+  const estimated = 220 + Math.min(value.length, 1_200) * 0.75 +
+    Math.min(words, 100) * 5 + Math.min(Math.max(0, lines - 1), 4) * 90 +
+    Math.min(clauses, 12) * 18;
+  const minMs = Number.isFinite(Number(options.min_ms)) ? Number(options.min_ms) : MIN_COGNITIVE_DELAY_MS;
+  const maxMs = Number.isFinite(Number(options.max_ms)) ? Number(options.max_ms) : MAX_COGNITIVE_DELAY_MS;
+  const boundedMin = Math.max(100, Math.min(2_000, Math.round(minMs)));
+  const boundedMax = Math.max(boundedMin, Math.min(5_000, Math.round(maxMs)));
+  const progress = Math.max(0, Math.min(1, (estimated - 220) / (1_800 - 220)));
+  return Math.round(boundedMin + progress * (boundedMax - boundedMin));
+}
 
 function createPmBattles({
   getApi, isKnownGroup, resolveMembers, send, getHybridReply, db,
   now = Date.now, random = Math.random, setTimer = setTimeout,
+  delay = ms => new Promise(resolve => setTimeout(resolve, ms)),
+  startTyping = () => false, stopTyping = () => false,
 } = {}) {
   if (typeof getApi !== "function" || typeof isKnownGroup !== "function" ||
       typeof resolveMembers !== "function" || typeof send !== "function" ||
@@ -20,11 +40,17 @@ function createPmBattles({
   const sessions = new Map();
   const optedOut = new Set();
   const processing = new Set();
-  const settings = { self_laugh_enabled: true, self_laugh_reaction: "😂" };
+  const settings = {
+    self_laugh_enabled: true, self_laugh_reaction: "😂",
+    cognitive_delay_min_ms: MIN_COGNITIVE_DELAY_MS,
+    cognitive_delay_max_ms: MAX_COGNITIVE_DELAY_MS,
+  };
   const diagnostics = {
     listener: "unknown", last_event_at: null, last_sender_id: null,
     last_stage: "waiting", last_error: null, last_error_at: null,
     last_message_id: null, last_reaction_at: null,
+    last_processing_delay_ms: null, last_typing_started_at: null,
+    last_typing_stopped_at: null,
   };
 
   function mark(stage, details = {}) {
@@ -35,6 +61,7 @@ function createPmBattles({
     const message = String(error?.message || error || "Unknown error").slice(0, 180);
     Object.assign(diagnostics, {
       last_stage: stage, last_error: message,
+      last_error_code: String(error?.code || error?.errorCode || error?.cause?.code || "PM_SEND_FAILED").slice(0, 80),
       last_error_at: new Date(now()).toISOString(),
     });
     console.warn("[PM-BATTLES] " + stage + ":", message);
@@ -117,6 +144,10 @@ function createPmBattles({
       if (ALLOWED_REACTIONS.has(String(saved.self_laugh_reaction || ""))) {
         settings.self_laugh_reaction = String(saved.self_laugh_reaction);
       }
+      const savedMin = Number(saved.cognitive_delay_min_ms);
+      const savedMax = Number(saved.cognitive_delay_max_ms);
+      if (Number.isFinite(savedMin)) settings.cognitive_delay_min_ms = Math.max(100, Math.min(2_000, Math.round(savedMin)));
+      if (Number.isFinite(savedMax)) settings.cognitive_delay_max_ms = Math.max(settings.cognitive_delay_min_ms, Math.min(5_000, Math.round(savedMax)));
       mark("SETTINGS_LOADED", { ...settings });
     } catch (error) {
       markError("SETTINGS_LOAD_FAILED", error);
@@ -151,9 +182,19 @@ function createPmBattles({
       const nextReaction = req.body?.self_laugh_reaction === undefined
         ? settings.self_laugh_reaction : String(req.body.self_laugh_reaction || "");
       if (!ALLOWED_REACTIONS.has(nextReaction)) return res.status(400).json({ ok: false, error: "Choose a supported reaction." });
+      const nextMin = req.body?.cognitive_delay_min_ms === undefined
+        ? settings.cognitive_delay_min_ms : Number(req.body.cognitive_delay_min_ms);
+      const nextMax = req.body?.cognitive_delay_max_ms === undefined
+        ? settings.cognitive_delay_max_ms : Number(req.body.cognitive_delay_max_ms);
+      if (!Number.isInteger(nextMin) || nextMin < 100 || nextMin > 2_000 ||
+          !Number.isInteger(nextMax) || nextMax < 300 || nextMax > 5_000 || nextMax < nextMin) {
+        return res.status(400).json({ ok: false, error: "Cognitive delay must be between 100–2,000 ms minimum and 300–5,000 ms maximum, with maximum at least the minimum." });
+      }
       const previous = { ...settings };
       if (req.body?.self_laugh_enabled !== undefined) settings.self_laugh_enabled = req.body.self_laugh_enabled === true;
       settings.self_laugh_reaction = nextReaction;
+      settings.cognitive_delay_min_ms = nextMin;
+      settings.cognitive_delay_max_ms = nextMax;
       try {
         await persistSettings();
         mark("SETTINGS_UPDATED", { ...settings });
@@ -196,7 +237,11 @@ function createPmBattles({
         return res.status(201).json({ ok: true, session: publicSession(session) });
       } catch (error) {
         markError("BATTLE_START_FAILED", error);
-        return res.status(502).json({ ok: false, error: "Messenger could not confirm the opening message. Check the conversation before retrying." });
+        return res.status(502).json({
+          ok: false,
+          error: "Messenger could not confirm the opening message. Check PM diagnostics before retrying.",
+          diagnostic_code: diagnostics.last_error_code,
+        });
       }
     });
 
@@ -253,8 +298,28 @@ function createPmBattles({
 
     processing.add(userId);
     session.lastActivityAt = stamp;
+    let typingStarted = false;
     try {
-      mark("REPLY_GENERATION_STARTED", { recipient_id: userId, turn: session.turns + 1 });
+      const cognitiveDelayMs = calculateCognitiveDelayMs(body, {
+        min_ms: settings.cognitive_delay_min_ms,
+        max_ms: settings.cognitive_delay_max_ms,
+      });
+      diagnostics.last_processing_delay_ms = cognitiveDelayMs;
+      mark("MESSAGE_PROCESSING_DELAY", {
+        recipient_id: userId, delay_ms: cognitiveDelayMs, message_length: body.length,
+      });
+      await delay(cognitiveDelayMs);
+      if (session.status !== "active") {
+        mark("REPLY_CANCELLED_SESSION_STOPPED", { recipient_id: userId, stage: "before-generation" });
+        return true;
+      }
+
+      // Show typing only while a reply is actually being composed/sent.
+      typingStarted = Boolean(startTyping(api, threadId));
+      if (typingStarted) diagnostics.last_typing_started_at = new Date(now()).toISOString();
+      mark("REPLY_GENERATION_STARTED", {
+        recipient_id: userId, turn: session.turns + 1, typing_indicator: typingStarted,
+      });
       const reply = await getHybridReply({
         api, event, text: body, senderId: userId, threadId,
         turn: session.turns + 1, recipientName: session.name,
@@ -270,7 +335,14 @@ function createPmBattles({
       if (session.turns >= MAX_TURNS) stopSession(userId, "turn-limit");
     } catch (error) {
       markError("REPLY_FAILED", error);
-    } finally { processing.delete(userId); }
+    } finally {
+      if (typingStarted) {
+        try { stopTyping(api, threadId); }
+        catch (error) { markError("TYPING_INDICATOR_STOP_FAILED", error); }
+        diagnostics.last_typing_stopped_at = new Date(now()).toISOString();
+      }
+      processing.delete(userId);
+    }
     return true;
   }
 
@@ -281,4 +353,7 @@ function createPmBattles({
   };
 }
 
-module.exports = { createPmBattles, STOP_RE, MAX_TURNS, IDLE_TIMEOUT_MS, ALLOWED_REACTIONS };
+module.exports = {
+  createPmBattles, calculateCognitiveDelayMs, STOP_RE, MAX_TURNS,
+  IDLE_TIMEOUT_MS, ALLOWED_REACTIONS, MIN_COGNITIVE_DELAY_MS, MAX_COGNITIVE_DELAY_MS,
+};

@@ -3763,6 +3763,8 @@ const pmBattles = createPmBattles({
     if (triggerReply) return triggerReply;
     return getBanatConversationReply(text, senderId, threadId, api, event);
   },
+  startTyping,
+  stopTyping,
 });
 pmBattles.registerRoutes(app, requireDashboardAccess);
 
