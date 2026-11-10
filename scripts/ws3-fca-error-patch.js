@@ -1,7 +1,8 @@
 "use strict";
 
 const CUSTOM_ERROR = /new\s+utils\.CustomError\s*\(/g;
-const PARSE_MARKER = "ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1";
+const LEGACY_PARSE_MARKER = "ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1";
+const PARSE_MARKER = "ECLIPSE_WS3_HTTP_DIAGNOSTICS_V2";
 
 function patchSource(source) {
   let updated = String(source || "").replace(CUSTOM_ERROR, "new Error(");
@@ -9,6 +10,11 @@ function patchSource(source) {
   // Preserve safe HTTP response metadata before ws3-fca turns it into an
   // empty result that sendMessage.js masks as "Send message failed.".
   const parseHeader = /function\s+parseAndCheckLogin\s*\(ctx,\s*http,\s*retryCount\)\s*\{/;
+  if (parseHeader.test(updated) && updated.includes(LEGACY_PARSE_MARKER)) {
+    // Replace the V1 helper block; otherwise its later declaration overrides V2.
+    const legacyHelpers = /\n[ \t]*\/\/ ECLIPSE_WS3_HTTP_DIAGNOSTICS_V1[\s\S]*?function eclipseHttpError\(data, code\) \{[\s\S]*?\n[ \t]*\}\n/;
+    updated = updated.replace(legacyHelpers, "\n");
+  }
   if (parseHeader.test(updated) && !updated.includes(PARSE_MARKER)) {
     const helpers = [
       "",
