@@ -4,7 +4,8 @@ const fs = require("node:fs");
 const path = require("node:path");
 const { patchSource } = require("./ws3-fca-error-patch");
 
-const root = path.join(__dirname, "..", "node_modules", "ws3-fca", "src");
+const packageRoot = path.join(__dirname, "..", "node_modules", "ws3-fca");
+const root = path.join(packageRoot, "src");
 
 function patchDirectory(directory) {
   if (!fs.existsSync(directory)) {
@@ -57,7 +58,24 @@ function patchDirectory(directory) {
   return changed;
 }
 
-const changed = patchDirectory(root);
+// ws3-fca@2.0.1 stores parseAndCheckLogin in package-root utils.js,
+// not under src/. Patch it explicitly or HTTP failures are still flattened
+// into the generic "Send message failed." callback from sendMessage.js.
+let rootUtilsChanged = 0;
+const rootUtilsFile = path.join(packageRoot, "utils.js");
+if (fs.existsSync(rootUtilsFile)) {
+  const source = fs.readFileSync(rootUtilsFile, "utf8");
+  const updated = patchSource(source);
+  if (updated !== source) {
+    fs.writeFileSync(rootUtilsFile, updated, "utf8");
+    rootUtilsChanged = 1;
+    console.log("[postinstall] Applied ws3-fca HTTP diagnostics patch in package-root utils.js.");
+  }
+} else {
+  console.warn("[postinstall] ws3-fca package-root utils.js not found; HTTP diagnostics may be unavailable.");
+}
+
+const changed = patchDirectory(root) + rootUtilsChanged;
 if (!changed) {
   console.log("[postinstall] No ws3-fca source changes were needed; compatibility markers may already be present.");
 }
