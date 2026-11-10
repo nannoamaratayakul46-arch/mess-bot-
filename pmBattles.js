@@ -57,14 +57,66 @@ function createPmBattles({
     Object.assign(diagnostics, details, { last_stage: stage });
     console.log("[PM-BATTLES] " + stage, details);
   }
+  function normalizePmError(error) {
+    if (error === null || error === undefined) return "Unknown error";
+    if (typeof error === "string") return error.trim().slice(0, 300) || "Unknown error";
+    if (typeof error !== "object") return String(error).slice(0, 300);
+
+    const candidates = [
+      error.message,
+      error.errorDescription,
+      error.error_description,
+      error.error_user_msg,
+      error.error_user_title,
+      error.error?.message,
+      error.error?.errorDescription,
+      error.error?.error_description,
+      error.cause?.message,
+    ];
+    const details = candidates
+      .filter(value => typeof value === "string" && value.trim())
+      .map(value => value.trim());
+    if (details.length) return [...new Set(details)].join(" | ").slice(0, 300);
+
+    const safe = {};
+    const allowed = [
+      "code", "errorCode", "errorDescription", "error_description",
+      "error_user_title", "error_user_msg", "errorSubcode", "error_subcode",
+      "status", "statusCode", "type",
+    ];
+    for (const key of allowed) {
+      const value = error[key];
+      if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+        safe[key] = String(value).slice(0, 160);
+      }
+    }
+    if (error.error && typeof error.error === "object" && !Array.isArray(error.error)) {
+      for (const key of ["code", "errorCode", "errorDescription", "error_description", "message"]) {
+        const value = error.error[key];
+        if ((typeof value === "string" || typeof value === "number") && safe["nested_" + key] === undefined) {
+          safe["nested_" + key] = String(value).slice(0, 160);
+        }
+      }
+    }
+    return Object.keys(safe).length
+      ? JSON.stringify(safe).slice(0, 300)
+      : "Structured Messenger error; no readable diagnostic fields";
+  }
+
   function markError(stage, error) {
-    const message = String(error?.message || error || "Unknown error").slice(0, 180);
+    const message = normalizePmError(error);
+    const codeValue = error && typeof error === "object"
+      ? error.code || error.errorCode || error.error?.code || error.error?.errorCode ||
+        error.errorSubcode || error.error_subcode || error.cause?.code
+      : null;
+    const code = String(codeValue || "PM_SEND_FAILED").slice(0, 80);
     Object.assign(diagnostics, {
-      last_stage: stage, last_error: message,
-      last_error_code: String(error?.code || error?.errorCode || error?.cause?.code || "PM_SEND_FAILED").slice(0, 80),
+      last_stage: stage,
+      last_error: message,
+      last_error_code: code,
       last_error_at: new Date(now()).toISOString(),
     });
-    console.warn("[PM-BATTLES] " + stage + ":", message);
+    console.warn("[PM-BATTLES] " + stage + ":", message, "code=" + code);
   }
   function publicSession(session) {
     return {
