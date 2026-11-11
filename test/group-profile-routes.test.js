@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { decodeProfileImage, runGuardCheck, runNameCycleTick } = require("../groupProfileRoutes");
+const { decodeProfileImage, runGuardCheck, runNameCycleTick, handleTargetedLaughReaction } = require("../groupProfileRoutes");
 
 test("accepts a JPEG data URL and identifies its extension", () => {
   const bytes = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01]);
@@ -272,4 +272,59 @@ test("cycling lock skips rows that do not contain ten valid names", async () => 
   const api = { setTitle() { setTitleCalls += 1; return Promise.resolve(); } };
   await runNameCycleTick({ db, getApi: () => api });
   assert.equal(setTitleCalls, 0);
+});
+
+
+test("targeted laugh reacts only to the configured member in the configured group", async () => {
+  const originalSetTimeout = global.setTimeout;
+  const originalRandom = Math.random;
+  let scheduled;
+  let reactionArgs;
+  global.setTimeout = (callback, delay) => {
+    scheduled = { callback, delay };
+    return { unref() {} };
+  };
+  Math.random = () => 0;
+  const db = {
+    async query(_sql, params) {
+      assert.deepEqual(params, ["selected-group"]);
+      return { rows: [{ enabled: true, target_user_id: "123456789" }] };
+    },
+  };
+  const api = {
+    setMessageReactionMqtt(...args) { reactionArgs = args; },
+  };
+  try {
+    const accepted = await handleTargetedLaughReaction(api, {
+      type: "message", threadID: "selected-group", senderID: "123456789", messageID: "message-1",
+    }, db);
+    assert.equal(accepted, true);
+    assert.equal(scheduled.delay, 3000);
+    scheduled.callback();
+    assert.deepEqual(reactionArgs.slice(0, 3), ["😂", "message-1", "selected-group"]);
+  } finally {
+    global.setTimeout = originalSetTimeout;
+    Math.random = originalRandom;
+  }
+});
+
+test("targeted laugh ignores other members and other event types", async () => {
+  let scheduled = 0;
+  const originalSetTimeout = global.setTimeout;
+  global.setTimeout = () => { scheduled += 1; return { unref() {} }; };
+  const db = { async query() { return { rows: [{ enabled: true, target_user_id: "123456789" }] }; } };
+  const api = { setMessageReactionMqtt() {} };
+  try {
+    const otherMember = await handleTargetedLaughReaction(api, {
+      type: "message", threadID: "selected-group", senderID: "987654321", messageID: "message-2",
+    }, db);
+    const nonMessage = await handleTargetedLaughReaction(api, {
+      type: "event", threadID: "selected-group", senderID: "123456789", messageID: "message-3",
+    }, db);
+    assert.equal(otherMember, false);
+    assert.equal(nonMessage, false);
+    assert.equal(scheduled, 0);
+  } finally {
+    global.setTimeout = originalSetTimeout;
+  }
 });

@@ -75,7 +75,7 @@ const jaidenAutoTargetPersonality = require("./jaiden-auto-target-personality");
 const { pickJaidenAutoTargetLine } = jaidenAutoTargetPersonality;
 const { createJaidenTargetPersonalitySettings } = require("./jaidenTargetPersonalitySettings");
 const jaidenTargetRecords = require("./jaidenTargetRecords");
-const { registerGroupProfileRoutes, handleGroupProfileEvent } = require("./groupProfileRoutes");
+const { registerGroupProfileRoutes, handleGroupProfileEvent, handleTargetedLaughReaction } = require("./groupProfileRoutes");
 const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
 const { getThreadList: getSharedThreadList } = require("./messengerThreadList");
 const { createLiveChat } = require("./liveChat");
@@ -7480,6 +7480,10 @@ async function handleMessage(
 
   const threadId =
     String(threadID || "");
+
+  void handleTargetedLaughReaction(api, event, db).catch(error => {
+    console.error("[TARGETED-LAUGH] Message reaction handler failed:", error?.message || error);
+  });
 
   // Check archive state once for this event, and track target activity even
   // when the incoming message has no text body (for example, a sticker/photo).

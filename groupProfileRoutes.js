@@ -413,8 +413,58 @@ async function runNameCycleTick({ db, getApi, audit = () => {} }) {
 
 function startNameCycleScheduler(dependencies) {
   if (nameCycleTimer) return;
-  nameCycleTimer = setInterval(() => { void runNameCycleTick(dependencies); }, 3000);
+  nameCycleTimer = setInterval(() => { void runNameCycleTick(dependencies); }, 9000);
   nameCycleTimer.unref?.();
+}
+
+const targetedLaughSeen = new Map();
+
+async function handleTargetedLaughReaction(api, event, db) {
+  const threadId = String(event?.threadID || event?.threadId || "").trim();
+  const senderId = String(event?.senderID || event?.userID || "").trim();
+  const messageId = String(event?.messageID || event?.messageId || "").trim();
+  if (!threadId || !senderId || !messageId || !db || typeof db.query !== "function") return false;
+  if (!["message", "message_reply"].includes(String(event?.type || ""))) return false;
+  if (typeof api?.setMessageReactionMqtt !== "function" && typeof api?.setMessageReaction !== "function") return false;
+
+  let row;
+  try {
+    const result = await db.query(
+      "SELECT enabled, target_user_id FROM group_targeted_laugh_reactions WHERE thread_id = $1 LIMIT 1",
+      [threadId],
+    );
+    row = result.rows?.[0];
+  } catch (error) {
+    console.warn("[TARGETED-LAUGH] Settings lookup failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
+    return false;
+  }
+  if (!row?.enabled || String(row.target_user_id || "") !== senderId) return false;
+
+  const dedupeKey = threadId + ":" + messageId;
+  if (targetedLaughSeen.has(dedupeKey)) return false;
+  targetedLaughSeen.set(dedupeKey, Date.now());
+  if (targetedLaughSeen.size > 5000) {
+    const oldest = targetedLaughSeen.keys().next().value;
+    if (oldest) targetedLaughSeen.delete(oldest);
+  }
+
+  const delayMs = 3000 + Math.floor(Math.random() * 3001);
+  const timer = setTimeout(() => {
+    const callback = error => {
+      if (error) console.warn("[TARGETED-LAUGH] Reaction failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
+    };
+    try {
+      if (typeof api.setMessageReactionMqtt === "function") {
+        api.setMessageReactionMqtt("😂", messageId, threadId, callback);
+      } else {
+        api.setMessageReaction("😂", messageId, callback, true);
+      }
+    } catch (error) {
+      console.warn("[TARGETED-LAUGH] Reaction error for " + threadId + ": " + String(error?.message || error).slice(0, 140));
+    }
+  }, delayMs);
+  timer.unref?.();
+  return true;
 }
 
 let activeGuardDependencies = null;
@@ -446,6 +496,59 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
     if (!error) return next();
     const status = Number(error.status || error.statusCode) || 400;
     return res.status(status).json({ ok: false, error: status === 413 ? "Photo request is too large (max 1 MB image)." : "Invalid profile request body." });
+  });
+
+  const targetedLaughSchemaReady = db.query(`
+    CREATE TABLE IF NOT EXISTS group_targeted_laugh_reactions (
+      thread_id TEXT PRIMARY KEY,
+      enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      target_user_id TEXT,
+      target_name TEXT,
+      updated_at BIGINT NOT NULL DEFAULT 0
+    )
+  `);
+
+  app.get("/api/dashboard/groups/:threadId/profile/targeted-laugh", auth, async (req, res) => {
+    const threadId = validateGroup(req, res);
+    if (!threadId) return;
+    try {
+      await targetedLaughSchemaReady;
+      const result = await db.query(
+        "SELECT enabled, target_user_id, target_name FROM group_targeted_laugh_reactions WHERE thread_id = $1",
+        [threadId],
+      );
+      const row = result.rows?.[0] || {};
+      return res.json({ ok: true, enabled: Boolean(row.enabled), target_user_id: row.target_user_id || "", target_name: row.target_name || "" });
+    } catch (error) {
+      audit("[TARGETED-LAUGH] Settings read failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
+      return res.status(503).json({ ok: false, error: "Targeted laugh settings are temporarily unavailable." });
+    }
+  });
+
+  app.patch("/api/dashboard/groups/:threadId/profile/targeted-laugh", auth, parseBody, async (req, res) => {
+    const threadId = validateGroup(req, res);
+    if (!threadId) return;
+    const enabled = req.body?.enabled;
+    const targetUserId = String(req.body?.target_user_id || "").trim();
+    const targetName = String(req.body?.target_name || "").replace(/\s+/g, " ").trim().slice(0, 100);
+    if (typeof enabled !== "boolean") return res.status(400).json({ ok: false, error: "Choose whether targeted laugh is enabled." });
+    if (enabled && !/^\d{6,32}$/.test(targetUserId)) return res.status(400).json({ ok: false, error: "Choose a valid member from this group's member list." });
+    try {
+      await targetedLaughSchemaReady;
+      const result = await db.query(
+        "INSERT INTO group_targeted_laugh_reactions(thread_id, enabled, target_user_id, target_name, updated_at) " +
+        "VALUES ($1, $2, $3, $4, $5) ON CONFLICT(thread_id) DO UPDATE SET " +
+        "enabled = EXCLUDED.enabled, target_user_id = EXCLUDED.target_user_id, target_name = EXCLUDED.target_name, updated_at = EXCLUDED.updated_at " +
+        "RETURNING enabled, target_user_id, target_name",
+        [threadId, enabled, targetUserId || null, targetName || null, Date.now()],
+      );
+      audit("[TARGETED-LAUGH] " + (enabled ? "Enabled for " + targetUserId : "Disabled") + " in " + threadId);
+      const row = result.rows[0];
+      return res.json({ ok: true, enabled: Boolean(row.enabled), target_user_id: row.target_user_id || "", target_name: row.target_name || "" });
+    } catch (error) {
+      audit("[TARGETED-LAUGH] Settings update failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
+      return res.status(503).json({ ok: false, error: "Could not save targeted laugh settings." });
+    }
   });
 
   app.get("/api/dashboard/groups/:threadId/profile/name-lock", auth, async (req, res) => {
@@ -636,6 +739,7 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
 module.exports = {
   registerGroupProfileRoutes,
   handleGroupProfileEvent,
+  handleTargetedLaughReaction,
   decodeProfileImage,
   normalizePhotoUrl,
   getImageUrl,
