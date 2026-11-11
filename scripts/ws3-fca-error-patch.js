@@ -105,6 +105,37 @@ function patchSource(source) {
     );
   }
 
+  // ECLIPSE_PM_SEND_SHAPE_V1
+  // Log only structural metadata immediately before the legacy Messenger send
+  // request. Never log message text, recipient IDs, cookies, headers, or form values.
+  const sendPostPattern = /(^[ \t]*)defaultFuncs\s*\n?\s*\.post\(\s*["']https:\/\/www\.facebook\.com\/messaging\/send\/["']\s*,\s*ctx\.jar\s*,\s*form\s*\)/m;
+  if (sendPostPattern.test(updated) && !updated.includes("ECLIPSE_PM_SEND_SHAPE_V1_LOG")) {
+    updated = updated.replace(sendPostPattern, (_match, indent) =>
+      indent +
+      '/* ECLIPSE_PM_SEND_SHAPE_V1_LOG */\n' +
+      indent + 'try {\n' +
+      indent + '  const keys = Object.keys(form || {});\n' +
+      indent + '  const has = key => Object.prototype.hasOwnProperty.call(form || {}, key);\n' +
+      indent + '  console.info("[WS3-PM-SEND-SHAPE]", JSON.stringify({\n' +
+      indent + '    threadIdLength: String(threadID == null ? "" : threadID).length,\n' +
+      indent + '    isSingleUser: Boolean(isSingleUser),\n' +
+      indent + '    route: has("other_user_fbid") ? "private" : has("thread_fbid") ? "group" : "unclassified",\n' +
+      indent + '    hasSpecificTo0: has("specific_to_list[0]"),\n' +
+      indent + '    hasSpecificTo1: has("specific_to_list[1]"),\n' +
+      indent + '    hasOtherUserFbid: has("other_user_fbid"),\n' +
+      indent + '    hasThreadFbid: has("thread_fbid"),\n' +
+      indent + '    pageMode: has("author") || has("creator_info[creatorID]"),\n' +
+      indent + '    hasBody: has("body"),\n' +
+      indent + '    bodyLength: typeof form?.body === "string" ? form.body.length : null,\n' +
+      indent + '    formKeyCount: keys.length\n' +
+      indent + '  }));\n' +
+      indent + '} catch (diagnosticError) {\n' +
+      indent + '  console.warn("[WS3-PM-SEND-SHAPE] diagnostic failed:", String(diagnosticError?.message || diagnosticError).slice(0, 100));\n' +
+      indent + '}\n' +
+      indent + 'defaultFuncs.post("https://www.facebook.com/messaging/send/", ctx.jar, form)'
+    );
+  }
+
   return updated;
 }
 
