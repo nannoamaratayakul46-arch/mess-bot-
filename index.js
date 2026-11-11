@@ -1,6 +1,6 @@
 "use strict";
 
-const { invokeMessengerSend } = require("./messengerSendRouting");
+const { invokeMessengerSend, resolveMessengerIsGroup } = require("./messengerSendRouting");
 
 // "/" is an admin-only Banat toggle. Keep unauthorized-attempt state at
 // module scope so it survives individual message-handler invocations.
@@ -1616,7 +1616,7 @@ function trafficQueueSend(api, message, threadID, callback, replyToMessageID = n
     // ws3-fca's sendMessage defaults to inferring single-user vs group from
     // threadID length. PM recipient IDs can exceed that heuristic's limit.
     // Callers may explicitly identify a private recipient with isGroup=false.
-    isGroup: typeof options.isGroup === "boolean" ? options.isGroup : null,
+    isGroup: resolveMessengerIsGroup(threadID, options.isGroup, dashboardKnownGroups),
     enqueuedAt: trafficNow(),
   });
 
@@ -2183,14 +2183,16 @@ function installTrafficGovernor(api) {
           message,
           threadID,
           callback,
-          messageID
+          messageID,
+          isGroup
         ) {
           return trafficQueueSend(
             rawApi,
             message,
             threadID,
             callback,
-            messageID
+            messageID,
+            typeof isGroup === "boolean" ? { isGroup } : {}
           );
         };
       }

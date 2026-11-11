@@ -1,11 +1,25 @@
 "use strict";
 
 /**
+ * Resolve the ws3-fca thread type without relying only on its legacy ID-length
+ * heuristic. Explicit caller intent wins; otherwise known dashboard groups
+ * are sent as group threads. Unknown IDs retain ws3-fca's default behavior.
+ */
+function resolveMessengerIsGroup(threadID, requestedIsGroup, knownGroupIds) {
+  if (typeof requestedIsGroup === "boolean") return requestedIsGroup;
+  const id = String(threadID == null ? "" : threadID).trim();
+  if (id && knownGroupIds && typeof knownGroupIds.has === "function" && knownGroupIds.has(id)) {
+    return true;
+  }
+  return null;
+}
+
+/**
  * Invoke ws3-fca 2.0.1 sendMessage using its callback API:
  * sendMessage(message, threadID, callback, replyToMessage, isGroup).
  *
- * When isGroup is explicitly supplied, preserve the positional placeholder
- * for replyToMessage so the routing override reaches the fifth argument.
+ * Keep the reply placeholder when an explicit thread type is supplied so the
+ * fifth argument reaches ws3-fca unchanged.
  */
 function invokeMessengerSend(api, job, callback) {
   if (!api || typeof api.sendMessage !== "function") {
@@ -21,4 +35,4 @@ function invokeMessengerSend(api, job, callback) {
   return api.sendMessage(...args);
 }
 
-module.exports = { invokeMessengerSend };
+module.exports = { invokeMessengerSend, resolveMessengerIsGroup };

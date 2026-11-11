@@ -2,7 +2,25 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { invokeMessengerSend } = require("../messengerSendRouting");
+const { invokeMessengerSend, resolveMessengerIsGroup } = require("../messengerSendRouting");
+
+test("known group IDs override ws3-fca's legacy ID-length inference", () => {
+  const knownGroups = new Map([["61595042368860", { is_group: true }]]);
+  assert.equal(resolveMessengerIsGroup("61595042368860", null, knownGroups), true);
+});
+
+test("explicit PM routing takes precedence over known group metadata", () => {
+  const knownGroups = new Map([["1234567890123456", { is_group: true }]]);
+  assert.equal(resolveMessengerIsGroup("1234567890123456", false, knownGroups), false);
+});
+
+test("explicit group routing takes precedence for unknown IDs", () => {
+  assert.equal(resolveMessengerIsGroup("61595042368860", true, new Map()), true);
+});
+
+test("unknown thread IDs retain ws3-fca default routing", () => {
+  assert.equal(resolveMessengerIsGroup("1234567890123456", null, new Map()), null);
+});
 
 test("PM routing forces ws3-fca single-user mode in the fifth argument", () => {
   let received;
