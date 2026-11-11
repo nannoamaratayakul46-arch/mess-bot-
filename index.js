@@ -7105,6 +7105,7 @@ function attemptLogin() {
       api.setOptions({
         listenEvents: true,
         selfListen: true,
+        pageID: null,
       });
 
       const startupThreadID =
