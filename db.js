@@ -211,6 +211,10 @@ async function connect() {
       image_mime TEXT NOT NULL DEFAULT 'image/jpeg',
       expected_image_url TEXT,
       expected_title TEXT,
+      name_lock_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      name_lock_mode TEXT NOT NULL DEFAULT 'normal',
+      name_cycle_names JSONB NOT NULL DEFAULT '[]'::jsonb,
+      name_cycle_index INTEGER NOT NULL DEFAULT 0,
       updated_at BIGINT NOT NULL DEFAULT 0,
       last_restore_at BIGINT
     );
@@ -220,6 +224,10 @@ async function connect() {
       ADD COLUMN IF NOT EXISTS image_mime TEXT NOT NULL DEFAULT 'image/jpeg',
       ADD COLUMN IF NOT EXISTS expected_image_url TEXT,
       ADD COLUMN IF NOT EXISTS expected_title TEXT,
+      ADD COLUMN IF NOT EXISTS name_lock_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+      ADD COLUMN IF NOT EXISTS name_lock_mode TEXT NOT NULL DEFAULT 'normal',
+      ADD COLUMN IF NOT EXISTS name_cycle_names JSONB NOT NULL DEFAULT '[]'::jsonb,
+      ADD COLUMN IF NOT EXISTS name_cycle_index INTEGER NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS last_restore_at BIGINT;
   `);

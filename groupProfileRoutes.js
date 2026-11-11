@@ -18,6 +18,8 @@ const lastRestoreAttempt = new Map();
 const mismatchObservations = new Map();
 let guardTimer = null;
 let guardRunning = false;
+let nameCycleTimer = null;
+let nameCycleRunning = false;
 
 function cooldownLeft(threadId, kind) {
   const key = threadId + ":" + kind;
@@ -272,8 +274,10 @@ async function runGuardCheck({ db, getApi, audit = () => {}, immediateThreadId =
   guardRunning = true;
   try {
     const result = await db.query(
-      "SELECT thread_id, image_data, image_mime, expected_image_url, expected_title, last_restore_at " +
-      "FROM group_photo_guard WHERE enabled = TRUE AND (image_data IS NOT NULL OR expected_title IS NOT NULL) " +
+      "SELECT thread_id, image_data, image_mime, expected_image_url, expected_title, last_restore_at, " +
+      "name_lock_enabled, name_lock_mode, name_cycle_names, name_cycle_index " +
+      "FROM group_photo_guard WHERE (enabled = TRUE AND (image_data IS NOT NULL OR expected_title IS NOT NULL)) " +
+      "OR (name_lock_enabled = TRUE AND name_lock_mode = 'normal') " +
       "ORDER BY updated_at ASC LIMIT 250"
     );
     const threadListState = { promise: null };
@@ -299,7 +303,7 @@ async function runGuardCheck({ db, getApi, audit = () => {}, immediateThreadId =
       const currentTitle = getGroupTitle(info);
       const expectedTitle = typeof row.expected_title === "string" ? row.expected_title.trim() : "";
       const titleKey = threadId + ":title";
-      if (expectedTitle && currentTitle && currentTitle !== expectedTitle) {
+      if ((row.enabled || (row.name_lock_enabled && row.name_lock_mode === "normal")) && expectedTitle && currentTitle && currentTitle !== expectedTitle) {
         const previous = mismatchObservations.get(titleKey);
         if ((!previous || previous.value !== currentTitle) && String(immediateThreadId || "") !== threadId) {
           mismatchObservations.set(titleKey, { value: currentTitle, at: Date.now() });
@@ -373,6 +377,46 @@ function startGuardScheduler(dependencies) {
   guardTimer.unref?.();
 }
 
+async function runNameCycleTick({ db, getApi, audit = () => {} }) {
+  if (nameCycleRunning) return;
+  const api = getApi();
+  if (!api || typeof api.setTitle !== "function") return;
+  nameCycleRunning = true;
+  try {
+    const result = await db.query(
+      "SELECT thread_id, name_cycle_names, name_cycle_index FROM group_photo_guard " +
+      "WHERE name_lock_enabled = TRUE AND name_lock_mode = 'cycle' ORDER BY updated_at ASC LIMIT 100"
+    );
+    for (const row of result.rows || []) {
+      const threadId = String(row.thread_id);
+      const names = Array.isArray(row.name_cycle_names) ? row.name_cycle_names : [];
+      if (names.length !== 10 || names.some(name => typeof name !== "string" || !name.trim())) continue;
+      const index = ((Number(row.name_cycle_index) || 0) % names.length + names.length) % names.length;
+      const title = names[index].trim().slice(0, 80);
+      try {
+        await withTimeout(callApi(api, "setTitle", [title, threadId]), API_TIMEOUT_MS);
+        await db.query(
+          "UPDATE group_photo_guard SET name_cycle_index = $2, expected_title = $3, updated_at = $4 WHERE thread_id = $1 AND name_lock_enabled = TRUE AND name_lock_mode = 'cycle'",
+          [threadId, (index + 1) % names.length, title, Date.now()]
+        );
+        audit("[NAME-CYCLE] Updated group name for " + threadId + " (" + (index + 1) + "/10)");
+      } catch (error) {
+        console.warn("[NAME-CYCLE] Update failed for " + threadId + ": " + String(error?.message || error).replace(/[\\r\\n]+/g, " ").slice(0, 140));
+      }
+    }
+  } catch (error) {
+    console.warn("[NAME-CYCLE] Cycle pass unavailable: " + String(error?.message || error).slice(0, 140));
+  } finally {
+    nameCycleRunning = false;
+  }
+}
+
+function startNameCycleScheduler(dependencies) {
+  if (nameCycleTimer) return;
+  nameCycleTimer = setInterval(() => { void runNameCycleTick(dependencies); }, 3000);
+  nameCycleTimer.unref?.();
+}
+
 let activeGuardDependencies = null;
 
 async function handleGroupProfileEvent(api, event) {
@@ -402,6 +446,74 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
     if (!error) return next();
     const status = Number(error.status || error.statusCode) || 400;
     return res.status(status).json({ ok: false, error: status === 413 ? "Photo request is too large (max 1 MB image)." : "Invalid profile request body." });
+  });
+
+  app.get("/api/dashboard/groups/:threadId/profile/name-lock", auth, async (req, res) => {
+    const threadId = validateGroup(req, res);
+    if (!threadId) return;
+    try {
+      const result = await db.query(
+        "SELECT name_lock_enabled, name_lock_mode, name_cycle_names, name_cycle_index, expected_title " +
+        "FROM group_photo_guard WHERE thread_id = $1", [threadId]
+      );
+      const row = result.rows[0] || {};
+      return res.json({
+        ok: true,
+        enabled: Boolean(row.name_lock_enabled),
+        mode: row.name_lock_mode === "cycle" ? "cycle" : "normal",
+        names: Array.isArray(row.name_cycle_names) ? row.name_cycle_names : [],
+        index: Number(row.name_cycle_index) || 0,
+        expected_title: row.expected_title || ""
+      });
+    } catch (error) {
+      audit("[NAME-LOCK] Settings read failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
+      return res.status(503).json({ ok: false, error: "GC name-lock settings are temporarily unavailable." });
+    }
+  });
+
+  app.patch("/api/dashboard/groups/:threadId/profile/name-lock", auth, parseBody, async (req, res) => {
+    const threadId = validateGroup(req, res);
+    if (!threadId) return;
+    const enabled = req.body?.enabled;
+    const mode = req.body?.mode;
+    const names = req.body?.names;
+    if (typeof enabled !== "boolean" || !["normal", "cycle"].includes(mode)) {
+      return res.status(400).json({ ok: false, error: "Choose an enabled state and a valid name-lock mode." });
+    }
+    let cleanNames = [];
+    if (mode === "cycle") {
+      if (!Array.isArray(names) || names.length !== 10 ||
+          names.some(name => typeof name !== "string" || !name.trim() || name.trim().length > 80)) {
+        return res.status(400).json({ ok: false, error: "Cycling Lock requires exactly 10 non-empty names, each up to 80 characters." });
+      }
+      cleanNames = names.map(name => name.replace(/\\s+/g, " ").trim());
+    }
+    try {
+      let expectedTitle = "";
+      if (enabled && mode === "normal") {
+        const api = getApi();
+        if (!api) return res.status(503).json({ ok: false, error: "The bot is not connected to Messenger right now." });
+        const info = await withTimeout(getThreadInfoWithFallback(api, threadId, { promise: null }), 10_000);
+        expectedTitle = getGroupTitle(info) || "";
+        if (!expectedTitle) return res.status(409).json({ ok: false, error: "Could not read this group's current name. Refresh the group list and try again." });
+      }
+      const result = await db.query(
+        "INSERT INTO group_photo_guard(thread_id, name_lock_enabled, name_lock_mode, name_cycle_names, name_cycle_index, expected_title, updated_at) " +
+        "VALUES ($1, $2, $3, $4::jsonb, 0, CASE WHEN $2 AND $3 = 'normal' THEN $5 ELSE NULL END, $6) " +
+        "ON CONFLICT(thread_id) DO UPDATE SET name_lock_enabled = EXCLUDED.name_lock_enabled, " +
+        "name_lock_mode = EXCLUDED.name_lock_mode, name_cycle_names = EXCLUDED.name_cycle_names, " +
+        "name_cycle_index = CASE WHEN group_photo_guard.name_lock_mode = EXCLUDED.name_lock_mode AND group_photo_guard.name_cycle_names = EXCLUDED.name_cycle_names THEN group_photo_guard.name_cycle_index ELSE 0 END, " +
+        "expected_title = CASE WHEN EXCLUDED.name_lock_enabled AND EXCLUDED.name_lock_mode = 'normal' THEN COALESCE(EXCLUDED.expected_title, group_photo_guard.expected_title) ELSE group_photo_guard.expected_title END, " +
+        "updated_at = EXCLUDED.updated_at " +
+        "RETURNING name_lock_enabled, name_lock_mode, name_cycle_names, name_cycle_index",
+        [threadId, enabled, mode, JSON.stringify(cleanNames), expectedTitle || null, Date.now()]
+      );
+      audit("[NAME-LOCK] " + (enabled ? "Enabled " + mode : "Disabled") + " for " + threadId);
+      return res.json({ ok: true, enabled: Boolean(result.rows[0]?.name_lock_enabled), mode: result.rows[0]?.name_lock_mode, names: result.rows[0]?.name_cycle_names || [], index: Number(result.rows[0]?.name_cycle_index) || 0 });
+    } catch (error) {
+      audit("[NAME-LOCK] Settings update failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
+      return res.status(503).json({ ok: false, error: "Could not save GC name-lock settings." });
+    }
   });
 
   app.get("/api/dashboard/groups/:threadId/profile/guard", auth, async (req, res) => {
@@ -518,6 +630,7 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
 
   activeGuardDependencies = { db, getApi, audit };
   startGuardScheduler(activeGuardDependencies);
+  startNameCycleScheduler(activeGuardDependencies);
 }
 
 module.exports = {
@@ -527,4 +640,5 @@ module.exports = {
   normalizePhotoUrl,
   getImageUrl,
   runGuardCheck,
+  runNameCycleTick,
 };

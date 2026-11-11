@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { decodeProfileImage, runGuardCheck } = require("../groupProfileRoutes");
+const { decodeProfileImage, runGuardCheck, runNameCycleTick } = require("../groupProfileRoutes");
 
 test("accepts a JPEG data URL and identifies its extension", () => {
   const bytes = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01]);
@@ -228,3 +228,48 @@ test("photo guard requires a second mismatch observation even for a thread-image
   }
 });
 
+
+
+test("cycling lock advances through exactly ten configured names for an enabled group", async () => {
+  const updates = [];
+  const calls = [];
+  const names = Array.from({ length: 10 }, (_, index) => "GC name " + (index + 1));
+  const db = {
+    async query(sql, params) {
+      if (sql.startsWith("SELECT thread_id, name_cycle_names")) {
+        return { rows: [{ thread_id: "selected-thread", name_cycle_names: names, name_cycle_index: 3 }] };
+      }
+      if (sql.startsWith("UPDATE group_photo_guard SET name_cycle_index")) {
+        updates.push(params);
+        return { rows: [] };
+      }
+      throw new Error("Unexpected query: " + sql);
+    }
+  };
+  const api = {
+    setTitle(title, threadId) {
+      calls.push({ title, threadId });
+      return Promise.resolve();
+    }
+  };
+  await runNameCycleTick({ db, getApi: () => api });
+  assert.deepEqual(calls, [{ title: "GC name 4", threadId: "selected-thread" }]);
+  assert.equal(updates.length, 1);
+  assert.equal(updates[0][1], 4);
+  assert.equal(updates[0][2], "GC name 4");
+});
+
+test("cycling lock skips rows that do not contain ten valid names", async () => {
+  let setTitleCalls = 0;
+  const db = {
+    async query(sql) {
+      if (sql.startsWith("SELECT thread_id, name_cycle_names")) {
+        return { rows: [{ thread_id: "bad-thread", name_cycle_names: ["only one"], name_cycle_index: 0 }] };
+      }
+      throw new Error("Unexpected query: " + sql);
+    }
+  };
+  const api = { setTitle() { setTitleCalls += 1; return Promise.resolve(); } };
+  await runNameCycleTick({ db, getApi: () => api });
+  assert.equal(setTitleCalls, 0);
+});
