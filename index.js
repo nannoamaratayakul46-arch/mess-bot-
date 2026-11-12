@@ -3996,6 +3996,53 @@ app.put(
 );
 
 app.get(
+  "/api/dashboard/jaiden-target-countdown/live",
+  requireDashboardAccess,
+  (req, res) => {
+    const threadId = String(req.query?.thread_id || "").trim();
+    if (!threadId) return res.status(400).json({ ok: false, error: "Choose a group first." });
+    return res.json({ ok: true, status: jaidenTargetCountdown.getStatus(threadId) });
+  }
+);
+
+app.post(
+  "/api/dashboard/jaiden-target-countdown/force-start",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadId = String(req.body?.thread_id || "").trim();
+    if (!threadId) return res.status(400).json({ ok: false, error: "Choose a group first." });
+    if (!activeMessengerApi) return res.status(503).json({ ok: false, error: "The Messenger bot is not connected." });
+    const result = await jaidenTargetCountdown.forceStart(threadId, activeMessengerApi);
+    if (!result.started) {
+      const messages = {
+        NO_TARGET: "Set a Jaiden target for this group before starting the countdown.",
+        BOT_OFFLINE: "The Messenger bot is not connected.",
+        ALREADY_RUNNING: "A countdown is already running in this group.",
+        TARGET_LOOKUP_FAILED: "Could not verify the selected target. Try again.",
+      };
+      return res.status(result.reason === "ALREADY_RUNNING" ? 409 : 400).json({
+        ok: false, error: messages[result.reason] || "Could not start the forced countdown.", status: result.status || null,
+      });
+    }
+    pushDashboardEvent("jaiden-countdown", "Admin started a forced Jaiden countdown in group " + threadId + ".");
+    return res.json({ ok: true, status: result.status });
+  }
+);
+
+app.post(
+  "/api/dashboard/jaiden-target-countdown/force-stop",
+  requireDashboardAccess,
+  async (req, res) => {
+    const threadId = String(req.body?.thread_id || "").trim();
+    if (!threadId) return res.status(400).json({ ok: false, error: "Choose a group first." });
+    const result = await jaidenTargetCountdown.forceReceipt(threadId);
+    if (!result.sent) return res.status(409).json({ ok: false, error: "No active countdown is available to stop and report." });
+    pushDashboardEvent("jaiden-countdown", "Admin stopped a Jaiden countdown and posted its partial receipt in group " + threadId + ".");
+    return res.json({ ok: true, receipt: result.receipt, message: "Countdown stopped and partial resibo posted." });
+  }
+);
+
+app.get(
   "/api/dashboard/status",
   requireDashboardAccess,
   async (_req, res) => {
@@ -7679,6 +7726,26 @@ async function handleMessage(
   const senderIsAdmin =
     isAdmin(senderId);
 
+  // Force-post the current or most recently interrupted Jaiden countdown receipt.
+  // This is handled before group-off and Banat routing so admins can use it
+  // even when ordinary group automation is disabled.
+  if (/^!lapagresibo$/i.test(originalText)) {
+    if (!senderIsAdmin) {
+      sendReplyWithTyping(api, "🔒 ADMIN ONLY. Only configured bot admins can force a countdown resibo.", threadID);
+      return;
+    }
+    const receiptResult = await jaidenTargetCountdown.forceReceipt(threadId);
+    if (!receiptResult.sent) {
+      const message = receiptResult.reason === "NO_ACTIVE_COUNTDOWN"
+        ? "Walang active Jaiden countdown or interrupted run to report in this GC."
+        : receiptResult.reason === "NO_COUNTDOWN_TO_REPORT"
+          ? "Wala pang countdown na nagsimula para may resibo."
+          : "Hindi naipadala ang resibo. Try !lapagresibo again.";
+      sendReplyWithTyping(api, message, threadID);
+    }
+    return;
+  }
+
   // A disabled group ignores normal commands and automatic replies.
   // Keep owner SetNN and explicit bot/pause controls available.
   try {
@@ -7688,7 +7755,7 @@ async function handleMessage(
       /^\.removenn(?:\s|$)/i.test(originalText) ||
       /^\/$/.test(originalText) ||
       /^\\$/.test(originalText) ||
-      /^!(?:pause(?:\s+status)?|resume|bot(?:\s+(?:on|off|status))?|shutdown|startup|game(?:\s+(?:on|off|status))?|automod(?:\s+(?:on|off|status))?)$/i.test(originalText);
+      /^!(?:pause(?:\s+status)?|resume|bot(?:\s+(?:on|off|status))?|shutdown|startup|game(?:\s+(?:on|off|status))?|automod(?:\s+(?:on|off|status))?|lapagresibo)$/i.test(originalText);
     if (threadSettings.bot_enabled === false && !allowedWhileGroupOff) {
       return;
     }

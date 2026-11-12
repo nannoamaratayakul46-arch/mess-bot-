@@ -30,7 +30,7 @@ function createJaidenTargetCountdown(options = {}) {
       await persistState({
         threadId, targetId: state.targetId, targetName: state.targetName || "",
         lockedAt: state.lockedAt, lastActivityAt: state.lastActivityAt,
-        countdownStartedAt: state.countdownStartedAt || null, nextNumber: state.nextNumber || 1, status: state.retryBlocked ? "send_failed" : state.counting ? "counting" : "waiting",
+        countdownStartedAt: state.countdownStartedAt || null, nextNumber: state.nextNumber || 1, status: state.forceMode ? (state.retryBlocked ? "force_send_failed" : "force_counting") : state.retryBlocked ? "send_failed" : state.counting ? "counting" : "waiting",
       });
     } catch (error) {
       console.error("[JAIDEN COUNTDOWN] Could not persist state for thread " + threadId + ":", error?.message || error);
@@ -66,6 +66,40 @@ function createJaidenTargetCountdown(options = {}) {
     second: "2-digit",
     hour12: true,
   }).format(new Date(timestamp));
+
+  const formatDateTime = (timestamp) => new Intl.DateTimeFormat("en-PH", {
+    timeZone,
+    year: "numeric",
+    month: "short",
+    day: "2-digit",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(new Date(timestamp));
+
+  const formatDuration = (startedAt, endedAt) => {
+    const totalSeconds = Math.max(0, Math.floor((Number(endedAt) - Number(startedAt)) / 1000));
+    const hours = Math.floor(totalSeconds / 3600);
+    const minutes = Math.floor((totalSeconds % 3600) / 60);
+    const seconds = totalSeconds % 60;
+    return hours + "h " + String(minutes).padStart(2, "0") + "m " + String(seconds).padStart(2, "0") + "s";
+  };
+
+  const buildReceiptMessage = ({ threadId, targetName, startedAt, endedAt, completedCount, status, reason }) => {
+    const safeCount = Math.max(0, Math.min(100, Number(completedCount) || 0));
+    return [
+      "🧾 JAIDEN COUNTDOWN RESIBO",
+      "GROUP: " + String(threadId || "UNKNOWN GROUP"),
+      "TARGET: " + (String(targetName || "").trim() || "UNKNOWN TARGET"),
+      "START: " + formatDateTime(startedAt),
+      "END: " + formatDateTime(endedAt),
+      "COUNT: " + safeCount + "/100",
+      "DURATION: " + formatDuration(startedAt, endedAt),
+      "STATUS: " + String(status || "INTERRUPTED").toUpperCase(),
+      "DETAILS: " + String(reason || (status === "COMPLETED" ? "Countdown reached 100." : "Countdown was stopped before completion.")),
+    ].join("\n");
+  };
 
   const buildResultsMessage = (targetName, startedAt, endedAt, settings = {}) => {
     const values = {
@@ -167,7 +201,7 @@ function createJaidenTargetCountdown(options = {}) {
         if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
         // Dashboard target changes happen outside this process. Recheck at
         // count start and every five numbers so stale targets are discarded.
-        if ((number === 1 || number % 5 === 0) && !(await verifySelectedTarget(threadId, state, generation))) return;
+        if (!state.forceMode && (number === 1 || number % 5 === 0) && !(await verifySelectedTarget(threadId, state, generation))) return;
         // Persist the next number before sending. After a crash this avoids
         // replaying a number that may already have reached Messenger.
         state.nextNumber = number + 1;
@@ -223,7 +257,7 @@ function createJaidenTargetCountdown(options = {}) {
       }
       if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
       const endedAt = Date.now();
-      if (!(await verifySelectedTarget(threadId, state, generation))) return;
+      if (!state.forceMode && !(await verifySelectedTarget(threadId, state, generation))) return;
       let targetName = state.targetName || "";
       if (typeof getTargetName === "function") {
         try {
@@ -249,7 +283,10 @@ function createJaidenTargetCountdown(options = {}) {
         }
       }
       if (stopped || state.generation !== generation || states.get(threadId) !== state) return;
-      const resultsMessage = buildResultsMessage(targetName, startedAt, endedAt, resultsSettings);
+      const resultsMessage = buildResultsMessage(targetName, startedAt, endedAt, resultsSettings) + "\n\n" + buildReceiptMessage({
+        threadId, targetName, startedAt, endedAt, completedCount: 100,
+        status: state.forceMode ? "FORCED COMPLETED" : "COMPLETED", reason: resultsSettings.reason || DEFAULT_RESULT_REASON,
+      });
       const result = await send(state.api, resultsMessage, threadId, () => !stopped && state.generation === generation && states.get(threadId) === state);
       if (result === false || (result && result.sent === false)) {
         console.warn("[JAIDEN COUNTDOWN] Results message send failed for thread " + threadId + ".");
@@ -299,10 +336,19 @@ function createJaidenTargetCountdown(options = {}) {
     // Invalidate a running count synchronously on the target's message,
     // before awaiting the database lookup for the current saved target.
     const currentState = states.get(threadKey);
+    if (currentState?.forceMode && senderKey === currentState.targetId) return;
     if (currentState && senderKey === currentState.targetId) {
       currentState.generation += 1;
       clearTimer(currentState);
       currentState.counting = false;
+      if (Number(currentState.countdownStartedAt) > 0 && !currentState.pendingReceipt) {
+        currentState.pendingReceipt = {
+          threadId: threadKey, targetId: currentState.targetId, targetName: currentState.targetName,
+          startedAt: Number(currentState.countdownStartedAt), endedAt: Date.now(),
+          completedCount: Math.max(0, Math.min(100, (Number(currentState.nextNumber) || 1) - 1)),
+          status: "INTERRUPTED", reason: "The selected target returned before the countdown reached 100.",
+        };
+      }
       if (!currentState.cancelRecorded && typeof options.onCancel === "function") {
         currentState.cancelRecorded = true;
         try { await options.onCancel({ threadId: threadKey, targetId: currentState.targetId, targetName: currentState.targetName, startedAt: Number(currentState.countdownStartedAt) || Number(currentState.lastActivityAt) || Date.now(), endedAt: Date.now(), result: "LOSE", reason: "TARGET_RETURNED" }); }
@@ -341,8 +387,8 @@ function createJaidenTargetCountdown(options = {}) {
         if (saved && String(saved.targetId) === targetId) {
           state = { targetId, targetName: String(saved.targetName || target?.target_name || ''),
             lockedAt: Number(saved.lockedAt) || Date.now(), lastActivityAt: Number(saved.lastActivityAt) || Date.now(),
-            countdownStartedAt: Number(saved.countdownStartedAt) || null, nextNumber: Math.max(1, Number(saved.nextNumber) || 1), retryNotBeforeAt: 0, retryBlocked: saved.status === "send_failed", timer: null, generation: 0,
-            counting: false, api, };
+            countdownStartedAt: Number(saved.countdownStartedAt) || null, nextNumber: Math.max(1, Number(saved.nextNumber) || 1), retryNotBeforeAt: 0, retryBlocked: saved.status === "send_failed" || saved.status === "force_send_failed", timer: null, generation: 0,
+            counting: false, forceMode: saved.status === "force_counting", api, };
           states.set(threadKey, state);
         }
       } catch (error) { console.warn('[JAIDEN COUNTDOWN] Could not restore saved state:', error?.message || error); }
@@ -353,7 +399,7 @@ function createJaidenTargetCountdown(options = {}) {
     }
     if (!state) {
       const now = Date.now();
-      state = { targetId, targetName: String(target?.target_name || "").trim(), lockedAt: now, lastActivityAt: now, nextNumber: 1, timer: null, generation: 0, counting: false, api };
+      state = { targetId, targetName: String(target?.target_name || "").trim(), lockedAt: now, lastActivityAt: now, nextNumber: 1, timer: null, generation: 0, counting: false, forceMode: false, api };
       states.set(threadKey, state);
     }
     state.api = api;
@@ -388,9 +434,12 @@ function createJaidenTargetCountdown(options = {}) {
       }
       const state = { targetId, targetName: String(saved.targetName || currentTarget?.target_name || ''),
         lockedAt: Number(saved.lockedAt) || Date.now(), lastActivityAt: Number(saved.lastActivityAt) || Date.now(),
-        countdownStartedAt: Number(saved.countdownStartedAt) || null, nextNumber: Math.max(1, Number(saved.nextNumber) || 1), retryNotBeforeAt: 0, retryBlocked: saved.status === "send_failed", timer: null, generation: 0, counting: false, api };
+        countdownStartedAt: Number(saved.countdownStartedAt) || null, nextNumber: Math.max(1, Number(saved.nextNumber) || 1), retryNotBeforeAt: 0, retryBlocked: saved.status === "send_failed" || saved.status === "force_send_failed", timer: null, generation: 0, counting: false, forceMode: saved.status === "force_counting", api };
       states.set(threadId, state);
-      if (!state.retryBlocked) scheduleInactivity(threadId, state, state.generation);
+      if (!state.retryBlocked) {
+        if (state.forceMode && state.countdownStartedAt) void runCountdown(threadId, state, state.generation);
+        else scheduleInactivity(threadId, state, state.generation);
+      }
       console.log('[JAIDEN COUNTDOWN] Restored saved target lock for thread ' + threadId + ' at ' + new Date(state.lockedAt).toISOString());
     }
   }
@@ -405,7 +454,105 @@ function createJaidenTargetCountdown(options = {}) {
     states.clear();
   }
 
-  return { onMessage, cancel, restore, stop };
+  async function forceStart(threadId, api) {
+    const threadKey = String(threadId || "").trim();
+    if (stopped || !threadKey || !api) return { started: false, reason: "BOT_OFFLINE" };
+    let target;
+    try { target = typeof getTarget === "function" ? await getTarget(threadKey) : null; }
+    catch (error) { return { started: false, reason: "TARGET_LOOKUP_FAILED", error: error?.message || String(error) }; }
+    const targetId = String(target?.target_user_id || "").trim();
+    if (!targetId) return { started: false, reason: "NO_TARGET" };
+    const existing = states.get(threadKey);
+    if (existing?.counting) return { started: false, reason: "ALREADY_RUNNING", status: getStatus(threadKey) };
+    if (existing) { existing.generation += 1; clearTimer(existing); }
+    const now = Date.now();
+    const state = {
+      targetId, targetName: String(target?.target_name || "").trim(),
+      lockedAt: Number(existing?.lockedAt) || now, lastActivityAt: now,
+      countdownStartedAt: now, nextNumber: 1, retryNotBeforeAt: 0,
+      retryBlocked: false, timer: null, generation: Number(existing?.generation || 0) + 1,
+      counting: false, forceMode: true, cancelRecorded: false, api,
+    };
+    states.set(threadKey, state);
+    await persist(threadKey, state);
+    const generation = state.generation;
+    void runCountdown(threadKey, state, generation);
+    return { started: true, status: getStatus(threadKey) };
+  }
+
+  function getStatus(threadId) {
+    const state = states.get(String(threadId || "").trim());
+    if (!state) return { active: false };
+    return {
+      active: Boolean(state.counting || state.countdownStartedAt),
+      counting: Boolean(state.counting),
+      forced: Boolean(state.forceMode),
+      targetId: state.targetId,
+      targetName: state.targetName || "",
+      startedAt: Number(state.countdownStartedAt) || null,
+      nextNumber: Math.max(1, Number(state.nextNumber) || 1),
+      completedCount: Math.max(0, Math.min(100, (Number(state.nextNumber) || 1) - 1)),
+      status: state.forceMode ? "FORCED" : state.counting ? "COUNTING" : "WAITING",
+    };
+  }
+
+  async function forceReceipt(threadId) {
+    const threadKey = String(threadId || "").trim();
+    const state = states.get(threadKey);
+    if (!state || !state.api) return { sent: false, reason: "NO_ACTIVE_COUNTDOWN" };
+
+    let receipt = state.pendingReceipt || null;
+    const isCurrentRun = !receipt && Number(state.countdownStartedAt) > 0;
+    if (!receipt && !isCurrentRun) return { sent: false, reason: "NO_COUNTDOWN_TO_REPORT" };
+
+    if (isCurrentRun) {
+      state.generation += 1;
+      clearTimer(state);
+      state.counting = false;
+      receipt = {
+        threadId: threadKey, targetId: state.targetId, targetName: state.targetName,
+        startedAt: Number(state.countdownStartedAt), endedAt: Date.now(),
+        completedCount: Math.max(0, Math.min(100, (Number(state.nextNumber) || 1) - 1)),
+        status: "FORCED", reason: "An admin forced the resibo before the countdown completed.",
+      };
+    }
+
+    const message = buildReceiptMessage(receipt);
+    const result = await send(state.api, message, threadKey, () => true);
+    if (result === false || (result && result.sent === false)) {
+      if (isCurrentRun) {
+        state.retryBlocked = true;
+        state.lastActivityAt = Date.now();
+        await persist(threadKey, state);
+      }
+      return { sent: false, reason: "SEND_FAILED", receipt };
+    }
+
+    if (state.pendingReceipt === receipt) state.pendingReceipt = null;
+    if (isCurrentRun) {
+      // Mark this run as reported in persisted state so a repeated command or
+      // process restart cannot publish the same receipt twice.
+      state.countdownStartedAt = null;
+      state.nextNumber = 1;
+      state.retryBlocked = true;
+      state.lastActivityAt = Date.now();
+      await persist(threadKey, state);
+      if (typeof options.onCancel === "function") {
+        try {
+          await options.onCancel({
+            threadId: threadKey, targetId: receipt.targetId, targetName: receipt.targetName,
+            startedAt: receipt.startedAt, endedAt: receipt.endedAt,
+            result: "LOSE", reason: "FORCED_RECEIPT",
+          });
+        } catch (error) {
+          console.warn("[JAIDEN COUNTDOWN] Could not record forced receipt:", error?.message || error);
+        }
+      }
+    }
+    return { sent: true, receipt };
+  }
+
+  return { onMessage, cancel, forceStart, getStatus, forceReceipt, restore, stop };
 }
 
 module.exports = {

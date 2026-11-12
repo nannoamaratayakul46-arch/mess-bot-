@@ -83,7 +83,10 @@ test("posts uppercase target name, custom reason, and time-only results after al
   assert.equal(sends.length, 101);
   assert.match(sends[100], /^WIN: HEV\nLOSE: JUAN DELA CRUZ\nREASON: /);
   assert.ok(sends[100].includes(DEFAULT_RESULT_REASON));
-  assert.match(sends[100], /\nSTART: \d{1,2}:\d{2}:\d{2} [AP]M\nEND: \d{1,2}:\d{2}:\d{2} [AP]M$/);
+  assert.match(sends[100], /\nSTART: \d{1,2}:\d{2}:\d{2} [AP]M\nEND: \d{1,2}:\d{2}:\d{2} [AP]M/);
+  assert.match(sends[100], /STATUS: COMPLETED/);
+  assert.match(sends[100], /COUNT: 100\/100/);
+  assert.match(sends[100], /DURATION: \d+h \d{2}m \d{2}s/);
   assert.ok(!sends[100].includes("D.O SI TABA"));
   tracker.stop();
 });
@@ -128,7 +131,7 @@ test("uses the custom dashboard template and reason", async () => {
   await tracker.onMessage({ api: {}, threadId: "gc-custom-results", senderId: "target-1" });
   await sleep(450);
   assert.equal(sends.length, 101);
-  assert.match(sends[100], /^🏆 HEV\n💀 ANA SANTOS\nREASON: Custom result reason\nStarted \d{1,2}:\d{2}:\d{2} [AP]M \/ ended \d{1,2}:\d{2}:\d{2} [AP]M$/);
+  assert.match(sends[100], /^🏆 HEV\n💀 ANA SANTOS\nREASON: Custom result reason\nStarted \d{1,2}:\d{2}:\d{2} [AP]M \/ ended \d{1,2}:\d{2}:\d{2} [AP]M/);
   tracker.stop();
 });
 
@@ -315,5 +318,86 @@ test("uses the selected target's latest message to choose the opening taunt cont
   });
   await sleep(25);
   assert.equal(contexts[0], "laugh");
+  tracker.stop();
+});
+
+
+test("admin force receipt posts truthful partial progress and stops the active countdown", async () => {
+  const sends = [];
+  const cancelled = [];
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 5,
+    countDelayMs: 100,
+    getTarget: async () => ({ target_user_id: "target-force", target_name: "Force Target" }),
+    onCancel: async (record) => { cancelled.push(record); },
+    send: async (_api, message) => { sends.push(message); return { sent: true }; },
+  });
+  await tracker.onMessage({ api: {}, threadId: "gc-force", senderId: "target-force" });
+  await sleep(35);
+  assert.deepEqual(sends, ["1"]);
+  const result = await tracker.forceReceipt("gc-force");
+  assert.equal(result.sent, true);
+  assert.equal((await tracker.forceReceipt("gc-force")).reason, "NO_COUNTDOWN_TO_REPORT");
+  assert.match(sends[1], /GROUP: gc-force/);
+  assert.match(sends[1], /TARGET: Force Target/);
+  assert.match(sends[1], /COUNT: 1\/100/);
+  assert.match(sends[1], /STATUS: FORCED/);
+  assert.match(sends[1], /START: .*\d{4}/);
+  assert.match(sends[1], /END: /);
+  assert.equal(cancelled.length, 1);
+  assert.equal(cancelled[0].reason, "FORCED_RECEIPT");
+  await sleep(140);
+  assert.deepEqual(sends, ["1", sends[1]]);
+  tracker.stop();
+});
+
+test("force receipt can publish a previously interrupted countdown", async () => {
+  const sends = [];
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 5,
+    countDelayMs: 100,
+    getTarget: async () => ({ target_user_id: "target-interrupted", target_name: "Returned Target" }),
+    send: async (_api, message) => { sends.push(message); return { sent: true }; },
+  });
+  await tracker.onMessage({ api: {}, threadId: "gc-interrupted", senderId: "target-interrupted" });
+  await sleep(30);
+  await tracker.onMessage({ api: {}, threadId: "gc-interrupted", senderId: "target-interrupted" });
+  const result = await tracker.forceReceipt("gc-interrupted");
+  assert.equal(result.sent, true);
+  assert.match(sends.at(-1), /STATUS: INTERRUPTED/);
+  assert.match(sends.at(-1), /COUNT: 1\/100/);
+  tracker.stop();
+});
+
+test("dashboard force start runs immediately and ignores target activity until 100", async () => {
+  const sends = [];
+  const tracker = createJaidenTargetCountdown({
+    inactivityMs: 60000,
+    countDelayMs: 3,
+    getTarget: async () => ({ target_user_id: "target-online", target_name: "Online Target" }),
+    send: async (_api, message) => { sends.push(message); return { sent: true }; },
+  });
+  const started = await tracker.forceStart("gc-forced", {});
+  assert.equal(started.started, true);
+  assert.equal(started.status.forced, true);
+  assert.equal(tracker.getStatus("gc-forced").active, true);
+  await tracker.onMessage({ api: {}, threadId: "gc-forced", senderId: "target-online", messageBody: "I'm here" });
+  await sleep(420);
+  assert.equal(sends.filter(message => /^\d+$/.test(message)).length, 100);
+  assert.match(sends.at(-1), /STATUS: FORCED COMPLETED/);
+  assert.equal(tracker.getStatus("gc-forced").active, false);
+  tracker.stop();
+});
+
+test("dashboard force start rejects missing targets and duplicate active runs", async () => {
+  let hasTarget = false;
+  const tracker = createJaidenTargetCountdown({
+    getTarget: async () => hasTarget ? ({ target_user_id: "target-1", target_name: "Target" }) : null,
+    send: async () => ({ sent: true }),
+  });
+  assert.equal((await tracker.forceStart("gc-empty", {})).reason, "NO_TARGET");
+  hasTarget = true;
+  assert.equal((await tracker.forceStart("gc-empty", {})).started, true);
+  assert.equal((await tracker.forceStart("gc-empty", {})).reason, "ALREADY_RUNNING");
   tracker.stop();
 });
