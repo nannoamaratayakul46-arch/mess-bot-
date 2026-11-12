@@ -6537,6 +6537,7 @@ try {
 
 let loginAttempt = 0;
 let listenFailureCount = 0;
+let rateLimitFailureCount = 0;
 let loginInProgress = false;
 let listenerGeneration = 0;
 let activeListenerGeneration = 0;
@@ -6585,7 +6586,7 @@ function getFacebookLoginErrorMessage(error) {
     if (
       value === null ||
       value === undefined ||
-      depth > 2
+      depth > 5
     ) {
       return;
     }
@@ -6607,6 +6608,16 @@ function getFacebookLoginErrorMessage(error) {
     }
 
     visited.add(value);
+
+    // ws3-fca may wrap one or more MQTT errors in arrays. Traverse the
+    // entries before inspecting named Error properties so nested codes and
+    // messages are not silently lost.
+    if (Array.isArray(value)) {
+      for (const item of value) {
+        visit(item, depth + 1);
+      }
+      return;
+    }
 
     for (
       const key of [
@@ -7229,23 +7240,20 @@ function attemptLogin() {
             // marked connected prevents our own login recovery from running.
             listenFailureCount++;
 
+            const normalizedListenerError = getFacebookLoginErrorMessage(listenError);
+            const nestedRateLimitCode = normalizedListenerError.includes("1675004") ? "1675004" : null;
             const listenErrorSummary = {
               type: Array.isArray(listenError) ? "array" : typeof listenError,
               name: typeof listenError?.name === "string" ? listenError.name : null,
-              message: typeof listenError?.message === "string" ? listenError.message.slice(0, 300) : null,
-              code: listenError?.code ?? listenError?.errorCode ?? null,
+              message: normalizedListenerError.slice(0, 300),
+              code: nestedRateLimitCode || listenError?.code || listenError?.errorCode || null,
               keys: listenError && typeof listenError === "object" ? Object.keys(listenError).slice(0, 12) : [],
               arrayLength: Array.isArray(listenError) ? listenError.length : undefined,
             };
             console.error("[LISTENER] Structured error summary:", JSON.stringify(listenErrorSummary));
             console.error("[LISTENER] ws3-fca reported a listener error:", listenError);
 
-            const listenerErrorText = [
-              listenErrorSummary.name,
-              listenErrorSummary.message,
-              listenErrorSummary.code,
-              getFacebookLoginErrorMessage(listenError),
-            ].filter(Boolean).join(" ");
+            const listenerErrorText = normalizedListenerError + " " + String(listenErrorSummary.code || "");
             const authRejected = /checkpoint|two.factor|2fa|invalid cookie|cookie.*(?:invalid|expired|rejected)|session.*(?:expired|invalid|rejected)|not logged in|login required|authentication failed|account disabled|confirm your identity/i.test(listenerErrorText);
             const rateLimited = /1675004|rate.?limit|too many requests/i.test(listenerErrorText);
 
@@ -7279,13 +7287,17 @@ function attemptLogin() {
               return;
             }
 
-            // Recover a dead listener through one controlled fresh login. A
-            // rate-limit response gets a longer cool-off to avoid hammering
-            // Facebook; ordinary socket/server failures wait 30 seconds.
+            // Recover a dead listener through one controlled fresh login.
+            // Rate-limit failures use an escalating cooldown (2, 4, 8, then
+            // 15 minutes) so repeated rejections do not create a login loop.
             if (!loginRetryTimer) {
-              const recoveryDelayMs = rateLimited ? 120_000 : 30_000;
+              if (rateLimited) rateLimitFailureCount++;
+              const recoveryDelayMs = rateLimited
+                ? Math.min(15 * 60_000, 120_000 * (2 ** Math.min(rateLimitFailureCount - 1, 3)))
+                : 30_000;
+              const waitMinutes = Math.ceil(recoveryDelayMs / 60_000);
               dashboardLoginError = rateLimited
-                ? "Messenger was rate-limited; waiting 2 minutes before reconnecting."
+                ? "Messenger was rate-limited; waiting " + waitMinutes + " minute(s) before reconnecting."
                 : "Messenger listener dropped; retrying the saved session in 30 seconds.";
               pushDashboardEvent("messenger", "Messenger listener failed; a controlled reconnect has been scheduled.", {
                 detail: String(dashboardLoginError).slice(0, 240),
@@ -7305,6 +7317,9 @@ function attemptLogin() {
           }
 
           listenFailureCount = 0;
+          // Any subsequent healthy listener callback proves the cooldown
+          // recovered; start future rate-limit backoff from its first step.
+          rateLimitFailureCount = 0;
 
           if (dashboardBotPaused) {
             return;

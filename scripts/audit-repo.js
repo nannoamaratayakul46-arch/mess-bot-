@@ -87,7 +87,8 @@ if (listenInstallations !== 1) {
 // 2a. Preserve conservative Messenger recovery safeguards.
 const listenerRecoveryChecks = [
   [/const WATCHDOG_LISTENER_STALE_ENABLED =\s*\/\^\(1\|true\|yes\|on\)\$\/i\.test\(/, "listener stale detection must remain explicitly opt-in"],
-  [/const recoveryDelayMs = rateLimited \? 120_000 : 30_000/, "rate limits must use a longer reconnect cool-off"],
+  [/Math\.min\(15 \* 60_000, 120_000/, "rate limits must use escalating reconnect cool-offs"],
+  [/Array\.isArray\(value\)[\s\S]{0,180}visit\(item, depth \+ 1\)/, "nested ws3-fca listener errors must be normalized"],
   [/if \(authRejected\) \{[\s\S]{0,700}Automatic retries are paused/, "rejected sessions must pause automatic retries"],
   [/thisGeneration !== activeListenerGeneration/, "stale listener generations must be ignored"],
   [/watchdogMessengerConnected\s*\?\s*now\s*-\s*watchdogLastListenerActivityAt\s*:\s*0/, "listener inactivity must only be measured while connected"],

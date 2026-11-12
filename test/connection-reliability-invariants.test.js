@@ -13,12 +13,21 @@ test("listener staleness recovery remains opt-in to avoid restarting quiet healt
   assert.match(index, /watchdogMessengerConnected\s*\?\s*now\s*-\s*watchdogLastListenerActivityAt\s*:\s*0/);
 });
 
-test("transient listener errors use controlled reconnect delays", () => {
-  assert.match(index, /const recoveryDelayMs = rateLimited \? 120_000 : 30_000/);
-  assert.match(index, /retrying the saved session in 30 seconds/i);
-  assert.match(index, /waiting 2 minutes before reconnecting/i);
+test("array-wrapped ws3-fca listener errors are normalized before classification", () => {
+  assert.match(index, /depth > 5/);
+  assert.match(index, /Array\.isArray\(value\)/);
+  assert.match(index, /visit\(item, depth \+ 1\)/);
+  assert.match(index, /normalizedListenerError = getFacebookLoginErrorMessage\(listenError\)/);
+  assert.match(index, /1675004/);
+  assert.match(index, /const rateLimited =/);
 });
 
+test("transient listener errors use escalating rate-limit backoff", () => {
+  assert.match(index, /Math\.min\(15 \* 60_000, 120_000/);
+  assert.match(index, /retrying the saved session in 30 seconds/i);
+  assert.match(index, /rateLimitFailureCount\+\+/);
+  assert.match(index, /rateLimitFailureCount = 0/);
+});
 test("rejected Facebook sessions pause retries instead of hammering login", () => {
   const rejectionBlock = index.slice(index.indexOf("if (authRejected)"), index.indexOf("// Recover a dead listener", index.indexOf("if (authRejected)")));
   assert.ok(rejectionBlock.length > 0, "auth rejection handler should exist");
