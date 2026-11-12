@@ -1,6 +1,7 @@
 "use strict";
 
 const db = require("./db");
+const { sendGroupMessage } = require("./messengerApiCompat");
 
 const MAX_BET = 10_000_000;
 const XP_REWARD = 45;
@@ -142,16 +143,9 @@ function renderGrid(grid, winningSymbols) {
 }
 
 function sendMessage(api, threadID, text) {
-  return new Promise((resolve) => {
-    try {
-      api.sendMessage(text, threadID, (error, info) => {
-        if (error) console.error("[slots] send:", error);
-        resolve(info || null);
-      });
-    } catch (error) {
-      console.error("[slots] send:", error);
-      resolve(null);
-    }
+  return sendGroupMessage(api, text, threadID).catch(error => {
+    console.error("[slots] send:", error);
+    return null;
   });
 }
 

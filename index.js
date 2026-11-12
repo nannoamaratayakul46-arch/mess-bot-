@@ -2212,6 +2212,40 @@ function installTrafficGovernor(api) {
         };
       }
 
+      // ws3-fca 3.5.2 reactions return Promises instead of using the legacy
+      // callback parameters. Preserve the callback contract used by bot modules.
+      if (property === "setMessageReaction") {
+        return function guardedSetMessageReaction(reaction, messageID, callback) {
+          try {
+            const result = rawApi.setMessageReaction(reaction, messageID);
+            if (typeof callback !== "function") return result;
+            return Promise.resolve(result).then(
+              info => { callback(null, info); return info; },
+              error => { callback(error); return undefined; }
+            );
+          } catch (error) {
+            if (typeof callback === "function") { callback(error); return undefined; }
+            throw error;
+          }
+        };
+      }
+
+      if (property === "setMessageReactionMqtt") {
+        return function guardedSetMessageReactionMqtt(reaction, messageID, threadID, callback) {
+          try {
+            const result = rawApi.setMessageReactionMqtt(reaction, messageID, threadID);
+            if (typeof callback !== "function") return result;
+            return Promise.resolve(result).then(
+              info => { callback(null, info); return info; },
+              error => { callback(error); return undefined; }
+            );
+          } catch (error) {
+            if (typeof callback === "function") { callback(error); return undefined; }
+            throw error;
+          }
+        };
+      }
+
       const value = Reflect.get(target, property, target);
 
       if (typeof value === "function") {
@@ -6807,7 +6841,7 @@ function attemptLogin() {
 
   try {
     const loginResult = login(
-      loginInput,
+      { appState: loginInput },
       {
         online: true,
         updatePresence: true,

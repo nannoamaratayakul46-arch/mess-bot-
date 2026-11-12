@@ -5,6 +5,7 @@ const path = require("path");
 const fs = require("fs");
 
 const db = require("../db");
+const { sendGroupMessage, editMessage: editMessengerMessage } = require("../messengerApiCompat");
 const { recordResult, incrementPlayed, getProfile, formatProfile } = require("./profile");
 
 const DATA_DIR = path.join(__dirname, "data");
@@ -131,47 +132,19 @@ function key(threadID, userID) {
 }
 
 function send(api, threadID, text) {
-  return new Promise((resolve) => {
-    try {
-      if (!api || typeof api.sendMessage !== "function") return resolve(null);
-      let settled = false;
-      const finish = (error, info) => {
-        if (settled) return;
-        settled = true;
-        if (error) console.error("[INVESTIGATIONS] send error:", error);
-        resolve(info || null);
-      };
-      const result = api.sendMessage(text, String(threadID), null, finish);
-      if (result && typeof result.then === "function") {
-        result.then((info) => finish(null, info)).catch((error) => finish(error));
-      }
-    } catch (error) {
-      console.error("[INVESTIGATIONS] send exception:", error);
-      resolve(null);
-    }
+  if (!api || typeof api.sendMessage !== "function") return Promise.resolve(null);
+  return sendGroupMessage(api, text, String(threadID), { timeoutMs: 12000 }).catch(error => {
+    console.error("[INVESTIGATIONS] send error:", error);
+    return null;
   });
 }
 
 function edit(api, messageID, text) {
-  return new Promise((resolve) => {
-    try {
-      if (!api || typeof api.editMessage !== "function" || !messageID) return resolve(false);
-      let settled = false;
-      const finish = (error, info) => {
-        if (settled) return;
-        settled = true;
-        if (error) console.warn("[INVESTIGATIONS] edit failed:", error);
-        resolve(!error && info !== false);
-      };
-      const result = api.editMessage(text, String(messageID), finish);
-      if (result && typeof result.then === "function") {
-        result.then((info) => finish(null, info)).catch((error) => finish(error));
-      }
-    } catch (error) {
-      console.warn("[INVESTIGATIONS] edit exception:", error);
-      resolve(false);
-    }
-  });
+  if (!api || typeof api.editMessage !== "function" || !messageID) return Promise.resolve(false);
+  return editMessengerMessage(api, text, String(messageID), { timeoutMs: 10000 }).then(
+    info => info !== false,
+    error => { console.warn("[INVESTIGATIONS] edit failed:", error); return false; }
+  );
 }
 
 function normalize(value) {

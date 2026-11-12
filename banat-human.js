@@ -365,7 +365,7 @@ function sendBanatReplyWithTyping(
                     };
 
                     if (typeof api?.setMessageReactionMqtt === "function") {
-                      // ws3-fca@2.0.1 MQTT signature requires threadID before callback.
+                      // The guarded API proxy bridges the 3.5.2 Promise result to this legacy callback.
                       api.setMessageReactionMqtt(
                         "😆",
                         String(sentMessageID),

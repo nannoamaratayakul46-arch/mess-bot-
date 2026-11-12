@@ -6,17 +6,10 @@
  * need to depend on index.js's internals.
  */
 
+const { sendGroupMessage } = require("./messengerApiCompat");
+
 function reply(api, threadID, message) {
-  return new Promise((resolve, reject) => {
-    try {
-      api.sendMessage(message, threadID, (error) => {
-        if (error) reject(error);
-        else resolve();
-      });
-    } catch (error) {
-      reject(error);
-    }
-  });
+  return sendGroupMessage(api, message, threadID).then(() => undefined);
 }
 
 function fmtTime(seconds) {

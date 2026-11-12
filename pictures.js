@@ -2,6 +2,7 @@
 
 const fs = require("fs");
 const path = require("path");
+const { sendGroupMessage } = require("./messengerApiCompat");
 
 const PICTURES_DIRECTORY = path.join(
   __dirname,
@@ -74,23 +75,14 @@ function sendRandomPicture(
     getRandomPicturePath();
 
   if (!picturePath) {
-    api.sendMessage(
-      [
-        "🖼️ No pictures are available yet.",
-        "",
-        "Add .jpg, .jpeg, .png, .gif, or .webp files to:",
-        "pictures/",
-      ].join("\n"),
-      threadID,
-      (error) => {
-        if (error) {
-          console.error(
-            "[PICTURES] Failed to send empty-folder message:",
-            error
-          );
-        }
-      }
-    );
+    sendGroupMessage(api, [
+      "🖼️ No pictures are available yet.",
+      "",
+      "Add .jpg, .jpeg, .png, .gif, or .webp files to:",
+      "pictures/",
+    ].join("\n"), threadID).catch(error => {
+      console.error("[PICTURES] Failed to send empty-folder message:", error);
+    });
 
     return;
   }
@@ -103,18 +95,9 @@ function sendRandomPicture(
       ),
     };
 
-    api.sendMessage(
-      outgoingMessage,
-      threadID,
-      (error) => {
-        if (error) {
-          console.error(
-            "[PICTURES] Failed to send picture:",
-            error
-          );
-        }
-      }
-    );
+    sendGroupMessage(api, outgoingMessage, threadID, { timeoutMs: 100000 }).catch(error => {
+      console.error("[PICTURES] Failed to send picture:", error);
+    });
   } catch (error) {
     console.error(
       "[PICTURES] Picture send error:",

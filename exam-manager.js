@@ -4,6 +4,7 @@ const fs = require("fs");
 const fsp = fs.promises;
 const path = require("path");
 const db = require("./db");
+const { sendGroupMessage, editMessage: editMessengerMessage } = require("./messengerApiCompat");
 
 const QUESTIONS = require("./exam-questions");
 
@@ -63,43 +64,14 @@ function parseAnswer(value) {
 }
 
 function sendMessage(api, threadID, text) {
-  return new Promise((resolve, reject) => {
-    let done = false;
-    const finish = (err, info) => {
-      if (done) return;
-      done = true;
-      if (err) reject(err);
-      else resolve(info || null);
-    };
-
-    try {
-      api.sendMessage(text, threadID, (err, info) => finish(err, info));
-    } catch (err) {
-      finish(err);
-    }
-  });
+  return sendGroupMessage(api, text, threadID);
 }
 
 function editMessage(api, text, messageID) {
-  if (!messageID || typeof api.editMessage !== "function") return Promise.resolve(false);
-
-  return new Promise((resolve) => {
-    let done = false;
-    const timeout = setTimeout(() => finish(new Error("edit timeout")), 5000);
-
-    function finish(err) {
-      if (done) return;
-      done = true;
-      clearTimeout(timeout);
-      resolve(!err);
-    }
-
-    try {
-      api.editMessage(text, messageID, (err) => finish(err));
-    } catch (err) {
-      finish(err);
-    }
-  });
+  if (!messageID || typeof api?.editMessage !== "function") return Promise.resolve(false);
+  return editMessengerMessage(api, text, messageID, { timeoutMs: 5000 })
+    .then(() => true)
+    .catch(() => false);
 }
 
 async function editWithRetry(api, text, messageID) {

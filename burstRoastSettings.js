@@ -2,6 +2,7 @@
 
 const express = require("express");
 const { startTyping, stopTyping } = require("./typingIndicator");
+const { sendGroupMessage, setMessageReaction } = require("./messengerApiCompat");
 const DOGMODE_BANATS = require("./dogmodeBanats");
 const NORMAL_SPAM_BANATS = require("./normalSpamBanats");
 
@@ -58,21 +59,13 @@ function buildSpamMessage(config, random = Math.random) {
 }
 function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
 function sendMessage(api, text, threadID) {
-  return new Promise((resolve, reject) => {
-    try {
-      api.sendMessage(text, threadID, (error, info) => error ? reject(error) : resolve(info || {}));
-    } catch (error) { reject(error); }
-  });
+  return sendGroupMessage(api, text, threadID);
 }
 function reactLaugh(api, messageID) {
-  if (!messageID || typeof api.setMessageReaction !== "function") return;
-  try {
-    api.setMessageReaction("😂", String(messageID), error => {
-      if (error) console.warn("[BURST-ROAST] Auto-laugh reaction failed:", error?.message || error);
-    }, true);
-  } catch (error) {
+  if (!messageID || typeof api?.setMessageReaction !== "function") return;
+  setMessageReaction(api, "😂", String(messageID), { timeoutMs: 8000 }).catch(error => {
     console.warn("[BURST-ROAST] Auto-laugh reaction failed:", error?.message || error);
-  }
+  });
 }
 function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () => false, send = null }) {
   let settings = { ...DEFAULTS };

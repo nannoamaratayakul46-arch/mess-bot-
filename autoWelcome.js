@@ -5,23 +5,13 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
+const { sendGroupMessage } = require("./messengerApiCompat");
 
 const IMAGE_LIMIT = 2 * 1024 * 1024;
 const DEFAULT_MESSAGE = "Welcome {{NAME}}!";
 
 function callSend(api, payload, threadID) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const done = error => {
-      if (settled) return;
-      settled = true;
-      if (error) reject(error); else resolve();
-    };
-    try {
-      const result = api.sendMessage(payload, threadID, done);
-      if (result && typeof result.then === "function") result.then(() => done()).catch(done);
-    } catch (error) { done(error); }
-  });
+  return sendGroupMessage(api, payload, threadID).then(() => undefined);
 }
 
 function createAutoWelcome({ db, getApi = () => null, isKnownGroup = () => true, log = () => {} }) {

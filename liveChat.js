@@ -1,6 +1,7 @@
 'use strict';
 
 // Dashboard LiveChat: records messages only while a dashboard chat is open.
+const { sendGroupMessage } = require('./messengerApiCompat');
 // History is in-memory, bounded, and cleared when the last open client closes.
 function createLiveChat({ getApi, log = console.log, maxPerThread = 100, idlePollMs = 5000 } = {}) {
   const threads = new Map();
@@ -148,9 +149,7 @@ function createLiveChat({ getApi, log = console.log, maxPerThread = 100, idlePol
       const api = typeof getApi === 'function' ? getApi() : null;
       if (!api || typeof api.sendMessage !== 'function') return res.status(503).json({ ok: false, error: 'Messenger is not connected.' });
       try {
-        const result = await new Promise((resolve, reject) => {
-          api.sendMessage(text, id, (err, info) => err ? reject(err) : resolve(info || {}));
-        });
+        const result = await sendGroupMessage(api, text, id);
         recordOwn(id, text, result && (result.messageID || result.messageId) || '');
         return res.json({ ok: true, message: text, message_id: result && (result.messageID || result.messageId) || null });
       } catch (error) {

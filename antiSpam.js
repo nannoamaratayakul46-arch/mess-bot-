@@ -6,6 +6,7 @@ const { createRaidShieldStore } = require("./raidShieldStore");
 const express = require("express");
 const { getAutoModSettings, setAutoModEnabled, removeFromGroup, isAdmin, isBotOwner } = require("./moderation");
 const { resolveMemberName, idOf } = require("./memberNameResolver");
+const { sendGroupMessage } = require("./messengerApiCompat");
 
 const DEFAULTS = Object.freeze({
   max_messages: 6,
@@ -143,7 +144,7 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
 
   async function sendMessage(api, threadID, text) {
     if (!api || typeof api.sendMessage !== "function") throw new Error("sendMessage is unavailable");
-    await callbackCall(cb => api.sendMessage(text, threadID, cb), 12000);
+    await sendGroupMessage(api, text, threadID, { timeoutMs: 12000 });
   }
 
   async function removeMember(api, threadID, userID, name) {

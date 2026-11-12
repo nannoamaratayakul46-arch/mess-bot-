@@ -2192,7 +2192,7 @@ function matchesTrigger(text, trigger) {
 // ============================================================
 // TRIGGER / ID MATCHING
 // ============================================================
-async function resolveReplyTargetName(api,event){const r=event&&event.messageReply,id=r&&(r.senderID||r.senderId||r.sender_id);if(!id||!api||typeof api.getUserInfo!=="function")return null;try{const u=await new Promise((a,b)=>api.getUserInfo(String(id),(e,x)=>e?b(e):a(x)));return u&&u[String(id)]&&u[String(id)].name?String(u[String(id)].name).trim():null}catch(e){return null;}}
+async function resolveReplyTargetName(api,event){const r=event&&event.messageReply,id=r&&(r.senderID||r.senderId||r.sender_id);if(!id||!api||typeof api.getUserInfo!=="function")return null;try{const u=await new Promise((resolve,reject)=>{let settled=false;const finish=(error,data)=>{if(settled)return;settled=true;error?reject(error):resolve(data)};try{const result=api.getUserInfo(String(id),finish);if(result&&typeof result.then==="function")result.then(data=>finish(null,data),finish)}catch(error){finish(error)}});return u&&u[String(id)]&&u[String(id)].name?String(u[String(id)].name).trim():null}catch(e){return null;}}
 
 
 async function getTriggerReply(

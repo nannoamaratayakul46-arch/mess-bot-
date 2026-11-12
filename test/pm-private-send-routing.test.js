@@ -18,58 +18,84 @@ test("explicit group routing takes precedence for unknown IDs", () => {
   assert.equal(resolveMessengerIsGroup("61595042368860", true, new Map()), true);
 });
 
-test("unknown thread IDs retain ws3-fca default routing", () => {
+test("unknown thread IDs retain the caller's unresolved state", () => {
   assert.equal(resolveMessengerIsGroup("1234567890123456", null, new Map()), null);
 });
 
-test("PM routing forces ws3-fca single-user mode in the fifth argument", () => {
+test("PM routing uses the 3.5.2 MQTT sender and its reply-ID argument position", async () => {
   let received;
-  const api = { sendMessage(...args) { received = args; } };
-  const callback = () => {};
-  const job = {
+  const api = {
+    sendMessage() { throw new Error("standard sender must not handle explicit PM"); },
+    sendMessageMqtt(...args) {
+      received = args;
+      return Promise.resolve({ messageID: "pm-1" });
+    },
+  };
+  let callbackInfo;
+  await invokeMessengerSend(api, {
     message: "hello",
     threadID: "123456789012345678",
     replyToMessageID: null,
     isGroup: false,
-  };
+  }, (error, info) => { callbackInfo = { error, info }; });
 
-  invokeMessengerSend(api, job, callback);
-
-  assert.equal(received.length, 5);
-  assert.equal(received[0], "hello");
-  assert.equal(received[1], job.threadID);
-  assert.equal(received[2], callback);
-  assert.equal(received[3], null);
-  assert.equal(received[4], false);
+  assert.deepEqual(received, ["hello", "123456789012345678", undefined]);
+  assert.equal(callbackInfo.error, null);
+  assert.equal(callbackInfo.info.messageID, "pm-1");
 });
 
-test("reply sends retain the reply ID and explicit PM routing flag", () => {
+test("reply sends retain the reply ID in the 3.5.2 MQTT signature", async () => {
   let received;
-  const api = { sendMessage(...args) { received = args; } };
-  const callback = () => {};
-  const job = {
+  const api = {
+    sendMessageMqtt(...args) {
+      received = args;
+      return Promise.resolve({ messageID: "reply-1" });
+    },
+    sendMessage() { throw new Error("standard sender must not handle explicit PM"); },
+  };
+
+  await invokeMessengerSend(api, {
     message: "reply",
     threadID: "123456789012345678",
     replyToMessageID: "mid.123",
     isGroup: false,
-  };
+  }, () => {});
 
-  invokeMessengerSend(api, job, callback);
-
-  assert.deepEqual(received, ["reply", job.threadID, callback, "mid.123", false]);
+  assert.deepEqual(received, ["reply", "123456789012345678", "mid.123"]);
 });
 
-test("ordinary group sends keep ws3-fca's original argument behavior", () => {
+test("unknown short numeric thread IDs retain legacy private routing", async () => {
   let received;
-  const api = { sendMessage(...args) { received = args; } };
-  const callback = () => {};
+  const api = {
+    sendMessage(...args) {
+      received = args;
+      return Promise.resolve({ messageID: "legacy-private-1" });
+    },
+  };
+  await invokeMessengerSend(api, {
+    message: "private reply",
+    threadID: "61595042368860",
+    replyToMessageID: null,
+    isGroup: null,
+  }, () => {});
+  assert.deepEqual(received, ["private reply", "61595042368860", undefined, true]);
+});
 
-  invokeMessengerSend(api, {
+test("ordinary group sends stay on standard 3.5.2 sendMessage", async () => {
+  let received;
+  const api = {
+    sendMessage(...args) {
+      received = args;
+      return Promise.resolve({ messageID: "group-1" });
+    },
+  };
+
+  await invokeMessengerSend(api, {
     message: "group message",
     threadID: "group-thread",
     replyToMessageID: null,
-    isGroup: null,
-  }, callback);
+    isGroup: true,
+  }, () => {});
 
-  assert.deepEqual(received, ["group message", "group-thread", callback]);
+  assert.deepEqual(received, ["group message", "group-thread", undefined, false]);
 });

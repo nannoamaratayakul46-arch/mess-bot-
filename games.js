@@ -1,6 +1,7 @@
 const db = require("./db");
 const { isAdmin } = require("./permissions");
 const { reply } = require("./util");
+const { sendGroupMessage, editMessage: editMessengerMessage, setMessageReaction } = require("./messengerApiCompat");
 const triviaManager = require("./trivia-manager");
 const riddleManager = require("./riddle-manager");
 const examManager = require("./exam-manager");
@@ -388,15 +389,7 @@ function sendMessageAsync(api, threadID, text) {
       const messageLength = String(text || "").length;
       const delay = Math.min(maxDelay, minDelay + Math.floor(messageLength / 35) * 75);
       typeBeforeSend(api, threadID, text, { ms: delay }, () =>
-        new Promise((resolve, reject) => {
-          api.sendMessage(text, threadID, (error, messageInfo) => {
-            if (error) {
-              reject(error);
-              return;
-            }
-            resolve(messageInfo || null);
-          });
-        })
+        sendGroupMessage(api, text, threadID, { timeoutMs: GAME_SEND_TIMEOUT_MS })
       ).then(
         (messageInfo) => finish(null, messageInfo),
         (error) => finish(error)
@@ -416,30 +409,9 @@ async function editMessageSafe(api, newText, messageID) {
     return false;
   }
 
-  return new Promise((resolve) => {
-    let finished = false;
-
-    const finish = (error) => {
-      if (finished) return;
-
-      finished = true;
-      resolve(!error);
-    };
-
-    const timeout = setTimeout(() => {
-      finish(new Error("timeout"));
-    }, EDIT_TIMEOUT_MS);
-
-    try {
-      api.editMessage(newText, messageID, (error) => {
-        clearTimeout(timeout);
-        finish(error);
-      });
-    } catch (error) {
-      clearTimeout(timeout);
-      finish(error);
-    }
-  });
+  return editMessengerMessage(api, newText, messageID, { timeoutMs: EDIT_TIMEOUT_MS })
+    .then(() => true)
+    .catch(() => false);
 }
 
 async function editMessageWithRetry(api, newText, messageID) {
@@ -3523,9 +3495,7 @@ async function safeReply(api, event, text) {
     const messageID = event.messageID;
 
     if (messageID && api.setMessageReaction) {
-      await new Promise((resolve) => {
-        api.setMessageReaction("❌", messageID, () => resolve(), true);
-      });
+      await setMessageReaction(api, "❌", messageID, { timeoutMs: 8000 }).catch(() => null);
     }
 
     await sendMessageAsync(api, threadID, text);
@@ -4090,9 +4060,20 @@ async function chamberResolveName(api, event, threadID, userID) {
     if (api && typeof api.getUserInfo === "function") {
       const info = await chamberWithTimeout(
         new Promise((resolve, reject) => {
-          api.getUserInfo(userID, (error, data) =>
-            error ? reject(error) : resolve(data)
-          );
+          let settled = false;
+          const finish = (error, data) => {
+            if (settled) return;
+            settled = true;
+            error ? reject(error) : resolve(data);
+          };
+          try {
+            const result = api.getUserInfo(userID, finish);
+            if (result && typeof result.then === "function") {
+              result.then(data => finish(null, data), error => finish(error));
+            }
+          } catch (error) {
+            finish(error);
+          }
         }),
         4000,
         "getUserInfo"

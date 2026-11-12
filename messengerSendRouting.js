@@ -1,9 +1,8 @@
 "use strict";
 
 /**
- * Resolve the ws3-fca thread type without relying only on its legacy ID-length
- * heuristic. Explicit caller intent wins; otherwise known dashboard groups
- * are sent as group threads. Unknown IDs retain ws3-fca's default behavior.
+ * Resolve explicit thread intent before sending. Known groups and explicit
+ * caller intent win; unknown short numeric IDs retain the legacy private fallback.
  */
 function resolveMessengerIsGroup(threadID, requestedIsGroup, knownGroupIds) {
   if (typeof requestedIsGroup === "boolean") return requestedIsGroup;
@@ -15,35 +14,74 @@ function resolveMessengerIsGroup(threadID, requestedIsGroup, knownGroupIds) {
 }
 
 /**
- * Invoke ws3-fca 2.0.1 sendMessage using its callback API:
- * sendMessage(message, threadID, callback, replyToMessage, isGroup).
+ * ws3-fca 3.5.2 exposes Promise-based sendMessage and sendMessageMqtt.
  *
- * For explicit private messages (job.isGroup === false), prefer
- * api.sendMessageMqtt(msg, threadID, callback, replyToMessage) when exposed
- * by ws3-fca 2.0.1 so 1-on-1 PMs bypass the retired /messaging/send/ HTTP path.
+ * sendMessage(msg, threadID, replyToMessage, isSingleUser)
+ * sendMessageMqtt(msg, threadID, replyToMessage, callback?)
+ *
+ * The Traffic Governor still uses an error-first callback contract. Bridge the
+ * Promise result exactly once so its queue records the real rejection/result.
  */
 function invokeMessengerSend(api, job, callback) {
   if (!api || typeof api.sendMessage !== "function") {
     throw new TypeError("Messenger sendMessage is unavailable.");
   }
+  if (typeof callback !== "function") {
+    throw new TypeError("Messenger send callback is required.");
+  }
 
-  // Targeted PM-only MQTT path (leaves group sends and unknown IDs completely untouched)
-  if (job.isGroup === false && typeof api.sendMessageMqtt === "function") {
-    const mqttArgs = [job.message, job.threadID, callback];
-    if (job.replyToMessageID) {
-      mqttArgs.push(job.replyToMessageID);
+  let settled = false;
+  const finish = (error, info) => {
+    if (settled) return;
+    settled = true;
+    callback(error || null, info || null);
+  };
+
+  let result;
+  try {
+    if (job.isGroup === false && typeof api.sendMessageMqtt === "function") {
+      // In 3.5.2 the third parameter is replyToMessage, not callback.
+      result = api.sendMessageMqtt(
+        job.message,
+        job.threadID,
+        job.replyToMessageID || undefined
+      );
+    } else {
+      // Keep group sends on the standard sendMessage path. Preserve the
+      // legacy <=15-digit private-thread fallback only when callers supplied
+      // no explicit classification; known groups and explicit intent win.
+      const threadKey = String(job.threadID == null ? "" : job.threadID);
+      const legacyPrivateFallback =
+        job.isGroup == null && /^\d{6,15}$/.test(threadKey);
+      const isSingleUser = job.isGroup === false || legacyPrivateFallback;
+      result = api.sendMessage(
+        job.message,
+        job.threadID,
+        job.replyToMessageID || undefined,
+        isSingleUser
+      );
     }
-    return api.sendMessageMqtt(...mqttArgs);
+  } catch (error) {
+    finish(error);
+    return undefined;
   }
 
-  const args = [job.message, job.threadID, callback];
-  if (job.replyToMessageID) {
-    args.push(job.replyToMessageID);
-  } else if (typeof job.isGroup === "boolean") {
-    args.push(null);
+  if (!result || typeof result.then !== "function") {
+    const error = new TypeError("ws3-fca 3.5.2 send API did not return a Promise.");
+    finish(error);
+    return result;
   }
-  if (typeof job.isGroup === "boolean") args.push(job.isGroup);
-  return api.sendMessage(...args);
+
+  return Promise.resolve(result).then(
+    info => {
+      finish(null, info);
+      return info;
+    },
+    error => {
+      finish(error);
+      return undefined;
+    }
+  );
 }
 
 module.exports = { invokeMessengerSend, resolveMessengerIsGroup };

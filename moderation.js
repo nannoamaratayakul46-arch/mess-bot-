@@ -1,5 +1,7 @@
 "use strict";
 
+const { sendGroupMessage } = require("./messengerApiCompat");
+
 const { resolveModerationTarget } = require("./moderation-target");
 const { resolveMemberName } = require("./memberNameResolver");
 
@@ -2488,29 +2490,12 @@ function rateLimit(
 |--------------------------------------------------------------------------
 */
 
-async function send(
-  api,
-  threadID,
-  message
-) {
-  return new Promise(
-    (resolve) => {
-      try {
-        api.sendMessage(
-          message,
-          threadID,
-          () => resolve()
-        );
-      } catch (error) {
-        console.error(
-          "[moderation] send error:",
-          error
-        );
-
-        resolve();
-      }
-    }
-  );
+async function send(api, threadID, message) {
+  try {
+    await sendGroupMessage(api, message, threadID);
+  } catch (error) {
+    console.error("[moderation] send error:", error);
+  }
 }
 
 /*
