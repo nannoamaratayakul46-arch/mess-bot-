@@ -215,6 +215,7 @@ async function connect() {
       name_lock_mode TEXT NOT NULL DEFAULT 'normal',
       name_cycle_names JSONB NOT NULL DEFAULT '[]'::jsonb,
       name_cycle_index INTEGER NOT NULL DEFAULT 0,
+      name_cycle_interval_ms INTEGER NOT NULL DEFAULT 9000,
       updated_at BIGINT NOT NULL DEFAULT 0,
       last_restore_at BIGINT
     );
@@ -228,6 +229,7 @@ async function connect() {
       ADD COLUMN IF NOT EXISTS name_lock_mode TEXT NOT NULL DEFAULT 'normal',
       ADD COLUMN IF NOT EXISTS name_cycle_names JSONB NOT NULL DEFAULT '[]'::jsonb,
       ADD COLUMN IF NOT EXISTS name_cycle_index INTEGER NOT NULL DEFAULT 0,
+      ADD COLUMN IF NOT EXISTS name_cycle_interval_ms INTEGER NOT NULL DEFAULT 9000,
       ADD COLUMN IF NOT EXISTS updated_at BIGINT NOT NULL DEFAULT 0,
       ADD COLUMN IF NOT EXISTS last_restore_at BIGINT;
   `);

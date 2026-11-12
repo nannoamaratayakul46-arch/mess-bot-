@@ -20,6 +20,7 @@ let guardTimer = null;
 let guardRunning = false;
 let nameCycleTimer = null;
 let nameCycleRunning = false;
+const nameCycleLastRun = new Map();
 
 function cooldownLeft(threadId, kind) {
   const key = threadId + ":" + kind;
@@ -384,13 +385,16 @@ async function runNameCycleTick({ db, getApi, audit = () => {} }) {
   nameCycleRunning = true;
   try {
     const result = await db.query(
-      "SELECT thread_id, name_cycle_names, name_cycle_index FROM group_photo_guard " +
+      "SELECT thread_id, name_cycle_names, name_cycle_index, name_cycle_interval_ms FROM group_photo_guard " +
       "WHERE name_lock_enabled = TRUE AND name_lock_mode = 'cycle' ORDER BY updated_at ASC LIMIT 100"
     );
     for (const row of result.rows || []) {
       const threadId = String(row.thread_id);
       const names = Array.isArray(row.name_cycle_names) ? row.name_cycle_names : [];
       if (names.length !== 10 || names.some(name => typeof name !== "string" || !name.trim())) continue;
+      const intervalMs = Math.max(1000, Math.min(300000, Number(row.name_cycle_interval_ms) || 9000));
+      const now = Date.now();
+      if (now - (nameCycleLastRun.get(threadId) || 0) < intervalMs) continue;
       const index = ((Number(row.name_cycle_index) || 0) % names.length + names.length) % names.length;
       const title = names[index].trim().slice(0, 80);
       try {
@@ -399,6 +403,7 @@ async function runNameCycleTick({ db, getApi, audit = () => {} }) {
           "UPDATE group_photo_guard SET name_cycle_index = $2, expected_title = $3, updated_at = $4 WHERE thread_id = $1 AND name_lock_enabled = TRUE AND name_lock_mode = 'cycle'",
           [threadId, (index + 1) % names.length, title, Date.now()]
         );
+        nameCycleLastRun.set(threadId, Date.now());
         audit("[NAME-CYCLE] Updated group name for " + threadId + " (" + (index + 1) + "/10)");
       } catch (error) {
         console.warn("[NAME-CYCLE] Update failed for " + threadId + ": " + String(error?.message || error).replace(/[\\r\\n]+/g, " ").slice(0, 140));
@@ -413,7 +418,8 @@ async function runNameCycleTick({ db, getApi, audit = () => {} }) {
 
 function startNameCycleScheduler(dependencies) {
   if (nameCycleTimer) return;
-  nameCycleTimer = setInterval(() => { void runNameCycleTick(dependencies); }, 9000);
+  // Poll at one-second granularity; each GC enforces its own persisted interval.
+  nameCycleTimer = setInterval(() => { void runNameCycleTick(dependencies); }, 1000);
   nameCycleTimer.unref?.();
 }
 
@@ -556,7 +562,7 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
     if (!threadId) return;
     try {
       const result = await db.query(
-        "SELECT name_lock_enabled, name_lock_mode, name_cycle_names, name_cycle_index, expected_title " +
+        "SELECT name_lock_enabled, name_lock_mode, name_cycle_names, name_cycle_index, name_cycle_interval_ms, expected_title " +
         "FROM group_photo_guard WHERE thread_id = $1", [threadId]
       );
       const row = result.rows[0] || {};
@@ -566,6 +572,7 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
         mode: row.name_lock_mode === "cycle" ? "cycle" : "normal",
         names: Array.isArray(row.name_cycle_names) ? row.name_cycle_names : [],
         index: Number(row.name_cycle_index) || 0,
+        interval_ms: Math.max(1000, Math.min(300000, Number(row.name_cycle_interval_ms) || 9000)),
         expected_title: row.expected_title || ""
       });
     } catch (error) {
@@ -580,8 +587,12 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
     const enabled = req.body?.enabled;
     const mode = req.body?.mode;
     const names = req.body?.names;
+    const intervalMs = Number(req.body?.interval_ms ?? 9000);
     if (typeof enabled !== "boolean" || !["normal", "cycle"].includes(mode)) {
       return res.status(400).json({ ok: false, error: "Choose an enabled state and a valid name-lock mode." });
+    }
+    if (!Number.isInteger(intervalMs) || intervalMs < 1000 || intervalMs > 300000) {
+      return res.status(400).json({ ok: false, error: "Cycling interval must be between 1 and 300 seconds." });
     }
     let cleanNames = [];
     if (mode === "cycle") {
@@ -601,18 +612,19 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
         if (!expectedTitle) return res.status(409).json({ ok: false, error: "Could not read this group's current name. Refresh the group list and try again." });
       }
       const result = await db.query(
-        "INSERT INTO group_photo_guard(thread_id, name_lock_enabled, name_lock_mode, name_cycle_names, name_cycle_index, expected_title, updated_at) " +
-        "VALUES ($1, $2, $3, $4::jsonb, 0, CASE WHEN $2 AND $3 = 'normal' THEN $5 ELSE NULL END, $6) " +
+        "INSERT INTO group_photo_guard(thread_id, name_lock_enabled, name_lock_mode, name_cycle_names, name_cycle_index, name_cycle_interval_ms, expected_title, updated_at) " +
+        "VALUES ($1, $2, $3, $4::jsonb, 0, $5, CASE WHEN $2 AND $3 = 'normal' THEN $6 ELSE NULL END, $7) " +
         "ON CONFLICT(thread_id) DO UPDATE SET name_lock_enabled = EXCLUDED.name_lock_enabled, " +
         "name_lock_mode = EXCLUDED.name_lock_mode, name_cycle_names = EXCLUDED.name_cycle_names, " +
+        "name_cycle_interval_ms = EXCLUDED.name_cycle_interval_ms, " +
         "name_cycle_index = CASE WHEN group_photo_guard.name_lock_mode = EXCLUDED.name_lock_mode AND group_photo_guard.name_cycle_names = EXCLUDED.name_cycle_names THEN group_photo_guard.name_cycle_index ELSE 0 END, " +
         "expected_title = CASE WHEN EXCLUDED.name_lock_enabled AND EXCLUDED.name_lock_mode = 'normal' THEN COALESCE(EXCLUDED.expected_title, group_photo_guard.expected_title) ELSE group_photo_guard.expected_title END, " +
         "updated_at = EXCLUDED.updated_at " +
-        "RETURNING name_lock_enabled, name_lock_mode, name_cycle_names, name_cycle_index",
-        [threadId, enabled, mode, JSON.stringify(cleanNames), expectedTitle || null, Date.now()]
+        "RETURNING name_lock_enabled, name_lock_mode, name_cycle_names, name_cycle_index, name_cycle_interval_ms",
+        [threadId, enabled, mode, JSON.stringify(cleanNames), intervalMs, expectedTitle || null, Date.now()]
       );
       audit("[NAME-LOCK] " + (enabled ? "Enabled " + mode : "Disabled") + " for " + threadId);
-      return res.json({ ok: true, enabled: Boolean(result.rows[0]?.name_lock_enabled), mode: result.rows[0]?.name_lock_mode, names: result.rows[0]?.name_cycle_names || [], index: Number(result.rows[0]?.name_cycle_index) || 0 });
+      return res.json({ ok: true, enabled: Boolean(result.rows[0]?.name_lock_enabled), mode: result.rows[0]?.name_lock_mode, names: result.rows[0]?.name_cycle_names || [], index: Number(result.rows[0]?.name_cycle_index) || 0, interval_ms: Number(result.rows[0]?.name_cycle_interval_ms) || 9000 });
     } catch (error) {
       audit("[NAME-LOCK] Settings update failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
       return res.status(503).json({ ok: false, error: "Could not save GC name-lock settings." });

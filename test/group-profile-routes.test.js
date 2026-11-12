@@ -259,6 +259,29 @@ test("cycling lock advances through exactly ten configured names for an enabled 
   assert.equal(updates[0][2], "GC name 4");
 });
 
+test("cycling lock respects each group's configured interval", async () => {
+  let setTitleCalls = 0;
+  const names = Array.from({ length: 10 }, (_, index) => "Timed GC " + (index + 1));
+  const db = {
+    async query(sql) {
+      if (sql.startsWith("SELECT thread_id, name_cycle_names")) {
+        return { rows: [{
+          thread_id: "interval-test-thread",
+          name_cycle_names: names,
+          name_cycle_index: 0,
+          name_cycle_interval_ms: 60000,
+        }] };
+      }
+      if (sql.startsWith("UPDATE group_photo_guard SET name_cycle_index")) return { rows: [] };
+      throw new Error("Unexpected query: " + sql);
+    },
+  };
+  const api = { setTitle() { setTitleCalls += 1; return Promise.resolve(); } };
+  await runNameCycleTick({ db, getApi: () => api });
+  await runNameCycleTick({ db, getApi: () => api });
+  assert.equal(setTitleCalls, 1, "a group must not cycle again before its configured interval elapses");
+});
+
 test("cycling lock skips rows that do not contain ten valid names", async () => {
   let setTitleCalls = 0;
   const db = {
