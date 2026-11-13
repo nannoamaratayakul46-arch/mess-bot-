@@ -92,8 +92,8 @@ function registerModerationRoutes(app, {
       }
 
       const api = getApi();
-      if (!api || typeof api.removeUserFromGroup !== "function") {
-        return res.status(503).json({ ok: false, error: "Messenger is not connected or group removal is unavailable." });
+      if (!api || typeof api.gcmember !== "function") {
+        return res.status(503).json({ ok: false, error: "Messenger is not connected or ws3-fca gcmember group removal is unavailable." });
       }
 
       let banSaved = null;

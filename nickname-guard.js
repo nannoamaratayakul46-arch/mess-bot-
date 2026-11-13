@@ -2,7 +2,7 @@
 
 const db = require("./db");
 const { isAdmin } = require("./permissions");
-const { changeNickname: changeNicknameCompat, setGroupTitle } = require("./messengerApiCompat");
+const { changeNickname: changeNicknameCompat, setGroupTitle, changeGroupImage: changeGroupImageCompat } = require("./messengerApiCompat");
 
 let tableReady = false;
 let tablePromise = null;
@@ -666,41 +666,15 @@ async function clearProtectedImage(threadID) {
   return result.rowCount > 0;
 }
 
-function changeGroupImageAsync(api, imageBuffer, threadID) {
-  return new Promise((resolve, reject) => {
-    if (!api || typeof api.changeGroupImage !== "function") {
-      reject(
-        new Error(
-          "This ws3-fca build does not expose api.changeGroupImage()."
-        )
-      );
-      return;
-    }
-
-    let settled = false;
-
-    const done = (error) => {
-      if (settled) return;
-      settled = true;
-
-      if (error) reject(error);
-      else resolve();
-    };
-
-    try {
-      const result = api.changeGroupImage(
-        require("stream").Readable.from(imageBuffer),
-        String(threadID),
-        done
-      );
-
-      if (result && typeof result.then === "function") {
-        result.then(() => done()).catch(done);
-      }
-    } catch (error) {
-      done(error);
-    }
-  });
+async function changeGroupImageAsync(api, imageBuffer, threadID) {
+  if (!Buffer.isBuffer(imageBuffer) || !imageBuffer.length) {
+    throw new TypeError("A non-empty group photo buffer is required.");
+  }
+  return changeGroupImageCompat(
+    api,
+    require("stream").Readable.from(imageBuffer),
+    String(threadID)
+  );
 }
 
 async function fetchImageBuffer(url) {

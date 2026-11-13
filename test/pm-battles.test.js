@@ -97,9 +97,9 @@ test("PM Battle self-laugh reacts to the exact sent message ID after a randomize
   const reactions = [];
   const api = {
     getCurrentUserID: () => "9999999999999999",
-    setMessageReactionMqtt: (reaction, messageId, threadId, callback) => {
+    // Raw ws3-fca 3.5.2 publishes synchronously and accepts no callback.
+    setMessageReactionMqtt: (reaction, messageId, threadId) => {
       reactions.push({ reaction, messageId, threadId });
-      callback(null);
     },
   };
   const battles = createPmBattles({

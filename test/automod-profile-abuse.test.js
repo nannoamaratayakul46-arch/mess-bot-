@@ -50,9 +50,9 @@ function makeProfileHarness({ enabled = true, admins = ["bot-id"] } = {}) {
   const api = {
     getCurrentUserID: () => "bot-id",
     getThreadInfo: (_threadID, callback) => callback(null, { adminIDs: admins }),
-    removeUserFromGroup: (userID, threadID, callback) => {
-      removed.push({ userID, threadID });
-      callback(null);
+    gcmember: async (action, userIDs, threadID) => {
+      if (action === "remove") removed.push({ userID: String(userIDs), threadID: String(threadID) });
+      return { ok: true };
     },
   };
   const detector = createAntiSpam({

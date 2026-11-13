@@ -1,5 +1,7 @@
 "use strict";
 
+const { setMessageReactionMqtt } = require("./messengerApiCompat");
+
 const MEMBER_ID_RE = /^\d{6,32}$/;
 const STOP_RE = /^(?:stop|stop bot|tama na|tigil|ayoko na|wag na|huwag na|leave me alone|don't message me|do not message me|stop messaging me|dont pm me|don't pm me|please stop|enough)$/i;
 const MAX_TURNS = 20;
@@ -183,15 +185,23 @@ function createPmBattles({
     const delayMs = 1000 + Math.floor(random() * 2001);
     setTimer(() => {
       try {
-        const callback = error => {
-          if (error) return markError("SELF_LAUGH_FAILED", error);
-          diagnostics.last_reaction_at = new Date(now()).toISOString();
-          mark("SELF_LAUGH_SENT", { thread_id: threadId, message_id: messageId, delay_ms: delayMs });
-        };
         if (typeof api?.setMessageReactionMqtt === "function") {
-          api.setMessageReactionMqtt(settings.self_laugh_reaction, messageId, String(threadId), callback);
+          setMessageReactionMqtt(api, settings.self_laugh_reaction, messageId, String(threadId))
+            .then(result => {
+              diagnostics.last_reaction_at = new Date(now()).toISOString();
+              mark(result?.acknowledged === false ? "SELF_LAUGH_PUBLISHED" : "SELF_LAUGH_SENT", {
+                thread_id: threadId, message_id: messageId, delay_ms: delayMs,
+                acknowledged: result?.acknowledged !== false
+              });
+            })
+            .catch(error => markError("SELF_LAUGH_FAILED", error));
         } else if (typeof api?.setMessageReaction === "function") {
-          api.setMessageReaction(settings.self_laugh_reaction, messageId, callback, true);
+          Promise.resolve(api.setMessageReaction(settings.self_laugh_reaction, messageId))
+            .then(() => {
+              diagnostics.last_reaction_at = new Date(now()).toISOString();
+              mark("SELF_LAUGH_SENT", { thread_id: threadId, message_id: messageId, delay_ms: delayMs });
+            })
+            .catch(error => markError("SELF_LAUGH_FAILED", error));
         } else {
           mark("SELF_LAUGH_UNAVAILABLE", { thread_id: threadId, message_id: messageId });
         }

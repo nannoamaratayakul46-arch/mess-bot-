@@ -233,7 +233,8 @@ test("dashboard archive and leave endpoints persist ignored groups", () => {
   assert.match(source, /eclipse_dashboard_archived_groups/);
   assert.match(source, /app\.post\(\s*"\/api\/dashboard\/groups\/:thread_id\/archive"/);
   assert.match(source, /app\.post\(\s*"\/api\/dashboard\/groups\/:thread_id\/leave"/);
-  assert.match(source, /removeUserFromGroup\(currentUserID, threadID, done\)/);
+  assert.match(source, /typeof activeMessengerApi\.gcmember !== "function"/);
+  assert.match(source, /changeGroupMember\(activeMessengerApi, "remove", currentUserID, threadID\)/);
   assert.match(source, /const countdownArchiveCheck = threadId[\s\S]*?isDashboardGroupArchived\(threadId\)/);
   assert.match(source, /if \(await countdownArchiveCheck\) return/);
   assert.match(source, /archivedDashboardGroups\.add\(threadID\)/);

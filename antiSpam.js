@@ -6,7 +6,7 @@ const { createRaidShieldStore } = require("./raidShieldStore");
 const express = require("express");
 const { getAutoModSettings, setAutoModEnabled, removeFromGroup, isAdmin, isBotOwner } = require("./moderation");
 const { resolveMemberName, idOf } = require("./memberNameResolver");
-const { sendGroupMessage } = require("./messengerApiCompat");
+const { sendGroupMessage, changeGroupMember, changeGroupAdminStatus } = require("./messengerApiCompat");
 
 const DEFAULTS = Object.freeze({
   max_messages: 6,
@@ -24,27 +24,6 @@ const clamp = (value, min, max, fallback) => {
   return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.trunc(n))) : fallback;
 };
 const norm = value => String(value || "").toLowerCase().replace(/\s+/g, " ").trim();
-
-function callbackCall(invoke, timeoutMs = 10000) {
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    const finish = (error, data) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timer);
-      error ? reject(error) : resolve(data);
-    };
-    const timer = setTimeout(() => finish(new Error("Messenger API timed out")), timeoutMs);
-    try {
-      const result = invoke((error, data) => finish(error, data));
-      if (result && typeof result.then === "function") {
-        result.then(data => finish(null, data), error => finish(error));
-      }
-    } catch (error) {
-      finish(error);
-    }
-  });
-}
 
 function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, log = () => {}, onGroupJoin = async () => {}, getSettings = getAutoModSettings, setEnabled = setAutoModEnabled, isBotOwnerId = isBotOwner, removeFromGroupFn = removeFromGroup }) {
   if (!db || typeof db.query !== "function") throw new TypeError("antiSpam requires the persistent db query interface");
@@ -176,15 +155,12 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         /target is a group admin/i.test(String(removal?.errorMessage || ""))
       ) &&
       !isBotOwner(userID) &&
-      !isAdmin(userID) &&
-      api &&
-      typeof api.changeAdminStatus === "function"
+      !isAdmin(userID)
     ) {
-      // Repeated-spam escalation for a group-admin spammer. Never demote the
-      // configured bot owner or a trusted bot admin; only act in this group.
+      // Demote and verify the role from fresh thread info before retrying removal.
       try {
-        await callbackCall(cb => api.changeAdminStatus(String(threadID), String(userID), false, cb), 12000);
-        log(`[AUTOMOD-SPAM] Demotion request succeeded for spammer ${userID} in ${threadID}; retrying removal.`);
+        await changeGroupAdminStatus(api, "demote", userID, threadID);
+        log(`[AUTOMOD-SPAM] Admin demotion verified for spammer ${userID} in ${threadID}; retrying removal.`);
         removal = await removeFromGroupFn(api, String(threadID), String(userID));
       } catch (error) {
         removalFailures.set(failureKey, Date.now());
@@ -373,22 +349,25 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
       if (settings?.enabled !== true) return;
       const config = await getConfig(threadID);
       if (config.sensitive_admin_enabled !== true) return;
-      if (typeof api?.addUserToGroup !== "function") {
-        log("[AUTOMOD-SENSITIVE] Trusted administrator was removed, but addUserToGroup is unavailable; cannot attempt rejoin.");
+      if (typeof api?.gcmember !== "function") {
+        log("[AUTOMOD-SENSITIVE] Trusted administrator was removed, but ws3-fca gcmember is unavailable; cannot attempt rejoin.");
         return;
       }
       try {
-        await callbackCall(cb => api.addUserToGroup(removedID, threadID, cb), 12000);
+        await changeGroupMember(api, "add", removedID, threadID);
         log(`[AUTOMOD-SENSITIVE] Membership re-add request succeeded for ${ownerRemoved ? "bot owner" : "trusted group admin"} in ${threadID}.`);
-        if (trustedRemoved && typeof api.changeAdminStatus === "function") {
+        let adminStatus = "admin role restoration was not required";
+        if (ownerRemoved || trustedRemoved) {
           try {
-            await callbackCall(cb => api.changeAdminStatus(threadID, removedID, true, cb), 12000);
-            log(`[AUTOMOD-SENSITIVE] Trusted admin promotion request succeeded after re-add in ${threadID}.`);
+            await changeGroupAdminStatus(api, "promote", removedID, threadID);
+            adminStatus = "admin role restoration was verified";
+            log(`[AUTOMOD-SENSITIVE] Protected admin promotion verified after re-add in ${threadID}.`);
           } catch (error) {
-            log(`[AUTOMOD-SENSITIVE] Trusted admin promotion after re-add failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
+            adminStatus = "admin role restoration failed or was not confirmed";
+            log(`[AUTOMOD-SENSITIVE] Protected admin promotion after re-add failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
           }
         }
-        try { await sendMessage(api, threadID, "Sensitive AutoMod: a protected administrator was removed; the bot attempted to restore their membership and admin status."); } catch (_) {}
+        try { await sendMessage(api, threadID, "Sensitive AutoMod: protected administrator membership was restored; " + adminStatus + "."); } catch (_) {}
       } catch (error) {
         log(`[AUTOMOD-SENSITIVE] Could not re-add trusted administrator to ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
       }
@@ -444,13 +423,9 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     // Only use the IDs supplied by the Messenger remove_admin event.
     let promoted = false;
     try {
-      if (!api || typeof api.changeAdminStatus !== "function") {
-        log("[AUTOMOD-SENSITIVE] Cannot restore admin status: changeAdminStatus is unavailable.");
-      } else {
-        await callbackCall(cb => api.changeAdminStatus(threadID, targetID, true, cb), 12000);
-        promoted = true;
-        log(`[AUTOMOD-SENSITIVE] Admin restoration request succeeded for ${targetIsOwner ? "owner" : "trusted group admin"} in ${threadID}.`);
-      }
+      await changeGroupAdminStatus(api, "promote", targetID, threadID);
+      promoted = true;
+      log(`[AUTOMOD-SENSITIVE] Admin restoration verified for ${targetIsOwner ? "owner" : "trusted group admin"} in ${threadID}.`);
     } catch (error) {
       log(`[AUTOMOD-SENSITIVE] ${targetIsOwner ? "Owner admin restoration failed" : "Trusted admin restoration failed"} in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
     }
@@ -460,12 +435,14 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
     if (targetIsOwner) {
       if (String(process.env.SENSITIVE_ADMIN_DEMOTE_ACTOR_ENABLED || "").toLowerCase() !== "true") {
         log("[AUTOMOD-SENSITIVE] Actor demotion skipped: opt-in is disabled.");
+      } else if (typeof api?.gcrule !== "function" && typeof api?.__eclipseTrafficRawApi?.gcrule !== "function") {
+        log("[AUTOMOD-SENSITIVE] Event actor demotion unavailable: ws3-fca gcrule is missing; no kick fallback was attempted.");
       } else if (!promoted) {
         log("[AUTOMOD-SENSITIVE] Actor demotion skipped because owner restoration failed.");
-      } else if (typeof api?.changeAdminStatus === "function") {
+      } else {
         try {
-          await callbackCall(cb => api.changeAdminStatus(threadID, actorID, false, cb), 12000);
-          log(`[AUTOMOD-SENSITIVE] Event actor demotion request succeeded in ${threadID}.`);
+          await changeGroupAdminStatus(api, "demote", actorID, threadID);
+          log(`[AUTOMOD-SENSITIVE] Event actor demotion verified in ${threadID}.`);
         } catch (error) {
           log(`[AUTOMOD-SENSITIVE] Event actor demotion failed in ${threadID}: ${String(error?.message || error).slice(0, 160)}`);
         }
@@ -479,8 +456,8 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
         let removal;
         if (typeof removeFromGroupFn === "function") {
           removal = await removeFromGroupFn(api, threadID, actorID);
-        } else if (typeof api?.removeUserFromGroup === "function") {
-          await callbackCall(cb => api.removeUserFromGroup(actorID, threadID, cb), 12000);
+        } else if (typeof api?.gcmember === "function") {
+          await changeGroupMember(api, "remove", actorID, threadID);
           removal = { ok: true };
         } else {
           throw new Error("no supported group-removal API");
@@ -810,9 +787,9 @@ function createAntiSpam({ db, getApi = () => null, isKnownGroup = () => true, lo
           return res.json({ ok: true, action: reviewed });
         }
         const api = getApi();
-        if (!api || typeof api.removeUserFromGroup !== "function") {
+        if (!api || typeof api.gcmember !== "function") {
           await raidShieldStore.completeApprovalAction(actionId, false);
-          return res.status(503).json({ error: "Messenger removal API is unavailable; action marked failed." });
+          return res.status(503).json({ error: "ws3-fca gcmember removal API is unavailable; action marked failed." });
         }
         const removal = await removeFromGroup(api, threadID, reviewed.target_id);
         const completed = await raidShieldStore.completeApprovalAction(actionId, removal?.ok === true);

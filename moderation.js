@@ -1,6 +1,6 @@
 "use strict";
 
-const { sendGroupMessage } = require("./messengerApiCompat");
+const { sendGroupMessage, changeGroupMember } = require("./messengerApiCompat");
 
 const { resolveModerationTarget } = require("./moderation-target");
 const { resolveMemberName } = require("./memberNameResolver");
@@ -3131,16 +3131,11 @@ async function removeFromGroup(
   threadID,
   targetId
 ) {
-  if (
-    typeof api.removeUserFromGroup !==
-    "function"
-  ) {
+  if (typeof api?.gcmember !== "function") {
     return {
       ok: false,
-      errorCode:
-        "METHOD_UNAVAILABLE",
-      errorMessage:
-        "removeUserFromGroup is not available in the Facebook API client.",
+      errorCode: "METHOD_UNAVAILABLE",
+      errorMessage: "ws3-fca gcmember is unavailable; group removal was not attempted.",
       rawError: null,
     };
   }
@@ -3478,108 +3473,28 @@ async function removeFromGroup(
     };
   }
 
-  return new Promise((resolve) => {
-    let settled = false;
-
-    const finish = (result) => {
-      if (settled) {
-        return;
-      }
-
-      settled = true;
-      clearTimeout(timeout);
-
-      resolve(result);
+  let timeout;
+  try {
+    await Promise.race([
+      changeGroupMember(api, "remove", String(targetId), String(threadID)),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("Facebook did not complete the group-removal request in time.")), 15_000);
+        timeout.unref?.();
+      })
+    ]);
+    return { ok: true, errorCode: null, errorMessage: null, rawError: null };
+  } catch (error) {
+    const diagnostic = serializeFacebookError(error);
+    console.error("[moderation] ws3-fca gcmember removal:", diagnostic || error);
+    return {
+      ok: false,
+      errorCode: error?.code || error?.errorCode || "FACEBOOK_ERROR",
+      errorMessage: getFacebookErrorMessage(error) || String(error?.message || "Messenger rejected the group-removal request."),
+      rawError: diagnostic
     };
-
-    const timeout = setTimeout(() => {
-      finish({
-        ok: false,
-        errorCode: "REMOVAL_TIMEOUT",
-        errorMessage:
-          "Facebook did not complete the group-removal request in time.",
-        rawError: null,
-      });
-    }, 15_000);
-
-    const handleError = (error) => {
-      const diagnostic = serializeFacebookError(error);
-      const message = getFacebookErrorMessage(error);
-
-      console.error(
-        "[moderation] removeUserFromGroup:",
-        diagnostic || error
-      );
-
-      finish({
-        ok: false,
-        errorCode:
-          (error && typeof error === "object" &&
-            (error.code || error.errorCode || error.error_subcode)) ||
-          "FACEBOOK_ERROR",
-        errorMessage:
-          message ||
-          "Facebook/FCA returned an error without a readable message. Check the diagnostic details below.",
-        rawError: diagnostic,
-      });
-    };
-
-    const handleSuccess = () => {
-      finish({
-        ok: true,
-        errorCode: null,
-        errorMessage: null,
-        rawError: null,
-      });
-    };
-
-    try {
-      const callback = (error) => {
-        if (error) {
-          handleError(error);
-        } else {
-          handleSuccess();
-        }
-      };
-
-      const result =
-        api.removeUserFromGroup(
-          targetId,
-          threadID,
-          callback
-        );
-
-      // Support ws3-fca builds that return a Promise while
-      // retaining compatibility with callback-based builds.
-      if (
-        result &&
-        typeof result.then === "function"
-      ) {
-        result.then(
-          handleSuccess,
-          handleError
-        );
-      }
-    } catch (error) {
-      console.error(
-        "[moderation] Failed to remove user:",
-        error
-      );
-
-      const diagnostic = serializeFacebookError(error);
-      finish({
-        ok: false,
-        errorCode:
-          (error && typeof error === "object" &&
-            (error.code || error.errorCode || error.error_subcode)) ||
-          "EXCEPTION",
-        errorMessage:
-          getFacebookErrorMessage(error) ||
-          "An exception occurred while attempting to remove the user.",
-        rawError: diagnostic,
-      });
-    }
-  });
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
 }
 
 function formatRemovalFailure(removal) {

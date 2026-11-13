@@ -11,6 +11,8 @@ const {
   changeNickname,
   changeGroupImage,
   canChangeGroupImage,
+  changeGroupMember,
+  changeGroupAdminStatus,
 } = require("../messengerApiCompat");
 
 function trafficProxy(methods) {
@@ -64,11 +66,12 @@ test("raw reaction methods use 3.5.2 Promise signatures", async () => {
     setMessageReactionMqtt: (...args) => { calls.push(["mqtt", ...args]); return Promise.resolve(true); },
   };
   await setMessageReaction(api, "😂", "m4");
-  await setMessageReactionMqtt(api, "😂", "m5", "thread5");
+  const published = await setMessageReactionMqtt(api, "😂", "m5", "thread5");
   assert.deepEqual(calls, [
     ["standard", "😂", "m4"],
     ["mqtt", "😂", "m5", "thread5"],
   ]);
+  assert.deepEqual(published, { published: true, acknowledged: false, transport: "mqtt" });
 });
 
 test("raw Promise rejection is propagated", async () => {
@@ -129,4 +132,106 @@ test("group photo compatibility rejects failed upload responses", async () => {
     changeGroupImage(api, Readable.from(Buffer.from("image")), "thread-9"),
     /Group photo upload rejected by Messenger/
   );
+});
+
+
+test("raw ws3-fca 3.5.2 MQTT reaction is treated as synchronous publish, not callback completion", async () => {
+  let args;
+  const api = {
+    setMessageReactionMqtt: (...values) => { args = values; }
+  };
+  const result = await setMessageReactionMqtt(api, "❤️", "message-1", "thread-1");
+  assert.deepEqual(args, ["❤️", "message-1", "thread-1"]);
+  assert.deepEqual(result, { published: true, acknowledged: false, transport: "mqtt" });
+});
+
+test("raw MQTT reaction publish errors are propagated", async () => {
+  const api = {
+    setMessageReactionMqtt: () => { throw new Error("Not connected to MQTT"); }
+  };
+  await assert.rejects(
+    setMessageReactionMqtt(api, "😂", "message-2", "thread-2"),
+    /Not connected to MQTT/
+  );
+});
+
+
+test("ws3-fca 3.5.2 gcmember adapter adds and removes members using the current signature", async () => {
+  const calls = [];
+  const api = {
+    gcmember: async (...args) => {
+      calls.push(args);
+      return { type: "gc_member_update", action: args[0], threadID: args[2] };
+    }
+  };
+  await changeGroupMember(api, "add", "user-1", "thread-1");
+  await changeGroupMember(api, "remove", "user-2", "thread-1");
+  assert.deepEqual(calls, [
+    ["add", "user-1", "thread-1"],
+    ["remove", "user-2", "thread-1"]
+  ]);
+});
+
+test("ws3-fca gcmember adapter turns error_gc result objects into actionable failures", async () => {
+  const api = {
+    gcmember: async () => ({ type: "error_gc", error: "Not connected to MQTT" })
+  };
+  await assert.rejects(
+    changeGroupMember(api, "remove", "user-1", "thread-1"),
+    /Not connected to MQTT/
+  );
+});
+
+
+test("gcmember adapter times out when Messenger never settles the request", async () => {
+  const api = { gcmember: () => new Promise(() => {}) };
+  await assert.rejects(
+    changeGroupMember(api, "remove", "user-3", "thread-3", { timeoutMs: 5 }),
+    /group membership request timed out/
+  );
+});
+
+
+test("gcrule adapter verifies demotion and promotion against fresh group info", async () => {
+  const admins = new Set(["admin-1", "admin-2"]);
+  const calls = [];
+  const api = {
+    gcrule: async (action, userID, threadID) => {
+      calls.push([action, userID, threadID]);
+      if (action === "admin") admins.add(userID);
+      else admins.delete(userID);
+      return { type: "gc_rule_update", action };
+    },
+    getThreadInfo: (_threadID, callback) => callback(null, {
+      isGroup: true, adminIDs: [...admins].map(id => ({ id })),
+    }),
+  };
+  const demoted = await changeGroupAdminStatus(api, "demote", "admin-2", "group-1", { intervalMs: 0 });
+  const promoted = await changeGroupAdminStatus(api, "promote", "member-3", "group-1", { intervalMs: 0 });
+  assert.equal(demoted.verified, true);
+  assert.equal(promoted.verified, true);
+  assert.deepEqual(calls, [["unadmin", "admin-2", "group-1"], ["admin", "member-3", "group-1"]]);
+});
+
+test("gcrule adapter rejects error_gc_rule payloads", async () => {
+  const api = {
+    gcrule: async () => ({ type: "error_gc_rule", error: "User is not an admin." }),
+    getThreadInfo: (_id, callback) => callback(null, { adminIDs: [] }),
+  };
+  await assert.rejects(changeGroupAdminStatus(api, "demote", "member-1", "group-1"), /User is not an admin/);
+});
+
+test("gcrule adapter refuses success when fresh adminIDs never confirm the change", async () => {
+  const api = {
+    gcrule: async () => ({ type: "gc_rule_update" }),
+    getThreadInfo: (_id, callback) => callback(null, { adminIDs: [{ id: "admin-1" }] }),
+  };
+  await assert.rejects(
+    changeGroupAdminStatus(api, "demote", "admin-1", "group-1", { attempts: 2, intervalMs: 0 }),
+    /did not confirm admin demotion/
+  );
+});
+
+test("gcrule adapter reports a missing role API explicitly", async () => {
+  await assert.rejects(changeGroupAdminStatus({}, "demote", "admin-1", "group-1"), /gcrule group-admin API/);
 });

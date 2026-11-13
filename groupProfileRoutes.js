@@ -7,7 +7,7 @@ const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
 const { getThreadList: getGatedThreadList } = require("./messengerThreadList");
-const { canSetGroupTitle, canChangeGroupImage, setGroupTitle, changeGroupImage: changeGroupImageCompat } = require("./messengerApiCompat");
+const { canSetGroupTitle, canChangeGroupImage, setGroupTitle, changeGroupImage: changeGroupImageCompat, setMessageReactionMqtt } = require("./messengerApiCompat");
 
 const COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_IMAGE_BYTES = 1024 * 1024;
@@ -465,14 +465,15 @@ async function handleTargetedLaughReaction(api, event, db) {
 
   const delayMs = 3000 + Math.floor(Math.random() * 3001);
   const timer = setTimeout(() => {
-    const callback = error => {
-      if (error) console.warn("[TARGETED-LAUGH] Reaction failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
-    };
     try {
       if (typeof api.setMessageReactionMqtt === "function") {
-        api.setMessageReactionMqtt("😂", messageId, threadId, callback);
-      } else {
-        api.setMessageReaction("😂", messageId, callback, true);
+        setMessageReactionMqtt(api, "😂", messageId, threadId).catch(error => {
+          console.warn("[TARGETED-LAUGH] Reaction publish failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
+        });
+      } else if (typeof api.setMessageReaction === "function") {
+        api.setMessageReaction("😂", messageId).catch(error => {
+          console.warn("[TARGETED-LAUGH] Reaction failed for " + threadId + ": " + String(error?.message || error).slice(0, 140));
+        });
       }
     } catch (error) {
       console.warn("[TARGETED-LAUGH] Reaction error for " + threadId + ": " + String(error?.message || error).slice(0, 140));

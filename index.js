@@ -1,6 +1,7 @@
 "use strict";
 
 const { invokeMessengerSend, resolveMessengerIsGroup } = require("./messengerSendRouting");
+const { setMessageReactionMqtt, changeGroupMember } = require("./messengerApiCompat");
 
 // "/" is an admin-only Banat toggle. Keep unauthorized-attempt state at
 // module scope so it survives individual message-handler invocations.
@@ -2235,10 +2236,17 @@ function installTrafficGovernor(api) {
           try {
             const result = rawApi.setMessageReactionMqtt(reaction, messageID, threadID);
             if (typeof callback !== "function") return result;
-            return Promise.resolve(result).then(
-              info => { callback(null, info); return info; },
-              error => { callback(error); return undefined; }
-            );
+            if (result && typeof result.then === "function") {
+              return result.then(
+                info => { callback(null, info); return info; },
+                error => { callback(error); return undefined; }
+              );
+            }
+            // 3.5.2 publishes synchronously and returns undefined. Report only
+            // local publish acceptance, never a server-side acknowledgement.
+            const published = { published: true, acknowledged: false, transport: "mqtt" };
+            callback(null, published);
+            return published;
           } catch (error) {
             if (typeof callback === "function") { callback(error); return undefined; }
             throw error;
@@ -5629,29 +5637,15 @@ app.post(
     if (!activeMessengerApi || activeListenerGeneration <= 0) {
       return res.status(409).json({ ok: false, error: "Messenger is not connected." });
     }
-    if (typeof activeMessengerApi.removeUserFromGroup !== "function") {
-      return res.status(501).json({ ok: false, error: "This Messenger API client cannot leave group conversations." });
+    if (typeof activeMessengerApi.gcmember !== "function") {
+      return res.status(501).json({ ok: false, error: "This ws3-fca client does not expose gcmember, so leaving this group is unavailable." });
     }
     const currentUserID = String(activeMessengerApi.getCurrentUserID?.() || "").trim();
     if (!/^\d{6,20}$/.test(currentUserID)) {
       return res.status(409).json({ ok: false, error: "Could not verify the bot's Messenger user ID; no leave action was sent." });
     }
     try {
-      await new Promise((resolve, reject) => {
-        let settled = false;
-        const done = (error, result) => {
-          if (settled) return;
-          settled = true;
-          if (error) reject(error);
-          else resolve(result);
-        };
-        try {
-          const result = activeMessengerApi.removeUserFromGroup(currentUserID, threadID, done);
-          if (result && typeof result.then === "function") result.then(value => done(null, value)).catch(done);
-        } catch (error) {
-          done(error);
-        }
-      });
+      await changeGroupMember(activeMessengerApi, "remove", currentUserID, threadID);
       await db.query(`
         CREATE TABLE IF NOT EXISTS eclipse_dashboard_archived_groups (
           thread_id TEXT PRIMARY KEY,
@@ -7780,22 +7774,20 @@ async function handleMessage(
           }
         };
 
-        // ws3-fca MQTT signature: (reaction, messageID, threadID, callback).
-        // Fall back to the legacy method only when MQTT reactions are unavailable.
         if (typeof api.setMessageReactionMqtt === "function") {
-          api.setMessageReactionMqtt(
-            dashboardReactionConfig.reaction,
-            messageID,
-            threadId,
-            reactionCallback
-          );
+          setMessageReactionMqtt(api, dashboardReactionConfig.reaction, messageID, threadId)
+            .then(result => {
+              console.log("[BANAT] Allowed-sender reaction published:", {
+                reaction: reactionLabel, messageID, acknowledged: result?.acknowledged === true
+              });
+            })
+            .catch(reactionError => console.error("[BANAT] Allowed-sender laugh reaction failed:", reactionError));
+        } else if (typeof api.setMessageReaction === "function") {
+          Promise.resolve(api.setMessageReaction(dashboardReactionConfig.reaction, messageID))
+            .then(() => console.log("[BANAT] Allowed-sender reaction completed:", reactionLabel, messageID))
+            .catch(reactionError => console.error("[BANAT] Allowed-sender laugh reaction failed:", reactionError));
         } else {
-          api.setMessageReaction(
-            dashboardReactionConfig.reaction,
-            messageID,
-            reactionCallback,
-            true
-          );
+          console.warn("[BANAT] Reaction API is unavailable.");
         }
       } catch (reactionError) {
         console.error(
@@ -13062,7 +13054,7 @@ async function handleAutomaticBanatMessage({
 
       // Keep the selected Jaiden Target's group nickname synced with the resolved
       // Messenger name only. The dashboard's Banat alias must never rename the member.
-      if (dashboardTargetName && typeof api?.changeNickname === "function") {
+      if (dashboardTargetName && (typeof api?.nickname === "function" || typeof api?.changeNickname === "function")) {
         const nicknameKey = String(threadID) + ":" + String(dashboardTargetId);
         const nicknameValue = dashboardTargetName.trim();
         if (nicknameValue && jaidenTargetNicknameApplied.get(nicknameKey) !== nicknameValue) {
@@ -13319,9 +13311,18 @@ const jaidenTargetCountdown = createJaidenTargetCountdown({
           if (error) console.warn("[JAIDEN COUNTDOWN] Milestone reaction failed for " + number + " in " + threadId + ":", error?.message || error);
         };
         if (typeof api.setMessageReactionMqtt === "function") {
-          api.setMessageReactionMqtt(dashboardReactionConfig.reaction, messageID, threadId, callback);
+          setMessageReactionMqtt(api, dashboardReactionConfig.reaction, messageID, threadId)
+            .then(result => {
+              if (result?.acknowledged === false) {
+                console.info("[JAIDEN COUNTDOWN] Milestone reaction published to MQTT for " + number + " in " + threadId + ".");
+              }
+            })
+            .catch(error => console.warn("[JAIDEN COUNTDOWN] Milestone reaction failed for " + number + " in " + threadId + ":", error?.message || error));
         } else if (typeof api.setMessageReaction === "function") {
-          api.setMessageReaction(dashboardReactionConfig.reaction, messageID, callback, true);
+          Promise.resolve(api.setMessageReaction(dashboardReactionConfig.reaction, messageID))
+            .catch(error => console.warn("[JAIDEN COUNTDOWN] Milestone reaction failed for " + number + " in " + threadId + ":", error?.message || error));
+        } else {
+          console.warn("[JAIDEN COUNTDOWN] Reaction API unavailable for " + number + " in " + threadId + ".");
         }
       } catch (error) {
         console.warn("[JAIDEN COUNTDOWN] Milestone reaction error:", error?.message || error);

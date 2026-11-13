@@ -35,9 +35,9 @@ function makeHarness({ enabled = true, max_messages = 6, window_seconds = 8, rep
       sent.push({ text, threadID });
       callback(null, { messageID: "warning-message" });
     },
-    removeUserFromGroup: (userID, threadID, callback) => {
-      removed.push({ userID, threadID });
-      callback(null);
+    gcmember: async (action, userIDs, threadID) => {
+      if (action === "remove") removed.push({ userID: String(userIDs), threadID: String(threadID) });
+      return { ok: true };
     },
   };
   const detector = createAntiSpam({
@@ -131,13 +131,30 @@ test("automod continues role verification through legacy lookup when primary thr
   assert.ok(logs.some(message => message.includes("removed member-1")));
 });
 
-test("automod refuses to remove a group admin", async () => {
+test("automod demotes a group admin through gcrule before removing them", async () => {
   const { detector, api, sent, removed } = makeHarness();
+  const admins = new Set(["bot-id", "member-1"]);
+  api.getThreadInfo = (_threadID, callback) => callback(null, { adminIDs: [...admins] });
+  api.gcrule = async (action, userID, threadID) => {
+    if (action === "unadmin") admins.delete(String(userID));
+    else admins.add(String(userID));
+    return { type: "gc_rule_update", action, userID, threadID };
+  };
+  await sendBurst(detector, api, "first");
+  await sendBurst(detector, api, "second");
+  assert.equal(sent.length, 1);
+  assert.equal(removed.length, 1);
+  assert.deepEqual(removed[0], { userID: "member-1", threadID: "group-1" });
+});
+
+test("automod refuses to kick a group admin when gcrule is unavailable", async () => {
+  const { detector, api, sent, removed, logs } = makeHarness();
   api.getThreadInfo = (_threadID, callback) => callback(null, { adminIDs: ["bot-id", "member-1"] });
   await sendBurst(detector, api, "first");
   await sendBurst(detector, api, "second");
   assert.equal(sent.length, 1);
   assert.equal(removed.length, 0);
+  assert.ok(logs.some(message => /gcrule group-admin API/.test(message)));
 });
 
 test("automod counts sticker-only messages without changing ordinary word-spam handling", async () => {

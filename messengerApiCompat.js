@@ -73,12 +73,26 @@ function setMessageReaction(api, reaction, messageID, options = {}) {
 }
 
 function setMessageReactionMqtt(api, reaction, messageID, threadID, options = {}) {
-  const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : DEFAULT_TIMEOUT_MS;
-  return createCall(api, "setMessageReactionMqtt", (finish, isTrafficProxy) => (
-    isTrafficProxy
-      ? [reaction, String(messageID), String(threadID), finish]
-      : [reaction, String(messageID), String(threadID)]
-  ), timeoutMs);
+  const raw = rawApi(api);
+  const method = api?.__eclipseTrafficProxy === true ? api.setMessageReactionMqtt : raw?.setMessageReactionMqtt;
+  if (typeof method !== "function") {
+    return Promise.reject(new Error("Messenger API method unavailable: setMessageReactionMqtt"));
+  }
+
+  // ws3-fca 3.5.2 MQTT reaction publishing is synchronous and returns undefined.
+  // For the Traffic Governor proxy, preserve its callback-based queue contract.
+  if (api?.__eclipseTrafficProxy === true) {
+    const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : DEFAULT_TIMEOUT_MS;
+    return createCall(api, "setMessageReactionMqtt", finish =>
+      [reaction, String(messageID), String(threadID), finish], timeoutMs);
+  }
+
+  try {
+    method.call(raw, reaction, String(messageID), String(threadID));
+    return Promise.resolve({ published: true, acknowledged: false, transport: "mqtt" });
+  } catch (error) {
+    return Promise.reject(error);
+  }
 }
 
 
@@ -167,6 +181,104 @@ async function changeNickname(api, nickname, threadID, participantID) {
   );
 }
 
+async function changeGroupMember(api, action, userIDs, threadID, options = {}) {
+  const raw = rawApi(api);
+  if (typeof raw?.gcmember !== "function") {
+    throw new Error("This ws3-fca build does not expose the gcmember group-membership API.");
+  }
+  const normalizedAction = String(action || "").toLowerCase();
+  if (!["add", "remove"].includes(normalizedAction)) {
+    throw new TypeError("Group membership action must be add or remove.");
+  }
+  const ids = Array.isArray(userIDs) ? userIDs.map(String) : String(userIDs || "");
+  if ((Array.isArray(ids) && !ids.length) || (!Array.isArray(ids) && !ids)) {
+    throw new TypeError("At least one group member ID is required.");
+  }
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : DEFAULT_TIMEOUT_MS;
+  let timeout;
+  try {
+    const result = await Promise.race([
+      Promise.resolve(raw.gcmember(normalizedAction, ids, String(threadID))),
+      new Promise((_, reject) => {
+        timeout = setTimeout(() => reject(new Error("Messenger group membership request timed out.")), timeoutMs);
+        // Keep the deadline referenced so callers and tests always settle.
+      }),
+    ]);
+    if (result?.type === "error_gc" || result?.error) {
+      throw new Error(String(result.error || "Messenger rejected the group membership change."));
+    }
+    return result;
+  } finally {
+    if (timeout) clearTimeout(timeout);
+  }
+}
+
+function invokeCallbackOrPromise(api, method, args, timeoutMs = DEFAULT_TIMEOUT_MS) {
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const timer = setTimeout(() => finish(new Error("Messenger API timed out: " + method)), timeoutMs);
+    function finish(error, value) {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timer);
+      if (error) reject(error);
+      else resolve(value ?? null);
+    }
+    try {
+      const result = api[method](...args, (error, value) => finish(error, value));
+      if (result && typeof result.then === "function") result.then(value => finish(null, value), error => finish(error));
+      else if (result !== undefined) finish(null, result);
+    } catch (error) { finish(error); }
+  });
+}
+
+function isGroupAdmin(threadInfo, userID) {
+  const admins = Array.isArray(threadInfo?.adminIDs) ? threadInfo.adminIDs : [];
+  return admins.some(admin => {
+    const id = admin && typeof admin === "object" ? admin.id ?? admin.userID ?? admin.userId : admin;
+    return String(id ?? "") === String(userID);
+  });
+}
+
+async function changeGroupAdminStatus(api, action, userID, threadID, options = {}) {
+  const raw = rawApi(api);
+  if (typeof raw?.gcrule !== "function") throw new Error("This ws3-fca build does not expose the gcrule group-admin API.");
+  if (typeof raw?.getThreadInfo !== "function") throw new Error("Cannot verify group-admin changes: getThreadInfo is unavailable.");
+  const normalized = String(action || "").toLowerCase();
+  const rule = normalized === "promote" || normalized === "admin" ? "admin" :
+    normalized === "demote" || normalized === "unadmin" ? "unadmin" : null;
+  if (!rule) throw new TypeError("Group-admin action must be promote/admin or demote/unadmin.");
+  const targetID = String(userID || "").trim();
+  const groupID = String(threadID || "").trim();
+  if (!targetID || !groupID) throw new TypeError("Group-admin changes require user and thread IDs.");
+
+  const timeoutMs = Number.isFinite(options.timeoutMs) ? options.timeoutMs : 12000;
+  const attempts = Number.isInteger(options.attempts) ? Math.max(1, options.attempts) : 5;
+  const intervalMs = Number.isFinite(options.intervalMs) ? Math.max(0, options.intervalMs) : 600;
+  let timer;
+  let request;
+  try {
+    request = await Promise.race([
+      Promise.resolve(raw.gcrule(rule, targetID, groupID)),
+      new Promise((_, reject) => { timer = setTimeout(() => reject(new Error("Messenger group-admin request timed out.")), timeoutMs); })
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+  if (request?.type === "error_gc_rule" || request?.error) {
+    throw new Error(String(request.error || "Messenger rejected the group-admin change."));
+  }
+
+  const expected = rule === "admin";
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    const info = await invokeCallbackOrPromise(raw, "getThreadInfo", [groupID], timeoutMs);
+    if (isGroupAdmin(info, targetID) === expected) {
+      return { action: rule, userID: targetID, threadID: groupID, verified: true, request };
+    }
+    if (attempt + 1 < attempts && intervalMs > 0) await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+  throw new Error("Messenger did not confirm " + (expected ? "admin promotion" : "admin demotion") +
+    " for " + targetID + " in " + groupID + " after " + attempts + " checks.");
+}
+
 function parseMessengerResponse(response, label) {
   const status = Number(response?.statusCode ?? response?.status ?? 200);
   if (status < 200 || status >= 300) {
@@ -247,4 +359,6 @@ module.exports = {
   setGroupTitle,
   changeNickname,
   changeGroupImage,
+  changeGroupMember,
+  changeGroupAdminStatus,
 };
