@@ -11,6 +11,10 @@ This document records the compatibility boundary for the main bot migration from
 - `setMessageReaction` and `setMessageReactionMqtt` are Promise-based in 3.5.2. The guarded API proxy bridges their results to existing callback consumers.
 - `editMessage` queue processing accepts either callback completion or Promise settlement.
 - `sendTypingIndicator` accepts callback and Promise completion.
+- Group nickname updates use ws3-fca 3.5.2's `api.nickname(nickname, threadID, participantID)` instead of the removed legacy `changeNickname` name.
+- Group-name updates use `api.gcname(newName, threadID)` instead of the removed legacy `setTitle` name; both normal and cycling locks share this adapter.
+- Group-photo updates use the authenticated upload transport exposed through `api.defaultFuncs` and `api.ctx`, because ws3-fca 3.5.2 does not export `changeGroupImage`.
+- Member-name resolution retries generic payload placeholders through the separate profile-page lookup mode, while leaving genuinely unavailable names explicitly unresolved.
 
 ## Existing lookup and moderation compatibility
 

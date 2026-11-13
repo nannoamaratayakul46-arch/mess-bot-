@@ -2,6 +2,7 @@
 
 const db = require("./db");
 const { isAdmin } = require("./permissions");
+const { changeNickname: changeNicknameCompat, setGroupTitle } = require("./messengerApiCompat");
 
 let tableReady = false;
 let tablePromise = null;
@@ -498,104 +499,47 @@ function changeNicknameAsync(api, nickname, threadID, participantID) {
 
   return withNicknameWriteLock(threadId, async () => {
     const blockedUntil = getNicknameMutationBlockedUntil(threadId);
-
     if (blockedUntil > Date.now()) {
-      throw createNicknameMutationBlockedError(
-        threadId,
-        blockedUntil
-      );
+      throw createNicknameMutationBlockedError(threadId, blockedUntil);
     }
 
-    return new Promise((resolve, reject) => {
-      if (!api || typeof api.changeNickname !== "function") {
-        reject(
-          new Error(
-            "This ws3-fca build does not expose api.changeNickname()."
-          )
-        );
-        return;
+    const timeoutMs = Math.max(
+      5000,
+      Number(process.env.ECLIPSE_NICKNAME_API_TIMEOUT_MS || 25000)
+    );
+    let timer;
+    try {
+      await Promise.race([
+        changeNicknameCompat(api, nickname, threadId, participantId),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            reject(new Error(
+              `Messenger nickname change timed out after ${timeoutMs}ms (thread ${threadId}, member ${participantId}).`
+            ));
+          }, timeoutMs);
+          timer.unref?.();
+        }),
+      ]);
+    } catch (error) {
+      if (isNicknameMutationBlock(error)) {
+        const nextBlockedUntil = markNicknameMutationBlocked(threadId);
+        const wrapped = createNicknameMutationBlockedError(threadId, nextBlockedUntil);
+        wrapped.cause = error;
+        throw wrapped;
       }
-
-      let settled = false;
-      const timeoutMs = Math.max(
-        5000,
-        Number(process.env.ECLIPSE_NICKNAME_API_TIMEOUT_MS || 25000)
-      );
-      const timer = setTimeout(() => {
-        done(new Error(`Messenger nickname change timed out after ${timeoutMs}ms (thread ${threadId}, member ${participantId}).`));
-      }, timeoutMs);
-      timer.unref?.();
-
-      const done = (error) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timer);
-
-        if (error) {
-          if (isNicknameMutationBlock(error)) {
-            const nextBlockedUntil = markNicknameMutationBlocked(threadId);
-            const wrapped = createNicknameMutationBlockedError(threadId, nextBlockedUntil);
-            wrapped.cause = error;
-            reject(wrapped);
-            return;
-          }
-
-          const wrapped = new Error(messengerErrorMessage(error));
-          wrapped.cause = error;
-          const code = error?.errorCode ?? error?.code ?? error?.error;
-          if (code != null) wrapped.messengerErrorCode = String(code);
-          reject(wrapped);
-        } else {
-          resolve();
-        }
-      };
-
-      try {
-        const result = api.changeNickname(nickname, threadId, participantId, done);
-        if (result && typeof result.then === "function") {
-          result.then(() => done()).catch(done);
-        }
-      } catch (error) {
-        done(error);
-      }
-    });
+      const wrapped = new Error(messengerErrorMessage(error));
+      wrapped.cause = error;
+      const code = error?.errorCode ?? error?.code ?? error?.error;
+      if (code != null) wrapped.messengerErrorCode = String(code);
+      throw wrapped;
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
   });
 }
 
-function setTitleAsync(api, title, threadID) {
-  return new Promise((resolve, reject) => {
-    if (!api || typeof api.setTitle !== "function") {
-      reject(new Error("This ws3-fca build does not expose api.setTitle()."));
-      return;
-    }
-
-    let settled = false;
-
-    const done = (error) => {
-      if (settled) return;
-      settled = true;
-
-      if (error) {
-        reject(error);
-      } else {
-        resolve();
-      }
-    };
-
-    try {
-      const result = api.setTitle(
-        String(title),
-        String(threadID),
-        done
-      );
-
-      if (result && typeof result.then === "function") {
-        result.then(() => done()).catch(done);
-      }
-    } catch (error) {
-      done(error);
-    }
-  });
+async function setTitleAsync(api, title, threadID) {
+  return setGroupTitle(api, String(title), String(threadID));
 }
 
 async function rememberProtectedTitle(threadID, title) {

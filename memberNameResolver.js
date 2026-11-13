@@ -274,6 +274,7 @@ async function resolveGroupMembers(api, threadID, options = {}) {
   const missing = [...ids].filter(id => !names.has(id));
   let batchCalls = 0;
   let singleCalls = 0;
+  let profilePageCalls = 0;
   if (missing.length && typeof api?.getUserInfo === "function") {
     for (let offset = 0; offset < missing.length; offset += 25) {
       const chunk = missing.slice(offset, offset + 25);
@@ -300,6 +301,17 @@ async function resolveGroupMembers(api, threadID, options = {}) {
         // that only support scalar lookups.
         if (!name) {
           payload = await callApi(api, "getUserInfo", [id], timeoutMs);
+          records = indexUserRecords(payload, [id]);
+          row = records.get(id) || (recordName(payload) ? payload : null);
+          name = recordName(row);
+        }
+
+        // ws3-fca 3.5.2's payload lookup deliberately returns a generic
+        // "Facebook User" record when the chat profile is unavailable. Its
+        // separate profile-page mode can still resolve public profile names.
+        if (!name && options.profilePageFallback !== false) {
+          profilePageCalls++;
+          payload = await callApi(api, "getUserInfo", [[id], false], timeoutMs);
           records = indexUserRecords(payload, [id]);
           row = records.get(id) || (recordName(payload) ? payload : null);
           name = recordName(row);
@@ -343,6 +355,7 @@ async function resolveGroupMembers(api, threadID, options = {}) {
     }, {}),
     batchCalls,
     singleCalls,
+    profilePageCalls,
     threadInfoKeys: Object.keys(info).slice(0, 30),
   };
   return { members, diagnostics };

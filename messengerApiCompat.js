@@ -81,9 +81,170 @@ function setMessageReactionMqtt(api, reaction, messageID, threadID, options = {}
   ), timeoutMs);
 }
 
+
+function rawApi(api) {
+  return api && api.__eclipseTrafficRawApi ? api.__eclipseTrafficRawApi : api;
+}
+
+function hasMethod(api, names) {
+  const raw = rawApi(api);
+  return names.some(name => typeof raw?.[name] === "function");
+}
+
+function canSetGroupTitle(api) {
+  return hasMethod(api, ["setTitle", "gcname"]);
+}
+
+function canChangeNickname(api) {
+  return hasMethod(api, ["changeNickname", "nickname"]);
+}
+
+function canChangeGroupImage(api) {
+  const raw = rawApi(api);
+  return typeof raw?.changeGroupImage === "function" ||
+    Boolean(raw?.ctx && raw?.defaultFuncs &&
+      typeof raw.defaultFuncs.postFormData === "function" &&
+      typeof raw.defaultFuncs.post === "function");
+}
+
+async function waitForMqttClient(api, timeoutMs = 15000) {
+  const raw = rawApi(api);
+  const ctx = raw?.ctx;
+  if (!ctx) return;
+  const client = ctx.mqttClient;
+  if (!client) {
+    throw new Error("Messenger MQTT listener is not active. Wait for the bot to reconnect before changing nicknames or GC names.");
+  }
+  if (client.connected) return;
+  if (typeof client.once !== "function") {
+    throw new Error("Messenger MQTT connection is not ready for nickname or GC-name changes.");
+  }
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      client.removeListener?.("connect", onConnect);
+      client.removeListener?.("error", onError);
+      client.removeListener?.("close", onClose);
+    };
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const onConnect = () => finish();
+    const onError = error => finish(error || new Error("Messenger MQTT connection failed."));
+    const onClose = () => finish(new Error("Messenger MQTT connection closed before the change could be sent."));
+    const timer = setTimeout(() => finish(new Error("Timed out waiting for Messenger MQTT to reconnect.")), timeoutMs);
+    timer.unref?.();
+    client.once("connect", onConnect);
+    client.once("error", onError);
+    client.once("close", onClose);
+  });
+}
+
+async function invokeCompatMethod(api, names, args, label) {
+  const raw = rawApi(api);
+  const name = names.find(candidate => typeof raw?.[candidate] === "function");
+  if (!name) throw new Error("Messenger API method unavailable: " + label);
+  return await raw[name](...args);
+}
+
+async function setGroupTitle(api, title, threadID) {
+  await waitForMqttClient(api);
+  return invokeCompatMethod(api, ["setTitle", "gcname"], [String(title), String(threadID)], "setTitle/gcname");
+}
+
+async function changeNickname(api, nickname, threadID, participantID) {
+  await waitForMqttClient(api);
+  return invokeCompatMethod(
+    api,
+    ["changeNickname", "nickname"],
+    [String(nickname), String(threadID), String(participantID)],
+    "changeNickname/nickname"
+  );
+}
+
+function parseMessengerResponse(response, label) {
+  const status = Number(response?.statusCode ?? response?.status ?? 200);
+  if (status < 200 || status >= 300) {
+    throw new Error(label + " failed with HTTP " + status);
+  }
+  let body = response?.body ?? response?.data ?? response;
+  if (typeof body === "string") {
+    const cleaned = body
+      .replace(/^\s*(?:for\s*\(\s*;\s*;\s*\)\s*;|while\s*\(\s*1\s*\)\s*;)/, "")
+      .trim();
+    try {
+      body = JSON.parse(cleaned);
+    } catch (error) {
+      throw new Error(label + " returned an unreadable Messenger response.");
+    }
+  }
+  if (!body || typeof body !== "object") {
+    throw new Error(label + " returned an empty Messenger response.");
+  }
+  if (body.error) {
+    const detail = body.errorSummary || body.errorDescription?.__html || body.errorDescription || body.error;
+    throw new Error(label + " rejected by Messenger: " + String(detail).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").slice(0, 180));
+  }
+  return body;
+}
+
+/**
+ * ws3-fca 3.5.2 removed the legacy changeGroupImage export. Preserve the
+ * supported upload + set_thread_image flow using the authenticated request
+ * functions already exposed on the API context.
+ */
+async function changeGroupImage(api, image, threadID) {
+  const raw = rawApi(api);
+  if (typeof raw?.changeGroupImage === "function") {
+    return await raw.changeGroupImage(image, String(threadID));
+  }
+  const ctx = raw?.ctx;
+  const defaults = raw?.defaultFuncs;
+  if (!ctx?.jar || !ctx?.userID || typeof defaults?.postFormData !== "function" || typeof defaults?.post !== "function") {
+    throw new Error("This ws3-fca session does not expose the authenticated group-photo upload transport.");
+  }
+  if (!image || typeof image.pipe !== "function") {
+    throw new TypeError("Group photo must be supplied as a readable stream.");
+  }
+
+  const uploadResponse = await defaults.postFormData(
+    "https://upload.facebook.com/ajax/mercury/upload.php",
+    ctx.jar,
+    { images_only: "true", "attachment[]": image },
+    {},
+    ctx
+  );
+  const upload = parseMessengerResponse(uploadResponse, "Group photo upload");
+  const metadata = upload?.payload?.metadata?.[0];
+  const imageId = String(metadata?.image_id || "").trim();
+  if (!imageId) throw new Error("Messenger photo upload did not return an image ID.");
+
+  const updateResponse = await defaults.post(
+    "https://www.facebook.com/messaging/set_thread_image/",
+    ctx.jar,
+    { thread_image_id: imageId, thread_id: String(threadID) },
+    ctx
+  );
+  parseMessengerResponse(updateResponse, "Group photo update");
+  return { ok: true, threadID: String(threadID), imageID: imageId };
+}
+
 module.exports = {
   sendGroupMessage,
   editMessage,
   setMessageReaction,
   setMessageReactionMqtt,
+  rawApi,
+  canSetGroupTitle,
+  canChangeNickname,
+  canChangeGroupImage,
+  waitForMqttClient,
+  setGroupTitle,
+  changeNickname,
+  changeGroupImage,
 };

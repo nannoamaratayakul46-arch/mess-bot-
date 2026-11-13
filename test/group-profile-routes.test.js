@@ -351,3 +351,49 @@ test("targeted laugh ignores other members and other event types", async () => {
     global.setTimeout = originalSetTimeout;
   }
 });
+
+test("normal GC name lock restores through ws3-fca gcname alias", async () => {
+  const threadId = "normal-lock-gcname-alias-test";
+  const calls = [];
+  const db = {
+    async query(sql) {
+      if (sql.includes("SELECT thread_id, image_data")) {
+        return { rows: [{
+          thread_id: threadId,
+          enabled: false,
+          image_data: null,
+          expected_title: "Protected group name",
+          name_lock_enabled: true,
+          name_lock_mode: "normal",
+        }] };
+      }
+      return { rows: [] };
+    },
+  };
+  const api = {
+    getThreadInfo(_id, callback) { callback(null, { threadName: "Changed by another member" }); },
+    gcname: async (title, id) => { calls.push({ title, id }); },
+  };
+  await runGuardCheck({ db, getApi: () => api, immediateThreadId: threadId });
+  assert.deepEqual(calls, [{ title: "Protected group name", id: threadId }]);
+});
+
+test("cycling lock uses ws3-fca gcname alias when setTitle is not exported", async () => {
+  const calls = [];
+  const names = Array.from({ length: 10 }, (_, index) => "Alias GC " + (index + 1));
+  const db = {
+    async query(sql, params) {
+      if (sql.startsWith("SELECT thread_id, name_cycle_names")) {
+        return { rows: [{ thread_id: "cycle-gcname-alias-test", name_cycle_names: names, name_cycle_index: 2 }] };
+      }
+      if (sql.startsWith("UPDATE group_photo_guard SET name_cycle_index")) {
+        assert.equal(params[2], "Alias GC 3");
+        return { rows: [] };
+      }
+      throw new Error("Unexpected query: " + sql);
+    },
+  };
+  const api = { gcname: async (title, threadId) => calls.push({ title, threadId }) };
+  await runNameCycleTick({ db, getApi: () => api });
+  assert.deepEqual(calls, [{ title: "Alias GC 3", threadId: "cycle-gcname-alias-test" }]);
+});
