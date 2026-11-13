@@ -13,7 +13,7 @@ function makeDiagnostic(stage, code, reason, detail = "") {
   return {
     id: "pm-" + Date.now().toString(36) + "-" + diagnosticSequence.toString(36),
     stage, code, reason,
-    ...(detail ? { detail: String(detail).replace(/[\\r\\n]+/g, " ").slice(0, 180) } : {}),
+    ...(detail ? { detail: String(detail).replace(/[\r\n]+/g, " ").slice(0, 180) } : {}),
   };
 }
 
