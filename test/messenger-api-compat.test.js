@@ -7,6 +7,10 @@ const {
   editMessage,
   setMessageReaction,
   setMessageReactionMqtt,
+  setGroupTitle,
+  changeNickname,
+  changeGroupImage,
+  canChangeGroupImage,
 } = require("../messengerApiCompat");
 
 function trafficProxy(methods) {
@@ -70,4 +74,59 @@ test("raw reaction methods use 3.5.2 Promise signatures", async () => {
 test("raw Promise rejection is propagated", async () => {
   const api = { sendMessage: () => Promise.reject(new Error("send failed")) };
   await assert.rejects(sendGroupMessage(api, "hello", "123456789"), /send failed/);
+});
+
+test("ws3-fca 3.5.2 group-name and nickname aliases are used", async () => {
+  const calls = [];
+  const api = {
+    gcname: async (title, threadID) => { calls.push(["gcname", title, threadID]); },
+    nickname: async (nickname, threadID, participantID) => { calls.push(["nickname", nickname, threadID, participantID]); },
+  };
+  await setGroupTitle(api, "Locked name", "thread-1");
+  await changeNickname(api, "Locked nickname", "thread-1", "user-1");
+  assert.deepEqual(calls, [
+    ["gcname", "Locked name", "thread-1"],
+    ["nickname", "Locked nickname", "thread-1", "user-1"],
+  ]);
+});
+
+test("group photo compatibility uploads then applies the returned image ID", async () => {
+  const calls = [];
+  const api = {
+    ctx: { jar: {}, userID: "bot-1" },
+    defaultFuncs: {
+      async postFormData(url, jar, form, query, ctx) {
+        calls.push({ kind: "upload", url, jar, form, query, ctx });
+        return { statusCode: 200, body: { payload: { metadata: [{ image_id: "image-77" }] } } };
+      },
+      async post(url, jar, form, ctx) {
+        calls.push({ kind: "apply", url, jar, form, ctx });
+        return { statusCode: 200, body: { payload: { ok: true } } };
+      },
+    },
+  };
+  const { Readable } = require("node:stream");
+  assert.equal(canChangeGroupImage(api), true);
+  const result = await changeGroupImage(api, Readable.from(Buffer.from("image")), "thread-9");
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 2);
+  assert.equal(calls[0].url, "https://upload.facebook.com/ajax/mercury/upload.php");
+  assert.equal(calls[0].form.images_only, "true");
+  assert.equal(calls[1].url, "https://www.facebook.com/messaging/set_thread_image/");
+  assert.deepEqual(calls[1].form, { thread_image_id: "image-77", thread_id: "thread-9" });
+});
+
+test("group photo compatibility rejects failed upload responses", async () => {
+  const api = {
+    ctx: { jar: {}, userID: "bot-1" },
+    defaultFuncs: {
+      async postFormData() { return { statusCode: 200, body: { error: 1357001 } }; },
+      async post() { throw new Error("must not update after failed upload"); },
+    },
+  };
+  const { Readable } = require("node:stream");
+  await assert.rejects(
+    changeGroupImage(api, Readable.from(Buffer.from("image")), "thread-9"),
+    /Group photo upload rejected by Messenger/
+  );
 });
