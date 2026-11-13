@@ -309,7 +309,7 @@ async function resolveGroupMembers(api, threadID, options = {}) {
         // ws3-fca 3.5.2's payload lookup deliberately returns a generic
         // "Facebook User" record when the chat profile is unavailable. Its
         // separate profile-page mode can still resolve public profile names.
-        if (!name) {
+        if (!name && options.profilePageFallback !== false) {
           profilePageCalls++;
           payload = await callApi(api, "getUserInfo", [[id], false], timeoutMs);
           records = indexUserRecords(payload, [id]);
