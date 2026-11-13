@@ -166,7 +166,13 @@ async function changeImage(api, threadId, buffer, extension) {
 
 async function saveExpectedUrl(db, threadId, api) {
   try {
-    const info = await withTimeout(callApi(api, "getThreadInfo", [threadId]), 10_000);
+    // getThreadInfo can time out on ws3-fca 3.5.2 even when the inbox thread
+    // list contains its current imageSrc. Reuse the same supported fallback
+    // used by the periodic profile guard.
+    const info = await withTimeout(
+      getThreadInfoWithFallback(api, threadId, { promise: null }),
+      15_000
+    );
     const url = getImageUrl(info);
     if (url) {
       await db.query("UPDATE group_photo_guard SET expected_image_url = $2 WHERE thread_id = $1", [threadId, url]);
