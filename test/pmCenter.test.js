@@ -53,7 +53,7 @@ test("PM member route returns actionable diagnostics when lookup throws", async 
   await routes["GET /api/dashboard/pm/:threadId/members"]({ params: { threadId: "9876543210987654" } }, res);
   assert.equal(res.statusCode, 502);
   assert.equal(res.payload.diagnostic.code, "MEMBER_LOOKUP_FAILED");
-  assert.match(res.payload.error, /member-resolution/);
+  assert.equal(res.payload.diagnostic.stage, "member-resolution");
 });
 
 test("PM member route explains empty participant results", async () => {
