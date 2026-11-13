@@ -8449,6 +8449,7 @@ async function handleMessage(
       // least one message in this thread. Keep those IDs for a later retry.
       let deferredTargets = [];
       let rateBlocked = false;
+      let transportPaused = false;
 
       let cancelled = false;
 
@@ -8564,6 +8565,25 @@ async function handleMessage(
             .filter(Boolean)
             .join(" ");
 
+          const transportUnavailable =
+            /Messenger MQTT listener is not active|Messenger MQTT connection is not ready|Timed out waiting for Messenger MQTT|Messenger MQTT connection closed/i.test(errorText);
+          if (transportUnavailable) {
+            transportPaused = true;
+            await setMassNicknameRun(
+              threadID,
+              senderId,
+              requestedNickname,
+              targets,
+              i,
+              null
+            );
+            console.warn(
+              "[NICK GUARD] Paused .setnn at target " + (i + 1) +
+              "/" + targets.length + " because Messenger MQTT is reconnecting."
+            );
+            break;
+          }
+
           const temporarilyBlocked =
             errorCode === 3252001 ||
             /temporarily blocked|going too fast|rate.?limit/i.test(
@@ -8633,6 +8653,7 @@ async function handleMessage(
 
         if (
           !rateBlocked &&
+          !transportPaused &&
           i < targets.length - 1
         ) {
           const delayRange =
@@ -8675,6 +8696,7 @@ async function handleMessage(
 
       if (
         !rateBlocked &&
+        !transportPaused &&
         next >= targets.length &&
         !deferredTargets.length
       ) {
@@ -8690,7 +8712,7 @@ async function handleMessage(
         await clearMassNicknameRun(
           threadID
         );
-      } else if (!rateBlocked && deferredTargets.length) {
+      } else if (!rateBlocked && !transportPaused && deferredTargets.length) {
         // Keep only members who need to speak in the GC before Messenger
         // will accept their nickname mutation. A repeated .setnn resumes
         // this short pending list instead of silently losing these members.
@@ -8728,6 +8750,10 @@ async function handleMessage(
             "Wait for the cooldown, then run .setnn " +
             requestedNickname +
             " again to resume."
+          : transportPaused
+          ? "🎀 setnn paused — Messenger is reconnecting. Your progress is saved. Run .setnn " +
+            requestedNickname +
+            " again after the bot reconnects."
           : cancelled
           ? "🎀 setnn stopped — checkpoint saved at the next member. Run .setnn " +
             requestedNickname +
