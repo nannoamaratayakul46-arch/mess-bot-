@@ -107,6 +107,44 @@ function canChangeGroupImage(api) {
       typeof raw.defaultFuncs.post === "function");
 }
 
+async function waitForMqttClient(api, timeoutMs = 15000) {
+  const raw = rawApi(api);
+  const ctx = raw?.ctx;
+  if (!ctx) return;
+  const client = ctx.mqttClient;
+  if (!client) {
+    throw new Error("Messenger MQTT listener is not active. Wait for the bot to reconnect before changing nicknames or GC names.");
+  }
+  if (client.connected) return;
+  if (typeof client.once !== "function") {
+    throw new Error("Messenger MQTT connection is not ready for nickname or GC-name changes.");
+  }
+  await new Promise((resolve, reject) => {
+    let settled = false;
+    const cleanup = () => {
+      clearTimeout(timer);
+      client.removeListener?.("connect", onConnect);
+      client.removeListener?.("error", onError);
+      client.removeListener?.("close", onClose);
+    };
+    const finish = error => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      if (error) reject(error);
+      else resolve();
+    };
+    const onConnect = () => finish();
+    const onError = error => finish(error || new Error("Messenger MQTT connection failed."));
+    const onClose = () => finish(new Error("Messenger MQTT connection closed before the change could be sent."));
+    const timer = setTimeout(() => finish(new Error("Timed out waiting for Messenger MQTT to reconnect.")), timeoutMs);
+    timer.unref?.();
+    client.once("connect", onConnect);
+    client.once("error", onError);
+    client.once("close", onClose);
+  });
+}
+
 async function invokeCompatMethod(api, names, args, label) {
   const raw = rawApi(api);
   const name = names.find(candidate => typeof raw?.[candidate] === "function");
@@ -114,11 +152,13 @@ async function invokeCompatMethod(api, names, args, label) {
   return await raw[name](...args);
 }
 
-function setGroupTitle(api, title, threadID) {
+async function setGroupTitle(api, title, threadID) {
+  await waitForMqttClient(api);
   return invokeCompatMethod(api, ["setTitle", "gcname"], [String(title), String(threadID)], "setTitle/gcname");
 }
 
-function changeNickname(api, nickname, threadID, participantID) {
+async function changeNickname(api, nickname, threadID, participantID) {
+  await waitForMqttClient(api);
   return invokeCompatMethod(
     api,
     ["changeNickname", "nickname"],
@@ -203,6 +243,7 @@ module.exports = {
   canSetGroupTitle,
   canChangeNickname,
   canChangeGroupImage,
+  waitForMqttClient,
   setGroupTitle,
   changeNickname,
   changeGroupImage,
