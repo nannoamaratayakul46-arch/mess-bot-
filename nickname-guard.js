@@ -503,8 +503,23 @@ function changeNicknameAsync(api, nickname, threadID, participantID) {
       throw createNicknameMutationBlockedError(threadId, blockedUntil);
     }
 
+    const timeoutMs = Math.max(
+      5000,
+      Number(process.env.ECLIPSE_NICKNAME_API_TIMEOUT_MS || 25000)
+    );
+    let timer;
     try {
-      await changeNicknameCompat(api, nickname, threadId, participantId);
+      await Promise.race([
+        changeNicknameCompat(api, nickname, threadId, participantId),
+        new Promise((_, reject) => {
+          timer = setTimeout(() => {
+            reject(new Error(
+              `Messenger nickname change timed out after ${timeoutMs}ms (thread ${threadId}, member ${participantId}).`
+            ));
+          }, timeoutMs);
+          timer.unref?.();
+        }),
+      ]);
     } catch (error) {
       if (isNicknameMutationBlock(error)) {
         const nextBlockedUntil = markNicknameMutationBlocked(threadId);
@@ -517,6 +532,8 @@ function changeNicknameAsync(api, nickname, threadID, participantID) {
       const code = error?.errorCode ?? error?.code ?? error?.error;
       if (code != null) wrapped.messengerErrorCode = String(code);
       throw wrapped;
+    } finally {
+      if (timer) clearTimeout(timer);
     }
   });
 }
