@@ -4990,6 +4990,8 @@ app.get(
       let { members, diagnostics } = await resolveGroupMembers(activeMessengerApi, threadID, {
         threadInfo: profileThreadInfo,
         threadList: profileThreadList,
+        // This route already performs its own batched profile-page fallback below.
+        profilePageFallback: false,
       });
 
       // Some FCA builds expose real member names in getThreadList().userInfo
