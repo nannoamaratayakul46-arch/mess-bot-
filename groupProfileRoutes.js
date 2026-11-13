@@ -390,7 +390,7 @@ function startGuardScheduler(dependencies) {
 async function runNameCycleTick({ db, getApi, audit = () => {} }) {
   if (nameCycleRunning) return;
   const api = getApi();
-  if (!canSetGroupTitle(api)) return;
+  if (!canSetGroupTitle(api) || (api?.ctx && !api.ctx.mqttClient)) return;
   nameCycleRunning = true;
   try {
     const result = await db.query(
