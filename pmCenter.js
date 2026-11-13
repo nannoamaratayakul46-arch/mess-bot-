@@ -17,6 +17,11 @@ function makeDiagnostic(stage, code, reason, detail = "") {
   };
 }
 
+function diagnosticError(diagnostic) {
+  const detail = diagnostic.detail ? " Detail: " + diagnostic.detail : "";
+  return diagnostic.reason + " Diagnostic: " + diagnostic.code + " at " + diagnostic.stage + "." + detail;
+}
+
 function createPmCenter({ getApi, isKnownGroup, resolveMembers, send, now = Date.now } = {}) {
   if (typeof getApi !== "function" || typeof isKnownGroup !== "function" ||
       typeof resolveMembers !== "function" || typeof send !== "function") {
@@ -47,7 +52,7 @@ function createPmCenter({ getApi, isKnownGroup, resolveMembers, send, now = Date
       const threadId = String(req.params.threadId || "").trim();
       if (!THREAD_ID_RE.test(threadId) || !isKnownGroup(threadId)) {
         const diagnostic = makeDiagnostic("group-validation", "INVALID_OR_STALE_GROUP", "The selected group is invalid or is no longer in the refreshed group list.");
-        return res.status(400).json({ ok: false, error: diagnostic.reason, diagnostic });
+        return res.status(400).json({ ok: false, error: diagnosticError(diagnostic), diagnostic });
       }
       const api = getApi();
       if (!api) {
