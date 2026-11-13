@@ -160,6 +160,9 @@ function parseMessengerResponse(response, label) {
  */
 async function changeGroupImage(api, image, threadID) {
   const raw = rawApi(api);
+  if (typeof raw?.changeGroupImage === "function") {
+    return await raw.changeGroupImage(image, String(threadID));
+  }
   const ctx = raw?.ctx;
   const defaults = raw?.defaultFuncs;
   if (!ctx?.jar || !ctx?.userID || typeof defaults?.postFormData !== "function" || typeof defaults?.post !== "function") {
