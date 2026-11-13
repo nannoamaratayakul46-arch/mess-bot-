@@ -19,11 +19,11 @@ function setup(overrides = {}) {
   const pm = createPmCenter({
     getApi: () => state.api,
     isKnownGroup: id => id === "9876543210987654",
-    resolveMembers: async () => ({ members: state.members }),
-    send: async (_api, message, recipientId) => {
+    resolveMembers: state.resolveMembers || (async () => ({ members: state.members })),
+    send: state.send || (async (_api, message, recipientId) => {
       state.sent.push({ message, recipientId });
       return { messageID: "message-1" };
-    },
+    }),
   });
   pm.registerRoutes(app, (_req, _res, next) => next());
   return { routes, state };
