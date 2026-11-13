@@ -135,7 +135,7 @@ function parseMessengerResponse(response, label) {
   let body = response?.body ?? response?.data ?? response;
   if (typeof body === "string") {
     const cleaned = body
-      .replace(/^\\s*(?:for\\s*\\(\\s*;\\s*;\\s*\\)\\s*;|while\\s*\\(\\s*1\\s*\\)\\s*;)/, "")
+      .replace(/^\s*(?:for\s*\(\s*;\s*;\s*\)\s*;|while\s*\(\s*1\s*\)\s*;)/, "")
       .trim();
     try {
       body = JSON.parse(cleaned);
@@ -148,7 +148,7 @@ function parseMessengerResponse(response, label) {
   }
   if (body.error) {
     const detail = body.errorSummary || body.errorDescription?.__html || body.errorDescription || body.error;
-    throw new Error(label + " rejected by Messenger: " + String(detail).replace(/<[^>]*>/g, " ").replace(/\\s+/g, " ").slice(0, 180));
+    throw new Error(label + " rejected by Messenger: " + String(detail).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").slice(0, 180));
   }
   return body;
 }
