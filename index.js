@@ -3804,7 +3804,60 @@ liveChat.registerRoutes(app, requireDashboardAccess);
 const pmCenter = createPmCenter({
   getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,
   isKnownGroup: threadId => dashboardKnownGroups.has(String(threadId)),
-  resolveMembers: (api, threadId) => resolveGroupMembers(api, threadId),
+  // PM Center shares the same metadata-aware member resolution used by the
+  // dashboard Groups picker. Keep unresolved IDs selectable instead of hiding
+  // the entire list when profile-name lookups fail.
+  resolveMembers: async (api, threadId) => {
+    const [threadInfo, threadList] = await Promise.all([
+      dashboardGetThreadInfo(api, threadId).catch(() => ({})),
+      dashboardGetThreadList(api).catch(() => []),
+    ]);
+    const resolved = await resolveGroupMembers(api, threadId, { threadInfo, threadList });
+    let members = Array.isArray(resolved?.members) ? resolved.members : [];
+    if (!members.length) {
+      const participantIds = await dashboardGetParticipantIds(api, threadId);
+      const nicknames = threadInfo?.nicknames && typeof threadInfo.nicknames === "object"
+        ? threadInfo.nicknames : {};
+      members = [...participantIds].map(user_id => ({
+        user_id,
+        name: String(nicknames[user_id] || "").trim() || ("Unnamed ····" + user_id.slice(-4)),
+        resolved: Boolean(String(nicknames[user_id] || "").trim()),
+        source: String(nicknames[user_id] || "").trim() ? "nickname" : "unresolved",
+      }));
+    }
+    const listedThread = Array.isArray(threadList) ? threadList.find(item =>
+      String(item?.threadID || item?.threadId || item?.thread_id || "") === String(threadId)
+    ) : null;
+    const profileRows = [
+      threadInfo?.userInfo, threadInfo?.participants, threadInfo?.participantList,
+      threadInfo?.participant_list, listedThread?.userInfo, listedThread?.participants,
+      listedThread?.participantList, listedThread?.participant_list,
+    ];
+    const profileNames = new Map();
+    for (const source of profileRows) {
+      const rows = Array.isArray(source) ? source : source && typeof source === "object"
+        ? Object.entries(source).map(([key, value]) =>
+            value && typeof value === "object" && !dashboardNormalizeMemberId(value)
+              ? { id: key, ...value } : value)
+        : [];
+      for (const row of rows) {
+        const id = dashboardNormalizeMemberId(row);
+        const name = dashboardMemberDisplayName(row);
+        if (id && name && !profileNames.has(id)) profileNames.set(id, name);
+      }
+    }
+    for (const member of members) {
+      const id = String(member?.user_id || "");
+      if (!/^\\d{6,32}$/.test(id)) continue;
+      const profileName = profileNames.get(id);
+      if (profileName && (!member.resolved || member.source === "nickname")) {
+        member.name = profileName;
+        member.resolved = true;
+        member.source = "thread-list-userInfo";
+      }
+    }
+    return { ...resolved, members };
+  },
   // This is a user ID selected from a GC member list, never a group thread ID.
   // Override ws3-fca's length-based routing heuristic for PM delivery.
   send: (api, message, recipientId) => sendMessengerMessage(api, message, recipientId, { isGroup: false }),
