@@ -7,6 +7,7 @@ const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
 const { getThreadList: getGatedThreadList } = require("./messengerThreadList");
+const { canSetGroupTitle, canChangeGroupImage, setGroupTitle, changeGroupImage: changeGroupImageCompat } = require("./messengerApiCompat");
 
 const COOLDOWN_MS = 10 * 60 * 1000;
 const MAX_IMAGE_BYTES = 1024 * 1024;
@@ -55,6 +56,8 @@ function messengerErrorMessage(error) {
 }
 
 function callApi(api, method, args) {
+  if (method === "setTitle") return setGroupTitle(api, args[0], args[1]);
+  if (method === "changeGroupImage") return changeGroupImageCompat(api, args[0], args[1]);
   return new Promise((resolve, reject) => {
     const fn = api && api[method];
     if (typeof fn !== "function") return reject(new Error("Messenger API method is unavailable: " + method));
@@ -313,7 +316,7 @@ async function runGuardCheck({ db, getApi, audit = () => {}, immediateThreadId =
           mismatchObservations.delete(titleKey);
           lastRestoreAttempt.set(titleKey, Date.now());
           try {
-            if (typeof api.setTitle !== "function") throw new Error("setTitle is unavailable");
+            if (!canSetGroupTitle(api)) throw new Error("setTitle/gcname is unavailable");
             await withTimeout(callApi(api, "setTitle", [expectedTitle, threadId]), API_TIMEOUT_MS);
             await db.query("UPDATE group_photo_guard SET last_restore_at = $2, updated_at = $2 WHERE thread_id = $1", [threadId, Date.now()]);
             audit("[PROFILE-GUARD] Restored saved group name in " + threadId);
@@ -381,7 +384,7 @@ function startGuardScheduler(dependencies) {
 async function runNameCycleTick({ db, getApi, audit = () => {} }) {
   if (nameCycleRunning) return;
   const api = getApi();
-  if (!api || typeof api.setTitle !== "function") return;
+  if (!canSetGroupTitle(api)) return;
   nameCycleRunning = true;
   try {
     const result = await db.query(
@@ -707,8 +710,8 @@ function registerGroupProfileRoutes(app, { auth, getApi, isKnownGroup, db, audit
     const wait = cooldownLeft(threadId, kind);
     if (wait) return res.status(429).json({ ok: false, error: "Cooldown active. Try again in " + Math.ceil(wait / 60) + " min.", retry_after_seconds: wait });
     try {
-      if (title && typeof api.setTitle !== "function") return res.status(501).json({ ok: false, error: "This bot library has no setTitle method." });
-      if (image && typeof api.changeGroupImage !== "function") return res.status(501).json({ ok: false, error: "This bot library has no changeGroupImage method." });
+      if (title && !canSetGroupTitle(api)) return res.status(501).json({ ok: false, error: "This bot library has no setTitle/gcname method." });
+      if (image && !canChangeGroupImage(api)) return res.status(501).json({ ok: false, error: "This bot library has no authenticated group-photo upload transport." });
       if (title) {
         await withTimeout(callApi(api, "setTitle", [title, threadId]), API_TIMEOUT_MS);
         // Keep the expected GC name alongside the saved photo so the guard can
