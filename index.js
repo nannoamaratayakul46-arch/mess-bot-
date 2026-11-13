@@ -3848,7 +3848,7 @@ const pmCenter = createPmCenter({
     }
     for (const member of members) {
       const id = String(member?.user_id || "");
-      if (!/^\\d{6,32}$/.test(id)) continue;
+      if (!/^\d{6,32}$/.test(id)) continue;
       const profileName = profileNames.get(id);
       if (profileName && (!member.resolved || member.source === "nickname")) {
         member.name = profileName;
