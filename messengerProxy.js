@@ -68,16 +68,16 @@ async function verifyMessengerProxy() {
     for (const provider of providers) {
       try {
         const result = await requestGeo(provider, agent);
-        console.log("[PROXY] Verified outbound IP " + result.ip + " | " +
+        console.log("[PROXY] Geo-IP probe exit: " + result.ip + " | " +
           (result.city || "Unknown city") + ", " + result.country +
-          " via " + result.provider);
+          " via " + result.provider + ". This does not prove Facebook HTTP or Messenger MQTT uses the same exit.");
 
         if (result.country !== "PH") {
           console.warn("[PROXY] WARNING: proxy exit country is not the Philippines. Messenger traffic remains routed through the configured proxy.");
         } else if (result.city.toLowerCase() !== "manila") {
           console.warn("[PROXY] WARNING: proxy exit is in the Philippines, but Geo-IP did not identify Manila (reported: " + (result.city || "unknown") + ").");
         } else {
-          console.log("[PROXY] Philippine / Manila Geo-IP check passed. Geo-IP city data is approximate.");
+          console.log("[PROXY] Geo-IP probe reports the requested Philippine / Manila location. City data is approximate; Facebook and MQTT routing remain unverified.");
         }
         return result;
       } catch (error) {
