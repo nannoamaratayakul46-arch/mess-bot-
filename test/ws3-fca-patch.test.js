@@ -8,12 +8,15 @@ const path = require("node:path");
 const root = path.resolve(__dirname, "..");
 const patchScript = fs.readFileSync(path.join(root, "scripts", "patch-ws3-fca.js"), "utf8");
 
-test("ws3-fca postinstall validates the pinned public API without rewriting package internals", () => {
+test("ws3-fca postinstall validates the pinned public API and guards the fb_dtsg extraction seam", () => {
   assert.match(patchScript, /packageJson\.version !== "3\.5\.2"/);
   assert.match(patchScript, /typeof client\.login !== "function"/);
   assert.match(patchScript, /require\(packageRoot\)/);
-  assert.doesNotMatch(patchScript, /patchSource|patchDirectory|writeFileSync/);
-  assert.match(patchScript, /no package source patches applied/);
+  assert.match(patchScript, /ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS/);
+  assert.match(patchScript, /buildAPI\.js/);
+  assert.match(patchScript, /did not match the verified fb_dtsg extraction line/);
+  assert.match(patchScript, /writeFileSync\(buildApiPath/);
+  assert.doesNotMatch(patchScript, /patchDirectory|patchSource/);
 });
 
 test("package manifest pins the audited ws3-fca release", () => {
