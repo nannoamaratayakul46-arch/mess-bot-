@@ -10,6 +10,7 @@ const checks = [
   ["ws3-fca is pinned to 3.5.2", pkg.dependencies?.["ws3-fca"] === "3.5.2"],
   ["login uses the 3.5.2 appState credential object", /login\(\s*\{\s*appState:\s*loginInput\s*\}/.test(read("index.js"))],
   ["login Promise rejection is observed", /loginResult\.catch\(/.test(read("index.js"))],
+  ["buildAPI parser failures are diagnosed without retrying or rejecting the stored session", /isWs3FcaBuildApiParserFailure\(error\)/.test(read("index.js")) && /failure_kind: "ws3_fca_buildapi_parser"/.test(read("index.js")) && /automatic login retries are paused/.test(read("index.js"))],
   ["one MQTT listener installation remains", (read("index.js").match(/\bapi\.listenMqtt\s*\(/g) || []).length === 1],
   ["private send uses 3.5.2 MQTT argument order", /sendMessageMqtt\(\s*job\.message,\s*job\.threadID,\s*job\.replyToMessageID\s*\|\|\s*undefined\s*\)/.test(read("messengerSendRouting.js"))],
   ["group and standard sends pass reply ID and isSingleUser", /job\.replyToMessageID\s*\|\|\s*undefined,\s*isSingleUser/.test(read("messengerSendRouting.js"))],
