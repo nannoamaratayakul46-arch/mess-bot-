@@ -6973,6 +6973,30 @@ function attemptLogin() {
         dashboardLoginError = getFacebookLoginErrorMessage(
           loginError || "No API object returned."
         );
+
+        // ws3-fca can report its buildAPI parser exception through the
+        // callback rather than rejecting the login invocation Promise.
+        // This is not evidence that the Facebook session is invalid.
+        if (isWs3FcaBuildApiParserFailure(loginError)) {
+          dashboardLoginError =
+            "ws3-fca could not parse the Facebook login response (buildAPI parser failure). Session was preserved; automatic login retries are paused pending diagnostics.";
+          const safeTrace = getSafeLoginFailureTrace(loginError);
+          console.error("[LOGIN][PARSER] " + dashboardLoginError);
+          console.error("[LOGIN][PARSER] Safe failure trace:\\n" + safeTrace);
+          pushDashboardEvent("login-failed", dashboardLoginError, {
+            detail: safeTrace,
+            attempt: loginAttempt + 1,
+            session_source: isReplacementSession ? "replacement" : appStateSource,
+            failure_kind: "ws3_fca_buildapi_parser",
+          });
+          loginInProgress = false;
+          if (loginRetryTimer) {
+            clearTimeout(loginRetryTimer);
+            loginRetryTimer = null;
+          }
+          return;
+        }
+
         pushDashboardEvent("login-failed", "Messenger login was rejected: " + dashboardLoginError.slice(0, 240), {
           detail: dashboardLoginError.slice(0, 240),
           attempt: loginAttempt + 1,
