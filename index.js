@@ -6743,6 +6743,7 @@ function getFacebookLoginErrorMessage(error) {
 }
 
 function isWs3FcaBuildApiParserFailure(error) {
+  if (String(error?.code || "") === "ECLIPSE_WS3_FCA_MISSING_DTSG") return true;
   const message = String(error?.message || error || "");
   const stack = String(error?.stack || "");
   return (
@@ -6751,6 +6752,20 @@ function isWs3FcaBuildApiParserFailure(error) {
   );
 }
 
+function getSafeLoginParserDiagnostics(error) {
+  const source = error?.eclipseDiagnostics;
+  if (!source || source.kind !== "missing_fb_dtsg") return null;
+  return {
+    kind: "missing_fb_dtsg",
+    htmlLength: Number.isFinite(source.htmlLength) ? source.htmlLength : null,
+    netDataCount: Number.isFinite(source.netDataCount) ? source.netDataCount : null,
+    dtsgConfigFound: source.dtsgConfigFound === true,
+    checkpointMarker: source.checkpointMarker === true,
+    twoFactorMarker: source.twoFactorMarker === true,
+    loginMarker: source.loginMarker === true,
+    accountDisabledMarker: source.accountDisabledMarker === true,
+  };
+}
 function getSafeLoginFailureTrace(error) {
   const stack = String(error?.stack || error?.message || "Unknown login failure");
   return stack
@@ -6850,8 +6865,11 @@ function attemptLogin() {
         "ws3-fca could not parse the Facebook login response (buildAPI parser failure). Session was preserved; automatic login retries are paused pending diagnostics.";
       console.error("[LOGIN][PARSER] " + dashboardLoginError);
       console.error("[LOGIN][PARSER] Safe failure trace:\\n" + getSafeLoginFailureTrace(error));
+      const parserDiagnostics = getSafeLoginParserDiagnostics(error);
+      if (parserDiagnostics) console.error("[LOGIN][PARSER] Safe parser diagnostics: " + JSON.stringify(parserDiagnostics));
       pushDashboardEvent("login-failed", dashboardLoginError, {
         detail: getSafeLoginFailureTrace(error),
+        parser_diagnostics: getSafeLoginParserDiagnostics(error),
         attempt: loginAttempt + 1,
         session_source: isReplacementSession ? "replacement" : appStateSource,
         failure_kind: "ws3_fca_buildapi_parser",
@@ -6983,8 +7001,11 @@ function attemptLogin() {
           const safeTrace = getSafeLoginFailureTrace(loginError);
           console.error("[LOGIN][PARSER] " + dashboardLoginError);
           console.error("[LOGIN][PARSER] Safe failure trace:\\n" + safeTrace);
+          const parserDiagnostics = getSafeLoginParserDiagnostics(loginError);
+          if (parserDiagnostics) console.error("[LOGIN][PARSER] Safe parser diagnostics: " + JSON.stringify(parserDiagnostics));
           pushDashboardEvent("login-failed", dashboardLoginError, {
             detail: safeTrace,
+            parser_diagnostics: getSafeLoginParserDiagnostics(loginError),
             attempt: loginAttempt + 1,
             session_source: isReplacementSession ? "replacement" : appStateSource,
             failure_kind: "ws3_fca_buildapi_parser",
