@@ -39,3 +39,26 @@ test("package manifest pins the audited ws3-fca release", () => {
   assert.equal(pkg.dependencies["ws3-fca"], "3.5.2");
   assert.equal(pkg.scripts.postinstall, "node scripts/patch-ws3-fca.js");
 });
+
+test("login diagnostic allowlist forwards safe fb_dtsg shape metadata without token values", () => {
+  const indexSource = fs.readFileSync(path.join(root, "index.js"), "utf8");
+  const start = indexSource.indexOf("function getSafeLoginParserDiagnostics");
+  const end = indexSource.indexOf("\nfunction ", start + 10);
+  assert.notEqual(start, -1);
+  assert.notEqual(end, -1);
+  const serializer = indexSource.slice(start, end);
+  for (const field of [
+    "dtsgDataType",
+    "dtsgDataKeyCount",
+    "dtsgDataHasToken",
+    "dtsgDataTokenType",
+    "dtsgDataTokenLength",
+    "htmlDtsgInitialDataMarker",
+    "htmlGenericTokenMarker",
+    "netDataRequireEntryCount",
+    "dtsgRequireEntryCount",
+  ]) {
+    assert.match(serializer, new RegExp(field + ":"));
+  }
+  assert.doesNotMatch(serializer, /source\\.dtsgData\\.token|source\\.token/);
+});

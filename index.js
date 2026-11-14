@@ -6786,6 +6786,20 @@ function getSafeLoginParserDiagnostics(error) {
       : "unknown",
     dtsgDataKeys: safeKeys(source.dtsgDataKeys),
     netDataKeys: safeKeys(source.netDataKeys),
+    // Forward only scalar metadata and safe key names; never log token values.
+    dtsgDataType: ["undefined", "object", "string", "number", "boolean"].includes(source.dtsgDataType)
+      ? source.dtsgDataType
+      : "unknown",
+    dtsgDataKeyCount: Number.isFinite(source.dtsgDataKeyCount) ? source.dtsgDataKeyCount : null,
+    dtsgDataHasToken: source.dtsgDataHasToken === true,
+    dtsgDataTokenType: ["missing", "undefined", "object", "string", "number", "boolean"].includes(source.dtsgDataTokenType)
+      ? source.dtsgDataTokenType
+      : "unknown",
+    dtsgDataTokenLength: Number.isFinite(source.dtsgDataTokenLength) ? source.dtsgDataTokenLength : null,
+    htmlDtsgInitialDataMarker: source.htmlDtsgInitialDataMarker === true,
+    htmlGenericTokenMarker: source.htmlGenericTokenMarker === true,
+    netDataRequireEntryCount: Number.isFinite(source.netDataRequireEntryCount) ? source.netDataRequireEntryCount : null,
+    dtsgRequireEntryCount: Number.isFinite(source.dtsgRequireEntryCount) ? source.dtsgRequireEntryCount : null,
   };
 }
 function getSafeLoginFailureTrace(error) {
