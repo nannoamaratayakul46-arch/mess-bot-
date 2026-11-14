@@ -12,8 +12,11 @@ test("ws3-fca postinstall validates the pinned public API and guards the fb_dtsg
   assert.match(patchScript, /packageJson\.version !== "3\.5\.2"/);
   assert.match(patchScript, /typeof client\.login !== "function"/);
   assert.match(patchScript, /require\(packageRoot\)/);
+  assert.match(patchScript, /ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS_V3/);
   assert.match(patchScript, /ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS_V2/);
   assert.match(patchScript, /legacyGuardedBlock/);
+  assert.match(patchScript, /ECLIPSE_WS3_FCA_LOGIN_REQUIRED/);
+  assert.match(patchScript, /responseKind: responseKind/);
   assert.match(patchScript, /Existing guarded fb_dtsg patch could not be safely upgraded/);
   assert.match(patchScript, /buildAPI\.js/);
   assert.match(patchScript, /did not match the verified fb_dtsg extraction line/);
@@ -42,6 +45,10 @@ test("package manifest pins the audited ws3-fca release", () => {
 
 test("login diagnostic allowlist forwards safe fb_dtsg shape metadata without token values", () => {
   const indexSource = fs.readFileSync(path.join(root, "index.js"), "utf8");
+  assert.match(indexSource, /function isWs3FcaLoginRequired/);
+  assert.match(indexSource, /handleLoginRequiredResponse/);
+  assert.match(indexSource, /trying the separately configured FB_COOKIES session once/i);
+  assert.match(indexSource, /failure_kind: "facebook_login_required"/);
   const start = indexSource.indexOf("function getSafeLoginParserDiagnostics");
   const end = indexSource.indexOf("\nfunction ", start + 10);
   assert.notEqual(start, -1);

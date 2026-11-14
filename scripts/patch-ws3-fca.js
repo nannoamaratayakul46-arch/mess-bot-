@@ -37,13 +37,15 @@ if (!fs.existsSync(buildApiPath)) {
   throw new Error("[postinstall] ws3-fca 3.5.2 buildAPI.js was not found; refusing an unverified patch.");
 }
 let buildApi = fs.readFileSync(buildApiPath, "utf8");
-const patchMarker = "ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS_V2";
+const patchMarker = "ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS_V3";
+const previousPatchMarker = "ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS_V2";
 const legacyPatchMarker = "ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS";
 const guardedPatch = (indent) => `${indent}// ${patchMarker}
 ${indent}if (typeof dtsg !== "string" || !dtsg.trim()) {
 ${indent}  const responseHtml = String(html || "");
-${indent}  const parserError = new Error("ws3-fca buildAPI could not find the Facebook fb_dtsg token.");
-${indent}  parserError.code = "ECLIPSE_WS3_FCA_MISSING_DTSG";
+${indent}  const responseKind = /name=["'](?:approvals_code|verification_code)["']|id=["']approvals_code["']/i.test(responseHtml) ? "two_factor" : (/\\/checkpoint(?:\\/|\\?|["'])|<title[^>]*>[^<]*(?:checkpoint|security check|confirm your identity)/i.test(responseHtml) ? "checkpoint" : (/<input[^>]+name=["']pass["']/i.test(responseHtml) && /<input[^>]+name=["'](?:email|login|username)["']/i.test(responseHtml)) ? "login" : (/id=["']bluebarRoot|id=["']pagelet_timeline_main_column|data-pagelet=["']FeedUnit_/i.test(responseHtml) ? "authenticated_home" : "unclassified"));
+${indent}  const parserError = new Error(responseKind === "login" ? "Facebook returned its login page; the supplied session was not accepted." : "ws3-fca buildAPI could not find the Facebook fb_dtsg token.");
+${indent}  parserError.code = responseKind === "login" ? "ECLIPSE_WS3_FCA_LOGIN_REQUIRED" : "ECLIPSE_WS3_FCA_MISSING_DTSG";
 ${indent}  parserError.eclipseDiagnostics = {
 ${indent}    kind: "missing_fb_dtsg",
 ${indent}    htmlLength: responseHtml.length,
@@ -59,7 +61,7 @@ ${indent}    checkpointHeadingMarker: /<title[^>]*>[^<]*(?:checkpoint|security c
 ${indent}    passwordFieldMarker: /<input[^>]+name=["']pass["']/i.test(responseHtml),
 ${indent}    loginIdentifierFieldMarker: /<input[^>]+name=["'](?:email|login|username)["']/i.test(responseHtml),
 ${indent}    authenticatedHomeMarker: /id=["']bluebarRoot|id=["']pagelet_timeline_main_column|data-pagelet=["']FeedUnit_/i.test(responseHtml),
-${indent}    responseKind: /name=["'](?:approvals_code|verification_code)["']|id=["']approvals_code["']/i.test(responseHtml) ? "two_factor" : (/\\/checkpoint(?:\\/|\\?|["'])|<title[^>]*>[^<]*(?:checkpoint|security check|confirm your identity)/i.test(responseHtml) ? "checkpoint" : (/<input[^>]+name=["']pass["']/i.test(responseHtml) && /<input[^>]+name=["'](?:email|login|username)["']/i.test(responseHtml)) ? "login" : (/id=["']bluebarRoot|id=["']pagelet_timeline_main_column|data-pagelet=["']FeedUnit_/i.test(responseHtml) ? "authenticated_home" : "unclassified")),
+${indent}    responseKind: responseKind,
 ${indent}    fbDtsgLiteralPresent: /fb_dtsg/i.test(responseHtml),
 ${indent}    dtsgValueType: typeof dtsg,
 ${indent}    dtsgDataType: dtsgData === null ? "null" : Array.isArray(dtsgData) ? "array" : typeof dtsgData,
@@ -79,8 +81,8 @@ ${indent}}
 ${indent}const dtsgResult = { fb_dtsg: dtsg, jazoest: \`2\${Array.from(dtsg).reduce((a, b) => a + b.charCodeAt(0), '')}\` };`;
 if (!buildApi.includes(patchMarker)) {
   const originalDtsgLine = /^([\t ]*)const dtsgResult = \{ fb_dtsg: dtsg, jazoest: .*Array\.from\(dtsg\).*;[\t ]*$/m;
-  const legacyGuardedBlock = /^([\t ]*)\/\/ ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS[\s\S]*?^\1const dtsgResult = \{ fb_dtsg: dtsg, jazoest: .*Array\.from\(dtsg\).*;[\t ]*$/m;
-  if (buildApi.includes(legacyPatchMarker)) {
+  const legacyGuardedBlock = /^([\t ]*)\/\/ ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS(?:_V2)?[\s\S]*?^\1const dtsgResult = \{ fb_dtsg: dtsg, jazoest: .*Array\.from\(dtsg\).*;[\t ]*$/m;
+  if (buildApi.includes(previousPatchMarker) || buildApi.includes(legacyPatchMarker)) {
     if (!legacyGuardedBlock.test(buildApi)) {
       throw new Error("[postinstall] Existing guarded fb_dtsg patch could not be safely upgraded; refusing to modify ws3-fca.");
     }

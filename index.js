@@ -6755,6 +6755,13 @@ function isWs3FcaBuildApiParserFailure(error) {
   );
 }
 
+function isWs3FcaLoginRequired(error) {
+  return (
+    String(error?.code || "") === "ECLIPSE_WS3_FCA_LOGIN_REQUIRED" ||
+    String(error?.eclipseDiagnostics?.responseKind || "") === "login"
+  );
+}
+
 function getSafeLoginParserDiagnostics(error) {
   const source = error?.eclipseDiagnostics;
   if (!source || source.kind !== "missing_fb_dtsg") return null;
@@ -6901,12 +6908,54 @@ function attemptLogin() {
   const loginInput = candidateAppState;
 
   let loginSettled = false;
+  let loginRequiredHandled = false;
 
+  const handleLoginRequiredResponse = (error) => {
+    if (thisGeneration !== listenerGeneration || loginRequiredHandled) return true;
+    loginRequiredHandled = true;
+    loginSettled = true;
+    const safeTrace = getSafeLoginFailureTrace(error);
+    const parserDiagnostics = getSafeLoginParserDiagnostics(error);
+
+    if (!isReplacementSession && fallbackFromRejectedDurableSession()) {
+      dashboardLoginError = "Facebook returned its login page for the durable session; trying the separately configured FB_COOKIES session once.";
+      console.warn("[AUTH] Durable session was not accepted; trying FB_COOKIES once.");
+      pushDashboardEvent("login-failed", dashboardLoginError, { detail: safeTrace, parser_diagnostics: parserDiagnostics, attempt: loginAttempt + 1, session_source: "durable", failure_kind: "facebook_login_required" });
+      loginInProgress = false;
+      if (loginRetryTimer) clearTimeout(loginRetryTimer);
+      loginRetryTimer = setTimeout(() => { loginRetryTimer = null; attemptLogin(); }, 100);
+      return true;
+    }
+
+    if (isReplacementSession) {
+      pendingFacebookAppState = null;
+      dashboardLoginError = activeMessengerApi
+        ? "Facebook returned its login page for the uploaded replacement session; the existing Messenger connection was kept."
+        : "Facebook returned its login page for the uploaded session. Upload a fresh Facebook session export or cookie header.";
+    } else if (appStateSource === "fb_cookies") {
+      dashboardLoginError = "Facebook returned its login page for FB_COOKIES. Those cookies were not accepted; upload a fresh Facebook session export or cookie header.";
+    } else {
+      dashboardLoginError = "Facebook returned its login page instead of an authenticated Messenger session. The stored session was not accepted; upload a fresh Facebook session export or cookie header.";
+    }
+    console.error("[LOGIN][SESSION] " + dashboardLoginError);
+    console.error("[LOGIN][SESSION] Safe failure trace:\\n" + safeTrace);
+    if (parserDiagnostics) console.error("[LOGIN][SESSION] Safe parser diagnostics: " + JSON.stringify(parserDiagnostics));
+    pushDashboardEvent("login-failed", dashboardLoginError, { detail: safeTrace, parser_diagnostics: parserDiagnostics, attempt: loginAttempt + 1, session_source: isReplacementSession ? "replacement" : appStateSource, failure_kind: "facebook_login_required" });
+    loginInProgress = false;
+    if (!activeMessengerApi) watchdogSetMessengerConnected(false);
+    if (loginRetryTimer) { clearTimeout(loginRetryTimer); loginRetryTimer = null; }
+    return true;
+  };
   const handleLoginInvocationFailure = (error) => {
     if (
       loginSettled ||
       thisGeneration !== listenerGeneration
     ) {
+      return;
+    }
+
+    if (isWs3FcaLoginRequired(error)) {
+      handleLoginRequiredResponse(error);
       return;
     }
 
@@ -7046,6 +7095,11 @@ function attemptLogin() {
       loginSettled = true;
 
       if (loginError || !api) {
+        if (isWs3FcaLoginRequired(loginError)) {
+          handleLoginRequiredResponse(loginError);
+          return;
+        }
+
         dashboardLoginError = getFacebookLoginErrorMessage(
           loginError || "No API object returned."
         );
