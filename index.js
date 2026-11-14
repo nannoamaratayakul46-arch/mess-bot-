@@ -6742,6 +6742,28 @@ function getFacebookLoginErrorMessage(error) {
   return message || "Facebook login failed.";
 }
 
+function isWs3FcaBuildApiParserFailure(error) {
+  const message = String(error?.message || error || "");
+  const stack = String(error?.stack || "");
+  return (
+    /undefined is not iterable|not iterable/i.test(message) &&
+    /ws3-fca[\\/].*buildAPI\\.js|buildAPI\\.js/i.test(stack)
+  );
+}
+
+function getSafeLoginFailureTrace(error) {
+  const stack = String(error?.stack || error?.message || "Unknown login failure");
+  return stack
+    .split("\\n")
+    .slice(0, 8)
+    .map(line => line
+      .replace(/https?:\\/\\/[^\\s/@]+:[^\\s/@]+@/gi, "https://[redacted]@")
+      .replace(/([?&](?:access_token|token|session|cookie|password)=)[^&\\s]+/gi, "$1[redacted]")
+    )
+    .join("\\n")
+    .slice(0, 1800);
+}
+
 function fallbackFromRejectedDurableSession() {
   if (
     !deploymentAppState ||
@@ -6817,6 +6839,31 @@ function attemptLogin() {
 
     loginSettled = true;
     dashboardLoginError = getFacebookLoginErrorMessage(error);
+
+    // ws3-fca 3.5.2 can throw inside buildAPI before it reaches the normal
+    // authentication callback. This is a response-parser failure, not proof
+    // that the supplied cookies are invalid. Preserve the session and pause
+    // automatic retries so we do not repeatedly hit Facebook or discard a
+    // potentially valid durable checkpoint.
+    if (isWs3FcaBuildApiParserFailure(error)) {
+      dashboardLoginError =
+        "ws3-fca could not parse the Facebook login response (buildAPI parser failure). Session was preserved; automatic login retries are paused pending diagnostics.";
+      console.error("[LOGIN][PARSER] " + dashboardLoginError);
+      console.error("[LOGIN][PARSER] Safe failure trace:\\n" + getSafeLoginFailureTrace(error));
+      pushDashboardEvent("login-failed", dashboardLoginError, {
+        detail: getSafeLoginFailureTrace(error),
+        attempt: loginAttempt + 1,
+        session_source: isReplacementSession ? "replacement" : appStateSource,
+        failure_kind: "ws3_fca_buildapi_parser",
+      });
+      loginInProgress = false;
+      if (loginRetryTimer) {
+        clearTimeout(loginRetryTimer);
+        loginRetryTimer = null;
+      }
+      return;
+    }
+
     console.error(`[LOGIN] Login invocation failed: ${dashboardLoginError}`);
     pushDashboardEvent("login-failed", "Messenger login invocation failed: " + dashboardLoginError.slice(0, 240), {
       detail: dashboardLoginError.slice(0, 240),
