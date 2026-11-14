@@ -21,13 +21,9 @@ function getMessengerProxyUrl() {
     throw new Error("PROXY_URL must include the residential proxy username and password.");
   }
 
-  // Route common Node HTTP clients and child processes through the same exit IP.
-  // ws3-fca also receives proxy explicitly for its HTTP + MQTT WebSocket transports.
-  for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]) {
-    process.env[key] = raw;
-  }
-  process.env.NO_PROXY = "";
-  process.env.no_proxy = "";
+  // Keep proxy routing scoped to ws3-fca's explicit proxy option. Mutating
+  // process-wide proxy variables also affects unrelated HTTP clients,
+  // child processes, and localhost calls in the dashboard/runtime.
   return raw;
 }
 
@@ -86,7 +82,11 @@ async function verifyMessengerProxy() {
         return result;
       } catch (error) {
         const status = Number(error?.response?.status);
-        const reason = status ? "HTTP " + status : String(error?.code || error?.message || "request failed").slice(0, 100);
+        const rawReason = String(error?.code || error?.message || "request failed");
+        const safeReason = rawReason
+          .replaceAll(proxyUrl, "[redacted proxy URL]")
+          .replace(/(https?:\\/\\/)[^\\s/@]+:[^\\s/@]+@/gi, "$1[redacted]@");
+        const reason = status ? "HTTP " + status : safeReason.slice(0, 100);
         failures.push(provider.name + ": " + reason);
         console.warn("[PROXY] Geo-IP provider " + provider.name + " failed (" + reason + "); " +
           (provider === providers[providers.length - 1] ? "no fallback provider remains." : "trying fallback provider."));
