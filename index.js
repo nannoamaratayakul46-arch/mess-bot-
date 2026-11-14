@@ -66,6 +66,7 @@ const express = require("express");
 const { createDashboardSecurity } = require("./dashboardSecurity");
 const { createDashboardAccessRoutes } = require("./dashboardAccessRoutes");
 const { login } = require("ws3-fca");
+const { verifyMessengerProxy, getMessengerProxyUrl } = require("./messengerProxy");
 
 const db = require("./db");
 const trafficDeliveryStore = require("./trafficDeliveryHistory");
@@ -6896,6 +6897,8 @@ function attemptLogin() {
         updatePresence: true,
         selfListen: true,
         randomUserAgent: false,
+        // ws3-fca 3.5.2 passes this through its HTTP client and MQTT WebSocket.
+        proxy: getMessengerProxyUrl(),
       },
 
     async (
@@ -7570,6 +7573,14 @@ async function initializeMessengerSession() {
   // loadPersistedFacebookSessionState() leaves the deployment-provided
   // FB_COOKIES fallback in place.
   await loadPersistedFacebookSessionState();
+  try {
+    await verifyMessengerProxy();
+  } catch (error) {
+    dashboardLoginError = "Philippine proxy verification failed. Messenger login is paused to prevent a direct Render connection.";
+    console.error("[PROXY] " + (error?.message || "Proxy verification failed."));
+    pushDashboardEvent("proxy", dashboardLoginError);
+    return;
+  }
   attemptLogin();
 }
 
