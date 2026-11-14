@@ -9,9 +9,8 @@ const pkg = JSON.parse(read("package.json"));
 const checks = [
   ["ws3-fca is pinned to 3.5.2", pkg.dependencies?.["ws3-fca"] === "3.5.2"],
   ["login uses the 3.5.2 appState credential object", /login\(\s*\{\s*appState:\s*loginInput\s*\}/.test(read("index.js"))],
-  ["proxy verification is enforced centrally before every login path", /if \(!proxyGateVerified\)/.test(read("index.js")) && /void verifyMessengerProxy\(\)\.then/.test(read("index.js")) && /proxyGateVerified = true/.test(read("index.js"))],
-  ["startup delegates to the centralized proxy gate", read("index.js").includes("async function initializeMessengerSession()") && !read("index.js").slice(read("index.js").indexOf("async function initializeMessengerSession")).includes("await verifyMessengerProxy()")],
-  ["proxy geo-IP verification falls back from ipinfo to ipwho and remains cached", read("messengerProxy.js").includes("ipinfo.io") && read("messengerProxy.js").includes("ipwho.is") && read("messengerProxy.js").includes("Cache both success and failure")],
+  ["Messenger login has no external network-proxy gate", !/proxyGateVerified|verifyMessengerProxy|PROXY_URL/.test(read("index.js"))],
+  ["Messenger startup uses the shared direct login path without a proxy module", read("index.js").includes("async function initializeMessengerSession()") && read("index.js").includes("attemptLogin();") && !fs.existsSync(path.join(root, "messengerProxy.js"))],
   ["login Promise rejection is observed", /loginResult\.catch\(/.test(read("index.js"))],
   ["buildAPI parser errors delivered through the login callback pause retries and preserve session", /if \(loginError \|\| !api\)/.test(read("index.js")) && /if \(isWs3FcaBuildApiParserFailure\(loginError\)\)/.test(read("index.js")) && /failure_kind: "ws3_fca_buildapi_parser"/.test(read("index.js"))],
   ["buildAPI parser failures are diagnosed without retrying or rejecting the stored session", /isWs3FcaBuildApiParserFailure\(error\)/.test(read("index.js")) && /failure_kind: "ws3_fca_buildapi_parser"/.test(read("index.js")) && /automatic login retries are paused/.test(read("index.js"))],

@@ -4186,7 +4186,7 @@ app.get(
           traffic: trafficSafetyStatus(),
           music: getMusicStats(),
           database: await db.healthCheck().catch(() => false),
-          uptime_seconds: Math.floor(process.uptime()),
+          uptime_seconds: getRenderRuntimeSeconds(),
           node_version: process.version,
           memory: process.memoryUsage(),
         },
@@ -4208,7 +4208,7 @@ app.get(
           traffic: trafficSafetyStatus(),
           music: getMusicStats(),
           database: await db.healthCheck().catch(() => false),
-          uptime_seconds: Math.floor(process.uptime()),
+          uptime_seconds: getRenderRuntimeSeconds(),
           node_version: process.version,
           memory: process.memoryUsage(),
         },
@@ -4234,7 +4234,7 @@ app.get(
           traffic,
           music,
           database,
-          uptime_seconds: Math.floor(process.uptime()),
+          uptime_seconds: getRenderRuntimeSeconds(),
           node_version: process.version,
           memory: process.memoryUsage(),
         },
@@ -6267,7 +6267,7 @@ app.get(
         : "Set RENDER_API_KEY and RENDER_SERVICE_ID in the bot deployment environment to enable authenticated restart controls.",
       version: process.env.RENDER_GIT_COMMIT || process.env.COMMIT_SHA || null,
       node_version: process.version,
-      uptime_seconds: Math.floor(process.uptime()),
+      uptime_seconds: getRenderRuntimeSeconds(),
     });
   }
 );
@@ -7782,7 +7782,7 @@ async function initializeMessengerSession() {
   // Prefer the newest durable checkpoint. If it is unavailable or invalid,
   // loadPersistedFacebookSessionState() leaves the deployment-provided
   // FB_COOKIES fallback in place. attemptLogin() owns the single shared
-  // proxy gate so startup and every dashboard login route behave identically.
+  // login path so startup and every dashboard login route behave identically.
   await loadPersistedFacebookSessionState();
   attemptLogin();
 }
