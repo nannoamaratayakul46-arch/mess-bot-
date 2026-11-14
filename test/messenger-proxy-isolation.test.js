@@ -53,5 +53,5 @@ test("Messenger proxy configuration does not mutate process-wide proxy variables
   }
 
   const indexSource = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
-  assert.match(indexSource, /proxy:\\s*getMessengerProxyUrl\\(\\)/, "ws3-fca must receive the proxy explicitly");
+  assert.match(indexSource, /proxy:\s*getMessengerProxyUrl\(\)/, "ws3-fca must receive the proxy explicitly");
 });
