@@ -23,6 +23,12 @@ test("ws3-fca postinstall validates the pinned public API and guards the fb_dtsg
   assert.match(patchScript, /checkpointPathMarker:/);
   assert.match(patchScript, /authenticatedHomeMarker:/);
   assert.match(patchScript, /dtsgDataKeys:/);
+  assert.match(patchScript, /dtsgDataHasToken:/);
+  assert.match(patchScript, /dtsgDataTokenType:/);
+  assert.match(patchScript, /dtsgDataKeyCount:/);
+  assert.match(patchScript, /htmlGenericTokenMarker:/);
+  assert.match(patchScript, /netDataRequireEntryCount:/);
+  assert.match(patchScript, /dtsgRequireEntryCount:/);
   assert.match(patchScript, /netDataKeys:/);
   assert.doesNotMatch(patchScript, /console\.(?:log|error)\([^\n]*responseHtml/); 
   assert.doesNotMatch(patchScript, /patchDirectory|patchSource/);

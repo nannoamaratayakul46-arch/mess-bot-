@@ -62,7 +62,16 @@ ${indent}    authenticatedHomeMarker: /id=["']bluebarRoot|id=["']pagelet_timelin
 ${indent}    responseKind: /name=["'](?:approvals_code|verification_code)["']|id=["']approvals_code["']/i.test(responseHtml) ? "two_factor" : (/\\/checkpoint(?:\\/|\\?|["'])|<title[^>]*>[^<]*(?:checkpoint|security check|confirm your identity)/i.test(responseHtml) ? "checkpoint" : (/<input[^>]+name=["']pass["']/i.test(responseHtml) && /<input[^>]+name=["'](?:email|login|username)["']/i.test(responseHtml)) ? "login" : (/id=["']bluebarRoot|id=["']pagelet_timeline_main_column|data-pagelet=["']FeedUnit_/i.test(responseHtml) ? "authenticated_home" : "unclassified")),
 ${indent}    fbDtsgLiteralPresent: /fb_dtsg/i.test(responseHtml),
 ${indent}    dtsgValueType: typeof dtsg,
+${indent}    dtsgDataType: dtsgData === null ? "null" : Array.isArray(dtsgData) ? "array" : typeof dtsgData,
 ${indent}    dtsgDataKeys: dtsgData && typeof dtsgData === "object" ? Object.keys(dtsgData).slice(0, 20) : [],
+${indent}    dtsgDataKeyCount: dtsgData && typeof dtsgData === "object" ? Object.keys(dtsgData).length : null,
+${indent}    dtsgDataHasToken: Boolean(dtsgData && typeof dtsgData === "object" && Object.prototype.hasOwnProperty.call(dtsgData, "token")),
+${indent}    dtsgDataTokenType: dtsgData && typeof dtsgData === "object" && Object.prototype.hasOwnProperty.call(dtsgData, "token") ? typeof dtsgData.token : "missing",
+${indent}    dtsgDataTokenLength: dtsgData && typeof dtsgData.token === "string" ? dtsgData.token.length : null,
+${indent}    htmlDtsgInitialDataMarker: /DTSGInitialData/i.test(responseHtml),
+${indent}    htmlGenericTokenMarker: /"token"\\s*:\\s*"/i.test(responseHtml),
+${indent}    netDataRequireEntryCount: Array.isArray(netData) ? netData.reduce((count, item) => count + (item && Array.isArray(item.require) ? item.require.length : 0), 0) : null,
+${indent}    dtsgRequireEntryCount: Array.isArray(netData) ? netData.reduce((count, item) => count + (item && Array.isArray(item.require) ? item.require.filter(req => Array.isArray(req) && typeof req[0] === "string" && /DTSG/i.test(req[0])).length : 0), 0) : null,
 ${indent}    netDataKeys: Array.isArray(netData) ? [...new Set(netData.slice(0, 5).flatMap(item => item && typeof item === "object" ? Object.keys(item) : []))].slice(0, 20) : []
 ${indent}  };
 ${indent}  throw parserError;
