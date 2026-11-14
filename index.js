@@ -6754,13 +6754,13 @@ function isWs3FcaBuildApiParserFailure(error) {
 function getSafeLoginFailureTrace(error) {
   const stack = String(error?.stack || error?.message || "Unknown login failure");
   return stack
-    .split("\\n")
+    .split("\n")
     .slice(0, 8)
     .map(line => line
-      .replace(/https?:\\/\\/[^\\s/@]+:[^\\s/@]+@/gi, "https://[redacted]@")
-      .replace(/([?&](?:access_token|token|session|cookie|password)=)[^&\\s]+/gi, "$1[redacted]")
+      .replace(/https?:\/\/[^\s/@]+:[^\s/@]+@/gi, "https://[redacted]@")
+      .replace(/([?&](?:access_token|token|session|cookie|password)=)[^&\s]+/gi, "$1[redacted]")
     )
-    .join("\\n")
+    .join("\n")
     .slice(0, 1800);
 }
 
