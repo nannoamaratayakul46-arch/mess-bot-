@@ -15,6 +15,8 @@ const proxyKeys = [
   "no_proxy",
 ];
 const original = Object.fromEntries(proxyKeys.map(key => [key, process.env[key]]));
+const fs = require("node:fs");
+const path = require("node:path");
 
 test.after(() => {
   for (const key of proxyKeys) {
@@ -49,4 +51,7 @@ test("Messenger proxy configuration does not mutate process-wide proxy variables
   for (const key of proxyKeys.slice(1)) {
     assert.equal(process.env[key], original[key], key + " must remain unchanged");
   }
+
+  const indexSource = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
+  assert.match(indexSource, /proxy:\\s*getMessengerProxyUrl\\(\\)/, "ws3-fca must receive the proxy explicitly");
 });
