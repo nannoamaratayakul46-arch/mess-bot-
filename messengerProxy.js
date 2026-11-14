@@ -21,13 +21,9 @@ function getMessengerProxyUrl() {
     throw new Error("PROXY_URL must include the residential proxy username and password.");
   }
 
-  // Route common Node HTTP clients and child processes through the same exit IP.
-  // ws3-fca also receives proxy explicitly for its HTTP + MQTT WebSocket transports.
-  for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]) {
-    process.env[key] = raw;
-  }
-  process.env.NO_PROXY = "";
-  process.env.no_proxy = "";
+  // Keep proxy routing scoped to ws3-fca's explicit proxy option. Mutating
+  // process-wide proxy variables also affects unrelated HTTP clients,
+  // child processes, and localhost calls in the dashboard/runtime.
   return raw;
 }
 
@@ -72,21 +68,25 @@ async function verifyMessengerProxy() {
     for (const provider of providers) {
       try {
         const result = await requestGeo(provider, agent);
-        console.log("[PROXY] Verified outbound IP " + result.ip + " | " +
+        console.log("[PROXY] Geo-IP probe exit: " + result.ip + " | " +
           (result.city || "Unknown city") + ", " + result.country +
-          " via " + result.provider);
+          " via " + result.provider + ". This does not prove Facebook HTTP or Messenger MQTT uses the same exit.");
 
         if (result.country !== "PH") {
           console.warn("[PROXY] WARNING: proxy exit country is not the Philippines. Messenger traffic remains routed through the configured proxy.");
         } else if (result.city.toLowerCase() !== "manila") {
           console.warn("[PROXY] WARNING: proxy exit is in the Philippines, but Geo-IP did not identify Manila (reported: " + (result.city || "unknown") + ").");
         } else {
-          console.log("[PROXY] Philippine / Manila Geo-IP check passed. Geo-IP city data is approximate.");
+          console.log("[PROXY] Geo-IP probe reports the requested Philippine / Manila location. City data is approximate; Facebook and MQTT routing remain unverified.");
         }
         return result;
       } catch (error) {
         const status = Number(error?.response?.status);
-        const reason = status ? "HTTP " + status : String(error?.code || error?.message || "request failed").slice(0, 100);
+        const rawReason = String(error?.code || error?.message || "request failed");
+        const safeReason = rawReason
+          .replaceAll(proxyUrl, "[redacted proxy URL]")
+          .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[redacted]@");
+        const reason = status ? "HTTP " + status : safeReason.slice(0, 100);
         failures.push(provider.name + ": " + reason);
         console.warn("[PROXY] Geo-IP provider " + provider.name + " failed (" + reason + "); " +
           (provider === providers[providers.length - 1] ? "no fallback provider remains." : "trying fallback provider."));
