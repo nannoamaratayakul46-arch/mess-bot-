@@ -20,6 +20,13 @@ function getMessengerProxyUrl() {
   if (!parsed.username || !parsed.password) {
     throw new Error("PROXY_URL must include the residential proxy username and password.");
   }
+  // Route common Node HTTP clients and child processes through the same exit IP.
+  // ws3-fca also receives proxy explicitly for its HTTP + MQTT WebSocket transports.
+  for (const key of ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]) {
+    process.env[key] = raw;
+  }
+  process.env.NO_PROXY = "";
+  process.env.no_proxy = "";
   return raw;
 }
 
