@@ -85,7 +85,7 @@ async function verifyMessengerProxy() {
         const rawReason = String(error?.code || error?.message || "request failed");
         const safeReason = rawReason
           .replaceAll(proxyUrl, "[redacted proxy URL]")
-          .replace(/(https?:\\/\\/)[^\\s/@]+:[^\\s/@]+@/gi, "$1[redacted]@");
+          .replace(/(https?:\/\/)[^\s/@]+:[^\s/@]+@/gi, "$1[redacted]@");
         const reason = status ? "HTTP " + status : safeReason.slice(0, 100);
         failures.push(provider.name + ": " + reason);
         console.warn("[PROXY] Geo-IP provider " + provider.name + " failed (" + reason + "); " +
