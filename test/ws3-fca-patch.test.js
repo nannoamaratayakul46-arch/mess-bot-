@@ -12,10 +12,19 @@ test("ws3-fca postinstall validates the pinned public API and guards the fb_dtsg
   assert.match(patchScript, /packageJson\.version !== "3\.5\.2"/);
   assert.match(patchScript, /typeof client\.login !== "function"/);
   assert.match(patchScript, /require\(packageRoot\)/);
-  assert.match(patchScript, /ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS/);
+  assert.match(patchScript, /ECLIPSE_WS3_FCA_MISSING_DTSG_DIAGNOSTICS_V2/);
+  assert.match(patchScript, /legacyGuardedBlock/);
+  assert.match(patchScript, /Existing guarded fb_dtsg patch could not be safely upgraded/);
   assert.match(patchScript, /buildAPI\.js/);
   assert.match(patchScript, /did not match the verified fb_dtsg extraction line/);
   assert.match(patchScript, /writeFileSync\(buildApiPath/);
+  assert.match(patchScript, /responseKind:/);
+  assert.match(patchScript, /twoFactorFormMarker:/);
+  assert.match(patchScript, /checkpointPathMarker:/);
+  assert.match(patchScript, /authenticatedHomeMarker:/);
+  assert.match(patchScript, /dtsgDataKeys:/);
+  assert.match(patchScript, /netDataKeys:/);
+  assert.doesNotMatch(patchScript, /console\.(?:log|error)\([^\n]*responseHtml/); 
   assert.doesNotMatch(patchScript, /patchDirectory|patchSource/);
 });
 

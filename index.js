@@ -6758,6 +6758,12 @@ function isWs3FcaBuildApiParserFailure(error) {
 function getSafeLoginParserDiagnostics(error) {
   const source = error?.eclipseDiagnostics;
   if (!source || source.kind !== "missing_fb_dtsg") return null;
+  const safeKeys = value => Array.isArray(value)
+    ? value
+        .filter(key => typeof key === "string" && /^[A-Za-z0-9_$.-]{1,60}$/.test(key))
+        .slice(0, 20)
+    : [];
+  const responseKinds = new Set(["two_factor", "checkpoint", "login", "authenticated_home", "unclassified"]);
   return {
     kind: "missing_fb_dtsg",
     htmlLength: Number.isFinite(source.htmlLength) ? source.htmlLength : null,
@@ -6767,6 +6773,19 @@ function getSafeLoginParserDiagnostics(error) {
     twoFactorMarker: source.twoFactorMarker === true,
     loginMarker: source.loginMarker === true,
     accountDisabledMarker: source.accountDisabledMarker === true,
+    responseKind: responseKinds.has(source.responseKind) ? source.responseKind : "unclassified",
+    twoFactorFormMarker: source.twoFactorFormMarker === true,
+    checkpointPathMarker: source.checkpointPathMarker === true,
+    checkpointHeadingMarker: source.checkpointHeadingMarker === true,
+    passwordFieldMarker: source.passwordFieldMarker === true,
+    loginIdentifierFieldMarker: source.loginIdentifierFieldMarker === true,
+    authenticatedHomeMarker: source.authenticatedHomeMarker === true,
+    fbDtsgLiteralPresent: source.fbDtsgLiteralPresent === true,
+    dtsgValueType: ["undefined", "string", "object", "number", "boolean"].includes(source.dtsgValueType)
+      ? source.dtsgValueType
+      : "unknown",
+    dtsgDataKeys: safeKeys(source.dtsgDataKeys),
+    netDataKeys: safeKeys(source.netDataKeys),
   };
 }
 function getSafeLoginFailureTrace(error) {
