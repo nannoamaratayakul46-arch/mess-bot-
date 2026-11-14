@@ -66,7 +66,6 @@ const express = require("express");
 const { createDashboardSecurity } = require("./dashboardSecurity");
 const { createDashboardAccessRoutes } = require("./dashboardAccessRoutes");
 const { login } = require("ws3-fca");
-const { verifyMessengerProxy, getMessengerProxyUrl } = require("./messengerProxy");
 
 const db = require("./db");
 const trafficDeliveryStore = require("./trafficDeliveryHistory");
@@ -6623,9 +6622,6 @@ let loginAttempt = 0;
 let listenFailureCount = 0;
 let rateLimitFailureCount = 0;
 let loginInProgress = false;
-let proxyGateVerified = false;
-let proxyGatePending = false;
-let proxyGateFailed = false;
 let listenerGeneration = 0;
 let activeListenerGeneration = 0;
 let startupSchedulersInitialized = false;
@@ -6846,28 +6842,6 @@ function fallbackFromRejectedDurableSession() {
 }
 
 function attemptLogin() {
-  // Every entry point (startup, session upload, reconnect, and bot start)
-  // must pass the same proxy gate before ws3-fca can make a request.
-  if (!proxyGateVerified) {
-    if (proxyGatePending || proxyGateFailed) return;
-    proxyGatePending = true;
-    void verifyMessengerProxy().then(() => {
-      proxyGateVerified = true;
-      proxyGatePending = false;
-      console.log("[PROXY] Login gate passed; Messenger login may proceed.");
-      attemptLogin();
-    }).catch((error) => {
-      proxyGatePending = false;
-      proxyGateFailed = true;
-      dashboardLoginError = "Messenger login is paused because the configured residential proxy could not be verified. Restart the service after correcting PROXY_URL or provider access.";
-      console.error("[PROXY] Login blocked by verification gate: " + String(error?.message || "verification failed").slice(0, 240));
-      pushDashboardEvent("proxy", dashboardLoginError, {
-        failure_kind: "proxy_verification_failed",
-      });
-    });
-    return;
-  }
-
   const isReplacementSession = Boolean(pendingFacebookAppState);
 
   // A healthy active listener owns the connection. Do not create a second
@@ -7069,8 +7043,6 @@ function attemptLogin() {
         updatePresence: true,
         selfListen: true,
         randomUserAgent: false,
-        // ws3-fca 3.5.2 passes this through its HTTP client and MQTT WebSocket.
-        proxy: getMessengerProxyUrl(),
       },
 
     async (
