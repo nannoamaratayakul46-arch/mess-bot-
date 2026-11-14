@@ -5429,12 +5429,15 @@ app.get(
   "/api/dashboard/groups",
   requireDashboardAccess,
   async (_req, res) => {
-    if (!activeMessengerApi || activeListenerGeneration <= 0) {
-      return res.status(409).json({ ok: false, error: "Messenger is not connected." });
-    }
-
+    const messengerConnected = Boolean(activeMessengerApi && activeListenerGeneration > 0);
     const known = new Map();
-    try {
+    if (!messengerConnected) {
+      // Keep previously discovered group metadata usable while Facebook is offline.
+      for (const [threadID, group] of dashboardKnownGroups.entries()) {
+        known.set(String(threadID), { ...group, last_seen_at: null, metadata_unavailable: true });
+      }
+    } else {
+      try {
       const inboxThreads = await dashboardGetThreadList(activeMessengerApi);
       for (const thread of inboxThreads) {
         const threadID = String(thread.threadID || thread.threadId || thread.thread_id || "").trim();
@@ -5491,6 +5494,8 @@ app.get(
       }
     }
 
+    }
+
     // Archived groups stay available in the dashboard's Archived view even
     // after they disappear from the Messenger inbox. Archiving never removes
     // the bot from a conversation; leaving is a separate explicit action.
@@ -5536,6 +5541,30 @@ app.get(
       console.warn("[DASHBOARD] Could not load archived groups:", error?.message || error);
     }
 
+    if (!messengerConnected) {
+      // Thread settings are already persisted per group. Use them as an offline
+      // directory so operators can still inspect and manage saved controls.
+      try {
+        const savedGroups = await db.query(
+          "SELECT thread_id FROM thread_settings UNION SELECT thread_id FROM banat_thread_targets"
+        );
+        for (const row of savedGroups.rows || []) {
+          const threadID = String(row.thread_id || "").trim();
+          if (!threadID || known.has(threadID)) continue;
+          known.set(threadID, {
+            thread_id: threadID,
+            name: "Saved group · " + threadID.slice(-6),
+            participant_count: 0,
+            last_seen_at: null,
+            is_group: true,
+            metadata_unavailable: true,
+          });
+        }
+      } catch (error) {
+        console.warn("[DASHBOARD] Could not load saved group directory while Messenger is offline:", error?.message || error);
+      }
+    }
+
     dashboardKnownGroups.clear();
     const groups = [];
     for (const group of Array.from(known.values()).slice(0, 200)) {
@@ -5574,7 +5603,12 @@ app.get(
       }
     }
 
-    return res.json({ ok: true, groups, generated_at: new Date().toISOString() });
+    return res.json({
+      ok: true,
+      groups,
+      messenger_connected: messengerConnected,
+      generated_at: new Date().toISOString(),
+    });
   }
 );
 
