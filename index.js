@@ -6747,7 +6747,7 @@ function isWs3FcaBuildApiParserFailure(error) {
   const stack = String(error?.stack || "");
   return (
     /undefined is not iterable|not iterable/i.test(message) &&
-    /ws3-fca[\\/].*buildAPI\\.js|buildAPI\\.js/i.test(stack)
+    /ws3-fca[\\/].*buildAPI\.js|buildAPI\.js/i.test(stack)
   );
 }
 
