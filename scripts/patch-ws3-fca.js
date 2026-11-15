@@ -31,6 +31,23 @@ if (!client || typeof client.login !== "function") {
   throw new Error("[postinstall] ws3-fca 3.5.2 does not expose the expected login() API.");
 }
 
+// Validate the exact cookie-agent and proxy-agent exports before patching
+// ws3-fca. Fail during install rather than at Messenger startup if APIs drift.
+const axiosCookieJarSupportPath = require.resolve("axios-cookiejar-support", { paths: [packageRoot] });
+const cookieAgentPath = require.resolve("http-cookie-agent/http", {
+  paths: [path.dirname(axiosCookieJarSupportPath)],
+});
+const cookieAgentExports = require(cookieAgentPath);
+const proxyAgentExports = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));
+if (
+  typeof cookieAgentExports.HttpCookieAgent !== "function" ||
+  typeof cookieAgentExports.HttpsCookieAgent !== "function" ||
+  typeof cookieAgentExports.createCookieAgent !== "function" ||
+  typeof proxyAgentExports.HttpsProxyAgent !== "function"
+) {
+  throw new Error("[postinstall] Required cookie-aware/proxy agent exports are incompatible; refusing to patch ws3-fca.");
+}
+
 // Guard the exact failure seam: Facebook may serve a page without fb_dtsg.
 const buildApiPath = path.join(packageRoot, "src", "core", "models", "buildAPI.js");
 if (!fs.existsSync(buildApiPath)) {
@@ -98,4 +115,125 @@ if (!buildApi.includes(patchMarker)) {
 } else {
   console.log("[postinstall] Upgraded Facebook response diagnostics already present in ws3-fca@3.5.2.");
 }
+
+ 
+// Route ws3-fca HTTPS requests through a cookie-aware CONNECT proxy agent.
+// Axios's built-in proxy option is deliberately disabled for this client so
+// it cannot compete with the explicit HttpsProxyAgent transport.
+const axiosPath = path.join(packageRoot, "src", "utils", "axios.js");
+if (!fs.existsSync(axiosPath)) {
+  throw new Error("[postinstall] ws3-fca 3.5.2 axios transport was not found; refusing an unverified proxy patch.");
+}
+let axiosSource = fs.readFileSync(axiosPath, "utf8");
+const proxyPatchMarker = "ECLIPSE_WS3_FCA_COOKIE_AWARE_PROXY_V1";
+if (!axiosSource.includes(proxyPatchMarker)) {
+  const oldImport = 'const { wrapper } = require("axios-cookiejar-support");';
+  const newImports = `const path = require("node:path");\nconst { HttpCookieAgent, HttpsCookieAgent, createCookieAgent } = require(require.resolve("http-cookie-agent/http", { paths: [path.dirname(require.resolve("axios-cookiejar-support"))] }));
+const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));`;
+  if (!axiosSource.includes(oldImport)) {
+    throw new Error("[postinstall] ws3-fca axios transport import did not match the verified cookie-jar implementation.");
+  }
+  axiosSource = axiosSource.replace(oldImport, newImports);
+
+  const oldClient = `const jar = new CookieJar();
+const client = wrapper(axios.create({ jar }));`;
+  const newClient = `const jar = new CookieJar();
+const HttpsProxyCookieAgent = createCookieAgent(HttpsProxyAgent);
+const client = axios.create({
+    httpAgent: new HttpCookieAgent({ cookies: { jar } }),
+    httpsAgent: new HttpsCookieAgent({ cookies: { jar } }),
+});`;
+  if (!axiosSource.includes(oldClient)) {
+    throw new Error("[postinstall] ws3-fca axios client initialization did not match the verified cookie-jar implementation.");
+  }
+  axiosSource = axiosSource.replace(oldClient, newClient);
+
+  const setProxyPattern = /function setProxy\(proxyUrl\) \{[\s\S]*?^\}/m;
+  const newSetProxy = `function setProxy(proxyUrl) {
+    if (!proxyUrl) {
+        proxyConfig = {};
+        client.defaults.httpsAgent = new HttpsCookieAgent({ cookies: { jar } });
+        return;
+    }
+
+    let parsedProxy;
+    try {
+        parsedProxy = new URL(proxyUrl);
+    } catch {
+        throw new Error("Invalid proxy URL. Please use a full HTTP(S) proxy URL.");
+    }
+    if (!["http:", "https:"].includes(parsedProxy.protocol) || !parsedProxy.hostname || !parsedProxy.port) {
+        throw new Error("Invalid proxy URL. Please include an HTTP(S) scheme, hostname, and port.");
+    }
+
+    // HttpsProxyAgent performs CONNECT tunneling for Facebook HTTPS requests.
+    // The cookie-aware wrapper preserves the same tough-cookie jar.
+    client.defaults.httpsAgent = new HttpsProxyCookieAgent(proxyUrl, { cookies: { jar } });
+    proxyConfig = { proxy: false };
+}`;
+  const setProxyMatches = axiosSource.match(setProxyPattern) || [];
+  if (setProxyMatches.length !== 1) {
+    throw new Error("[postinstall] ws3-fca setProxy() implementation did not match the verified source; refusing to patch.");
+  }
+  axiosSource = axiosSource.replace(setProxyPattern, newSetProxy);
+  axiosSource = axiosSource.replace(
+    "module.exports = {",
+    "// " + proxyPatchMarker + "\nmodule.exports = {"
+  );
+  if (!axiosSource.includes(proxyPatchMarker)) {
+    throw new Error("[postinstall] Cookie-aware proxy patch marker could not be installed.");
+  }
+  fs.writeFileSync(axiosPath, axiosSource, "utf8");
+  console.log("[postinstall] Applied cookie-aware HTTPS proxy transport to ws3-fca@3.5.2.");
+} else {
+  console.log("[postinstall] Cookie-aware HTTPS proxy transport already present in ws3-fca@3.5.2.");
+}
+
+
+if (axiosSource.includes(proxyPatchMarker) && axiosSource.includes("new HttpsProxyCookieAgent(parsedProxy")) {
+  axiosSource = axiosSource.replace(
+    "new HttpsProxyCookieAgent(parsedProxy, { cookies: { jar } })",
+    "new HttpsProxyCookieAgent(proxyUrl, { cookies: { jar } })"
+  );
+  fs.writeFileSync(axiosPath, axiosSource, "utf8");
+  console.log("[postinstall] Migrated cached cookie-aware proxy agent to use the proxy URL string.");
+}
+
+
+
+// ws3-fca@3.5.2 bundles https-proxy-agent@4 for MQTT. On the current
+// Node runtime that nested agent can be incompatible with the WebSocket
+// request path. Reuse the application's pinned root agent (5.x), which is
+// already used by the HTTP transport, and fail closed if the source drifts.
+const mqttPath = path.join(packageRoot, "src", "deltas", "apis", "mqtt", "listenMqtt.js");
+if (!fs.existsSync(mqttPath)) {
+  throw new Error("[postinstall] ws3-fca MQTT transport was not found; refusing an unverified proxy patch.");
+}
+let mqttSource = fs.readFileSync(mqttPath, "utf8");
+if (!mqttSource.includes("ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1")) {
+  const oldAgentImport = 'const HttpsProxyAgent = require(\'https-proxy-agent\');';
+  const newAgentImport = 'const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));';
+  const oldAgentSetup = 'if (ctx.globalOptions.proxy) options.wsOptions.agent = new HttpsProxyAgent(ctx.globalOptions.proxy);';
+  const newAgentSetup = `if (ctx.globalOptions.proxy) {
+        const proxyUrl = new URL(ctx.globalOptions.proxy);
+        if (!["http:", "https:"].includes(proxyUrl.protocol) || !proxyUrl.hostname || !proxyUrl.port) {
+            throw new Error("Invalid HTTP(S) proxy URL for Messenger MQTT transport.");
+        }
+        options.wsOptions.agent = new HttpsProxyAgent(ctx.globalOptions.proxy);
+    }`;
+  if (!mqttSource.includes(oldAgentImport) || !mqttSource.includes(oldAgentSetup)) {
+    throw new Error("[postinstall] ws3-fca MQTT proxy setup did not match the verified 3.5.2 source; refusing to patch.");
+  }
+  mqttSource = mqttSource.replace(oldAgentImport, newAgentImport);
+  mqttSource = mqttSource.replace(oldAgentSetup, newAgentSetup);
+  mqttSource = mqttSource.replace('const options = {', '// ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1\n    const options = {');
+  if (!mqttSource.includes("ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1")) {
+    throw new Error("[postinstall] MQTT proxy patch marker could not be installed.");
+  }
+  fs.writeFileSync(mqttPath, mqttSource, "utf8");
+  console.log("[postinstall] Routed ws3-fca MQTT through the root HTTPS proxy agent.");
+} else {
+  console.log("[postinstall] Root HTTPS proxy agent already installed for ws3-fca MQTT.");
+}
+
 console.log("[postinstall] Verified ws3-fca@3.5.2 public API and buildAPI compatibility patch.");
