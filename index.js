@@ -3,6 +3,7 @@
 const { invokeMessengerSend, resolveMessengerIsGroup } = require("./messengerSendRouting");
 const { setMessageReactionMqtt, changeGroupMember } = require("./messengerApiCompat");
 const { classifyListenerError, getListenerRecoveryDelayMs, getLoginRetryDelayMs } = require("./messengerRecoveryPolicy");
+const { verifyMessengerProxy, getMessengerProxyUrl } = require("./messengerProxy");
 
 // "/" is an admin-only Banat toggle. Keep unauthorized-attempt state at
 // module scope so it survives individual message-handler invocations.
@@ -6657,6 +6658,10 @@ let loginAttempt = 0;
 let listenFailureCount = 0;
 let rateLimitFailureCount = 0;
 let loginInProgress = false;
+let proxyGateVerified = false;
+let proxyGatePending = false;
+let proxyGateRetryAttempt = 0;
+let proxyGateRetryTimer = null;
 let listenerGeneration = 0;
 let activeListenerGeneration = 0;
 let startupSchedulersInitialized = false;
@@ -6877,6 +6882,43 @@ function fallbackFromRejectedDurableSession() {
 }
 
 function attemptLogin() {
+  // Verify the configured proxy before Messenger login. Temporary probe
+  // failures retry automatically with bounded backoff and preserve the session.
+  if (!proxyGateVerified) {
+    if (proxyGatePending || proxyGateRetryTimer) return;
+    proxyGatePending = true;
+    void verifyMessengerProxy().then(() => {
+      proxyGateVerified = true;
+      proxyGatePending = false;
+      proxyGateRetryAttempt = 0;
+      console.log("[PROXY] Egress verification passed; Messenger login may proceed.");
+      attemptLogin();
+    }).catch((error) => {
+      proxyGatePending = false;
+      proxyGateRetryAttempt += 1;
+      const backoffMs = Math.min(
+        MAX_LOGIN_BACKOFF_MS,
+        5_000 * (2 ** Math.min(proxyGateRetryAttempt - 1, 6))
+      );
+      dashboardLoginError = "Messenger login is waiting for the configured proxy to become reachable. The session is preserved; proxy verification will retry automatically.";
+      const safeMessage = String(error?.message || "verification failed")
+        .replace(/https?:\/\/[^\s/@]+:[^\s/@]+@/gi, "http://[redacted]@")
+        .replace(/([?&](?:access_token|token|session|cookie|password)=)[^&\s]+/gi, "$1[redacted]")
+        .slice(0, 200);
+      console.error("[PROXY] Egress verification failed: " + safeMessage);
+      pushDashboardEvent("proxy", dashboardLoginError, {
+        failure_kind: "proxy_verification_failed",
+        retry_in_ms: backoffMs,
+        attempt: proxyGateRetryAttempt,
+      });
+      proxyGateRetryTimer = setTimeout(() => {
+        proxyGateRetryTimer = null;
+        attemptLogin();
+      }, backoffMs);
+    });
+    return;
+  }
+
   const isReplacementSession = Boolean(pendingFacebookAppState);
 
   // A healthy active listener owns the connection. Do not create a second
@@ -7078,6 +7120,7 @@ function attemptLogin() {
         updatePresence: true,
         selfListen: true,
         randomUserAgent: false,
+        proxy: getMessengerProxyUrl(),
       },
 
     async (
@@ -13824,6 +13867,10 @@ async function gracefulShutdown(
   if (loginRetryTimer) {
     clearTimeout(loginRetryTimer);
     loginRetryTimer = null;
+  }
+  if (proxyGateRetryTimer) {
+    clearTimeout(proxyGateRetryTimer);
+    proxyGateRetryTimer = null;
   }
 
   console.log(
