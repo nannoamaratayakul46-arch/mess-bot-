@@ -38,11 +38,17 @@ test("transient listener errors use escalating rate-limit backoff", () => {
   assert.match(index, /rateLimitFailureCount\+\+/);
   assert.match(index, /rateLimitFailureCount = 0/);
 });
-test("rejected Facebook sessions pause retries instead of hammering login", () => {
-  const rejectionBlock = index.slice(index.indexOf("if (authRejected)"), index.indexOf("// Recover a dead listener", index.indexOf("if (authRejected)")));
-  assert.ok(rejectionBlock.length > 0, "auth rejection handler should exist");
-  assert.match(rejectionBlock, /Automatic retries are paused/);
-  assert.doesNotMatch(rejectionBlock, /attemptLogin\(\)/);
+test("listener auth rejection permits one delayed saved-session revalidation, then fails closed", () => {
+  const start = index.indexOf("if (authRejected) {");
+  const end = index.indexOf("// Recover a dead listener", start);
+  const rejectionBlock = index.slice(start, end);
+  assert.ok(start >= 0 && end > start, "auth rejection handler should exist");
+  assert.match(rejectionBlock, /authRejectionRetryUsed/);
+  assert.match(rejectionBlock, /const retryDelayMs = 30_000/);
+  assert.match(rejectionBlock, /attemptLogin\(\)/);
+  assert.match(rejectionBlock, /activeListenerGeneration <= 0/);
+  assert.match(index, /Saved-session revalidation was rejected\. Automatic retries are paused/);
+  assert.match(index, /authRejectionRetryUsed = false/);
 });
 
 test("stale listener generations cannot process events or attach duplicate listeners", () => {

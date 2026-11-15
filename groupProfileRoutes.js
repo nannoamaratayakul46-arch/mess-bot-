@@ -393,10 +393,10 @@ async function runNameCycleTick({ db, getApi, audit = () => {} }) {
   if (!canSetGroupTitle(api) || (api?.ctx && !api.ctx.mqttClient)) return;
   nameCycleRunning = true;
   try {
-    const result = await db.query(
+    const result = await withTimeout(db.query(
       "SELECT thread_id, name_cycle_names, name_cycle_index, name_cycle_interval_ms FROM group_photo_guard " +
       "WHERE name_lock_enabled = TRUE AND name_lock_mode = 'cycle' ORDER BY updated_at ASC LIMIT 100"
-    );
+    ), API_TIMEOUT_MS);
     for (const row of result.rows || []) {
       const threadId = String(row.thread_id);
       const names = Array.isArray(row.name_cycle_names) ? row.name_cycle_names : [];

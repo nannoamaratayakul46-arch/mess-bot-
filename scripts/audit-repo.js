@@ -89,7 +89,8 @@ if (listenInstallations !== 1) {
 const listenerRecoveryChecks = [
   [/const WATCHDOG_LISTENER_STALE_ENABLED =\s*\/\^\(1\|true\|yes\|on\)\$\/i\.test\(/, "listener stale detection must remain explicitly opt-in"],
   [/Array\.isArray\(value\)[\s\S]{0,180}visit\(item, depth \+ 1\)/, "nested ws3-fca listener errors must be normalized"],
-  [/if \(authRejected\) \{[\s\S]{0,700}Automatic retries are paused/, "rejected sessions must pause automatic retries"],
+  [/if \(authRejected\) \{[\s\S]{0,1400}authRejectionRetryUsed[\s\S]{0,900}const retryDelayMs = 30_000/, "auth-rejected listeners must get only one delayed saved-session revalidation"],
+  [/Saved-session revalidation was rejected\.[^\n]*Automatic retries are paused/, "a rejected revalidation must pause until a fresh session is supplied"],
   [/thisGeneration !== activeListenerGeneration/, "stale listener generations must be ignored"],
   [/watchdogMessengerConnected\s*\?\s*now\s*-\s*watchdogLastListenerActivityAt\s*:\s*0/, "listener inactivity must only be measured while connected"],
 ];

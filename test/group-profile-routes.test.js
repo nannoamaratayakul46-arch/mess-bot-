@@ -282,6 +282,39 @@ test("cycling lock respects each group's configured interval", async () => {
   assert.equal(setTitleCalls, 1, "a group must not cycle again before its configured interval elapses");
 });
 
+test("cycling lock recovers on the next tick after a transient database failure", async () => {
+  let reads = 0;
+  let titleCalls = 0;
+  const names = Array.from({ length: 10 }, (_, index) => "Recovery GC " + (index + 1));
+  const db = {
+    async query(sql) {
+      if (sql.startsWith("SELECT thread_id, name_cycle_names")) {
+        reads += 1;
+        if (reads === 1) throw new Error("temporary database disconnect");
+        return { rows: [{
+          thread_id: "recovery-cycle-thread",
+          name_cycle_names: names,
+          name_cycle_index: 0,
+          name_cycle_interval_ms: 1000,
+        }] };
+      }
+      if (sql.startsWith("UPDATE group_photo_guard SET name_cycle_index")) return { rows: [] };
+      throw new Error("Unexpected query: " + sql);
+    },
+  };
+  const api = { setTitle() { titleCalls += 1; return Promise.resolve(); } };
+  const originalWarn = console.warn;
+  console.warn = () => {};
+  try {
+    await runNameCycleTick({ db, getApi: () => api });
+    await runNameCycleTick({ db, getApi: () => api });
+  } finally {
+    console.warn = originalWarn;
+  }
+  assert.equal(reads, 2);
+  assert.equal(titleCalls, 1, "the scheduler lock must release after a failed database read");
+});
+
 test("cycling lock skips rows that do not contain ten valid names", async () => {
   let setTitleCalls = 0;
   const db = {

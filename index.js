@@ -5965,8 +5965,16 @@ app.post(
       senderID: ownerId,
       body: ".setnn " + interval + " " + nickname,
       isGroup: true,
-    }).then(async () => {
-      job.status = dashboardSetNNStopRequests.has(threadID) ? "stopped" : "completed";
+    }).then(async (result) => {
+      const outcome = result?.setnn;
+      if (!outcome || !["completed", "stopped", "paused", "deferred", "partial", "failed"].includes(outcome.status)) {
+        throw new Error("SetNN command returned no verifiable operation result; refusing to mark the job completed.");
+      }
+      job.result = outcome;
+      job.status = dashboardSetNNStopRequests.has(threadID) && outcome.status === "completed"
+        ? "stopped"
+        : outcome.status;
+      if (outcome.error) job.error = outcome.error;
       job.finished_at = new Date().toISOString();
       if (job.status === "completed") {
         try {
@@ -6676,6 +6684,9 @@ let listenerGeneration = 0;
 let activeListenerGeneration = 0;
 let startupSchedulersInitialized = false;
 let loginRetryTimer = null;
+// Permit one delayed revalidation after Facebook drops an authenticated listener.
+// A second explicit login-required response still waits for a fresh session.
+let authRejectionRetryUsed = false;
 let activeMessengerApi = null;
 let eclipseUserID = "";
 
@@ -7007,6 +7018,7 @@ function attemptLogin() {
     } else {
       dashboardLoginError = "Facebook returned its login page instead of an authenticated Messenger session. The stored session was not accepted; upload a fresh Facebook session export or cookie header.";
     }
+    console.error("[AUTH] Saved-session revalidation was rejected. Automatic retries are paused; upload a fresh session from the dashboard.");
     console.error("[LOGIN][SESSION] " + dashboardLoginError);
     console.error("[LOGIN][SESSION] Safe failure trace:\\n" + safeTrace);
     if (parserDiagnostics) console.error("[LOGIN][SESSION] Safe parser diagnostics: " + JSON.stringify(parserDiagnostics));
@@ -7291,6 +7303,7 @@ function attemptLogin() {
       loginAttempt = 0;
       listenFailureCount = 0;
       rateLimitFailureCount = 0;
+      authRejectionRetryUsed = false;
       loginInProgress = false;
       dashboardLoginError = null;
 
@@ -7642,7 +7655,24 @@ function attemptLogin() {
               pushDashboardEvent("login-failed", "Messenger listener stopped because Facebook rejected the session. Reconnect the account from the dashboard.", {
                 detail: String(dashboardLoginError || "Facebook session rejected").slice(0, 240),
               });
-              console.error("[AUTH] Listener error looks like a session/auth rejection. Automatic retries are paused; reconnect from the dashboard.");
+              if (!authRejectionRetryUsed && !loginRetryTimer && !watchdogShuttingDown) {
+                authRejectionRetryUsed = true;
+                const retryDelayMs = 30_000;
+                dashboardLoginError = "Facebook rejected the active listener. ECLIPSE will revalidate the saved session once in 30 seconds; if Facebook rejects that login too, a fresh session will be required.";
+                pushDashboardEvent("messenger", "A one-time saved-session revalidation was scheduled after the listener logout.", {
+                  retry_after_ms: retryDelayMs,
+                  failure_kind: "listener_auth_rejected",
+                });
+                console.warn("[AUTH] Scheduling one controlled saved-session revalidation in 30000ms.");
+                loginRetryTimer = setTimeout(() => {
+                  loginRetryTimer = null;
+                  if (!watchdogShuttingDown && !activeMessengerApi && activeListenerGeneration <= 0) {
+                    attemptLogin();
+                  }
+                }, retryDelayMs);
+              } else {
+                console.error("[AUTH] Saved-session revalidation already used or unavailable; a fresh session may be required.");
+              }
               return;
             }
 
@@ -9066,6 +9096,29 @@ async function handleMessage(
           " resumedFrom=" +
           nextIndex
       );
+
+      const outcomeStatus = rateBlocked
+        ? "paused"
+        : transportPaused
+          ? "paused"
+          : cancelled
+            ? "stopped"
+            : deferredTargets.length
+              ? "deferred"
+              : failed > 0
+                ? (changed + alreadyCorrect > 0 ? "partial" : "failed")
+                : "completed";
+      return {
+        setnn: {
+          status: outcomeStatus,
+          changed,
+          already_correct: alreadyCorrect,
+          failed,
+          deferred: deferredTargets.length,
+          remaining: Math.max(0, targets.length - next),
+          nickname: requestedNickname,
+        },
+      };
     } catch (error) {
       console.error(
         "[NICK GUARD] .setnn command failed:",
@@ -9077,6 +9130,7 @@ async function handleMessage(
         "🔴 .setnn could not update the GC nicknames.",
         threadID
       );
+      return { setnn: { status: "failed", error: String(error?.message || error).slice(0, 500) } };
     }
 
     return;
