@@ -3759,7 +3759,11 @@ app.use(express.json({
 
 const dashboardSecurity = createDashboardSecurity({
   apiKey: process.env.ECLIPSE_DASHBOARD_API_KEY,
-  allowedOrigins: process.env.ECLIPSE_DASHBOARD_ORIGIN || "https://messenger-bot-admin-6wlf.onrender.com",
+  allowedOrigins: [
+    process.env.ECLIPSE_DASHBOARD_ORIGIN,
+    "https://messenger-bot-admin-1.onrender.com",
+    "https://messenger-bot-admin-6wlf.onrender.com",
+  ].filter(Boolean).join(","),
 });
 
 function dashboardCors(req, res, next) {
