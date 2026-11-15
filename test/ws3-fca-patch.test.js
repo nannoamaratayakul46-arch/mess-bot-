@@ -21,6 +21,10 @@ test("ws3-fca postinstall validates the pinned public API and guards the fb_dtsg
   assert.match(patchScript, /buildAPI\.js/);
   assert.match(patchScript, /did not match the verified fb_dtsg extraction line/);
   assert.match(patchScript, /writeFileSync\(buildApiPath/);
+  assert.match(patchScript, /ECLIPSE_WS3_FCA_COOKIE_AWARE_PROXY_V1/);
+  assert.match(patchScript, /createCookieAgent\(HttpsProxyAgent\)/);
+  assert.match(patchScript, /ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1/);
+  assert.match(patchScript, /new HttpsProxyAgent\(ctx\.globalOptions\.proxy\)/);
   assert.match(patchScript, /responseKind:/);
   assert.match(patchScript, /twoFactorFormMarker:/);
   assert.match(patchScript, /checkpointPathMarker:/);
