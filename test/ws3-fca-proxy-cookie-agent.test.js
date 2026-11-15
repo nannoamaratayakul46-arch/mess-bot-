@@ -49,7 +49,14 @@ test("cookie-aware HTTPS proxy agent tunnels CONNECT and preserves session cooki
   ], { stdio: "ignore" });
   t.after(() => fs.rmSync(fixtureDir, { recursive: true, force: true }));
   let observedCookie = "";
+  let observedHttpCookie = "";
   let connectCount = 0;
+
+  const httpTargetServer = http.createServer((req, res) => {
+    observedHttpCookie = String(req.headers.cookie || "");
+    res.setHeader("Set-Cookie", "http_roundtrip=stored; Path=/");
+    res.end("proxy-http-cookie-agent-ok");
+  });
 
   const targetServer = https.createServer({
     key: fs.readFileSync(keyPath),
@@ -61,6 +68,7 @@ test("cookie-aware HTTPS proxy agent tunnels CONNECT and preserves session cooki
   });
 
   const targetPort = await listen(targetServer);
+  const httpTargetPort = await listen(httpTargetServer);
   const proxyServer = http.createServer();
   proxyServer.on("connect", (req, clientSocket, head) => {
     connectCount += 1;
@@ -84,14 +92,17 @@ test("cookie-aware HTTPS proxy agent tunnels CONNECT and preserves session cooki
 
   const proxyPort = await listen(proxyServer);
   const targetUrl = `https://localhost:${targetPort}/session-probe`;
+  const httpTargetUrl = `http://localhost:${httpTargetPort}/session-probe`;
   const jar = new CookieJar();
   jar.setCookieSync("session_probe=present; Path=/; Secure", targetUrl);
+  jar.setCookieSync("http_session_probe=present; Path=/", httpTargetUrl);
 
   const agent = new HttpsProxyCookieAgent(`http://127.0.0.1:${proxyPort}`, {
     cookies: { jar },
     rejectUnauthorized: false,
   });
   const client = axios.create({
+    httpAgent: agent,
     httpsAgent: agent,
     proxy: false,
     timeout: 10000,
@@ -102,7 +113,8 @@ test("cookie-aware HTTPS proxy agent tunnels CONNECT and preserves session cooki
     agent.destroy();
     proxyServer.closeAllConnections?.();
     targetServer.closeAllConnections?.();
-    await Promise.all([close(proxyServer), close(targetServer)]);
+    httpTargetServer.closeAllConnections?.();
+    await Promise.all([close(proxyServer), close(targetServer), close(httpTargetServer)]);
   });
 
   const previousTlsVerification = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
@@ -120,4 +132,10 @@ test("cookie-aware HTTPS proxy agent tunnels CONNECT and preserves session cooki
   assert.equal(connectCount, 1, "HTTPS request must pass through the local CONNECT proxy");
   assert.match(observedCookie, /(?:^|;\s*)session_probe=present(?:;|$)/);
   assert.match(jar.getCookieStringSync(targetUrl), /(?:^|;\s*)roundtrip=stored(?:;|$)/);
+
+  const httpResponse = await client.get(httpTargetUrl);
+  assert.equal(httpResponse.data, "proxy-http-cookie-agent-ok");
+  assert.equal(connectCount, 2, "plain HTTP request must also pass through the local CONNECT proxy");
+  assert.match(observedHttpCookie, /(?:^|;\s*)http_session_probe=present(?:;|$)/);
+  assert.match(jar.getCookieStringSync(httpTargetUrl), /(?:^|;\s*)http_roundtrip=stored(?:;|$)/);
 });
