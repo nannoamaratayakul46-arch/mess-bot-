@@ -151,9 +151,7 @@ const client = axios.create({
   const setProxyPattern = /function setProxy\(proxyUrl\) \{[\s\S]*?^\}/m;
   const newSetProxy = `function setProxy(proxyUrl) {
     if (!proxyUrl) {
-        proxyConfig = {};
-        client.defaults.httpsAgent = new HttpsCookieAgent({ cookies: { jar } });
-        return;
+        throw new Error("Messenger proxy is required; refusing to restore direct HTTP or HTTPS transport.");
     }
 
     let parsedProxy;
@@ -166,9 +164,12 @@ const client = axios.create({
         throw new Error("Invalid proxy URL. Please include an HTTP(S) scheme, hostname, and port.");
     }
 
-    // HttpsProxyAgent performs CONNECT tunneling for Facebook HTTPS requests.
-    // The cookie-aware wrapper preserves the same tough-cookie jar.
-    client.defaults.httpsAgent = new HttpsProxyCookieAgent(proxyUrl, { cookies: { jar } });
+    // Use the authenticated CONNECT tunnel for BOTH protocols. This keeps
+    // accidental plain-HTTP Messenger requests inside the configured proxy
+    // instead of leaving HttpCookieAgent as a direct-network bypass.
+    const proxyAgent = new HttpsProxyCookieAgent(proxyUrl, { cookies: { jar } });
+    client.defaults.httpAgent = proxyAgent;
+    client.defaults.httpsAgent = proxyAgent;
     proxyConfig = { proxy: false };
 }`;
   const setProxyMatches = axiosSource.match(setProxyPattern) || [];
