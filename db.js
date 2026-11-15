@@ -92,6 +92,17 @@ async function connect() {
     );
   `);
 
+  // Keep durable Messenger cookies isolated per Render service. The legacy
+  // singleton table above remains readable by older releases, but new code
+  // never shares its session checkpoint with another bot service.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messenger_session_states (
+      service_id TEXT PRIMARY KEY,
+      encrypted_state TEXT NOT NULL,
+      updated_at BIGINT NOT NULL
+    );
+  `);
+
   // ═════════════════════════════════════════════════════════
   // USERS
   // ═════════════════════════════════════════════════════════
@@ -3956,13 +3967,22 @@ async function healthCheck() {
   return true;
 }
 
+function getMessengerSessionServiceId() {
+  const serviceId = String(
+    process.env.RENDER_SERVICE_ID ||
+    process.env.RENDER_SERVICE_NAME ||
+    "default"
+  ).trim();
+  return serviceId.slice(0, 200) || "default";
+}
+
 async function getMessengerSessionState() {
   const result = await requireConn().query(`
     SELECT encrypted_state
-    FROM messenger_session_state
-    WHERE id = 1
+    FROM messenger_session_states
+    WHERE service_id = $1
     LIMIT 1
-  `);
+  `, [getMessengerSessionServiceId()]);
   return result.rows[0]?.encrypted_state || null;
 }
 
@@ -3971,19 +3991,22 @@ async function setMessengerSessionState(encryptedState) {
   if (!value) throw new Error("Encrypted session state cannot be empty.");
 
   await requireConn().query(`
-    INSERT INTO messenger_session_state (id, encrypted_state, updated_at)
-    VALUES (1, $1, $2)
-    ON CONFLICT (id)
+    INSERT INTO messenger_session_states (service_id, encrypted_state, updated_at)
+    VALUES ($1, $2, $3)
+    ON CONFLICT (service_id)
     DO UPDATE SET
       encrypted_state = EXCLUDED.encrypted_state,
       updated_at = EXCLUDED.updated_at
-  `, [value, Date.now()]);
+  `, [getMessengerSessionServiceId(), value, Date.now()]);
 
   return true;
 }
 
 async function clearMessengerSessionState() {
-  await requireConn().query("DELETE FROM messenger_session_state WHERE id = 1");
+  await requireConn().query(
+    "DELETE FROM messenger_session_states WHERE service_id = $1",
+    [getMessengerSessionServiceId()]
+  );
   return true;
 }
 
@@ -4282,6 +4305,7 @@ module.exports = {
   close,
   withTransaction,
   healthCheck,
+  getMessengerSessionServiceId,
   getMessengerSessionState,
   setMessengerSessionState,
   clearMessengerSessionState,

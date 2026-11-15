@@ -10,7 +10,7 @@ const http = require("node:http");
 const https = require("node:https");
 const net = require("node:net");
 const axios = require("axios");
-const ws3PackageRoot = path.dirname(require.resolve("ws3-fca"));
+const ws3PackageRoot = path.resolve(path.dirname(require.resolve("ws3-fca")), "..");
 const { CookieJar } = require(require.resolve("tough-cookie", { paths: [ws3PackageRoot] }));
 const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));
 const cookieJarSupportPath = require.resolve("axios-cookiejar-support", { paths: [ws3PackageRoot] });
@@ -18,7 +18,7 @@ const cookieAgentModule = require(require.resolve("http-cookie-agent/http", {
   paths: [path.dirname(cookieJarSupportPath)],
 }));
 const HttpsProxyCookieAgent = cookieAgentModule.createCookieAgent(HttpsProxyAgent);
-const patchedAxiosSource = fs.readFileSync(path.join(ws3PackageRoot, "src", "utils", "axios.js"), "utf8");
+const proxyPatchSource = fs.readFileSync(path.join(process.cwd(), "scripts", "patch-ws3-fca.js"), "utf8");
 
 function listen(server) {
   return new Promise((resolve, reject) => {
@@ -35,9 +35,9 @@ function close(server) {
 }
 
 test("cookie-aware HTTPS proxy agent tunnels CONNECT and preserves session cookies", async (t) => {
-  assert.match(patchedAxiosSource, /ECLIPSE_WS3_FCA_COOKIE_AWARE_PROXY_V1/);
-  assert.match(patchedAxiosSource, /new HttpsProxyCookieAgent/);
-  assert.match(patchedAxiosSource, /proxy: false/);
+  assert.match(proxyPatchSource, /ECLIPSE_WS3_FCA_COOKIE_AWARE_PROXY_V1/);
+  assert.match(proxyPatchSource, /new HttpsProxyCookieAgent/);
+  assert.match(proxyPatchSource, /proxy: false/);
 
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "eclipse-proxy-test-"));
   const keyPath = path.join(fixtureDir, "proxy-test-key.pem");
@@ -105,7 +105,17 @@ test("cookie-aware HTTPS proxy agent tunnels CONNECT and preserves session cooki
     await Promise.all([close(proxyServer), close(targetServer)]);
   });
 
-  const response = await client.get(targetUrl);
+  const previousTlsVerification = process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+  let response;
+  try {
+    // The fixture uses a one-day self-signed localhost certificate. Disable
+    // verification only for this isolated local request, then restore it.
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    response = await client.get(targetUrl);
+  } finally {
+    if (previousTlsVerification === undefined) delete process.env.NODE_TLS_REJECT_UNAUTHORIZED;
+    else process.env.NODE_TLS_REJECT_UNAUTHORIZED = previousTlsVerification;
+  }
   assert.equal(response.data, "proxy-cookie-agent-ok");
   assert.equal(connectCount, 1, "HTTPS request must pass through the local CONNECT proxy");
   assert.match(observedCookie, /(?:^|;\s*)session_probe=present(?:;|$)/);
