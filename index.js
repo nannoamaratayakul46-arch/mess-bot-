@@ -2,6 +2,7 @@
 
 const { invokeMessengerSend, resolveMessengerIsGroup } = require("./messengerSendRouting");
 const { setMessageReactionMqtt, changeGroupMember } = require("./messengerApiCompat");
+const { classifyListenerError, getListenerRecoveryDelayMs, getLoginRetryDelayMs } = require("./messengerRecoveryPolicy");
 
 // "/" is an admin-only Banat toggle. Keep unauthorized-attempt state at
 // module scope so it survives individual message-handler invocations.
@@ -7049,11 +7050,11 @@ function attemptLogin() {
     }
 
     loginAttempt++;
-
-    const backoffMs = Math.min(
-      2 ** loginAttempt * 1000,
-      MAX_LOGIN_BACKOFF_MS
-    );
+    const { rateLimited: loginRateLimited } = classifyListenerError(dashboardLoginError);
+    if (loginRateLimited) rateLimitFailureCount++;
+    const backoffMs = loginRateLimited
+      ? getListenerRecoveryDelayMs({ rateLimited: true, failureCount: rateLimitFailureCount })
+      : getLoginRetryDelayMs(loginAttempt, MAX_LOGIN_BACKOFF_MS);
 
     console.error(
       `[LOGIN] Login invocation failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
@@ -7197,11 +7198,11 @@ function attemptLogin() {
         }
 
         loginAttempt++;
-
-        const backoffMs = Math.min(
-          2 ** loginAttempt * 1000,
-          MAX_LOGIN_BACKOFF_MS
-        );
+        const { rateLimited: loginRateLimited } = classifyListenerError(dashboardLoginError);
+        if (loginRateLimited) rateLimitFailureCount++;
+        const backoffMs = loginRateLimited
+          ? getListenerRecoveryDelayMs({ rateLimited: true, failureCount: rateLimitFailureCount })
+          : getLoginRetryDelayMs(loginAttempt, MAX_LOGIN_BACKOFF_MS);
 
         console.error(
           `[LOGIN] Login failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
@@ -7227,6 +7228,7 @@ function attemptLogin() {
 
       loginAttempt = 0;
       listenFailureCount = 0;
+      rateLimitFailureCount = 0;
       loginInProgress = false;
       dashboardLoginError = null;
 
@@ -7550,8 +7552,7 @@ function attemptLogin() {
             console.error("[LISTENER] ws3-fca reported a listener error:", listenError);
 
             const listenerErrorText = normalizedListenerError + " " + String(listenErrorSummary.code || "");
-            const authRejected = /checkpoint|two.factor|2fa|invalid cookie|cookie.*(?:invalid|expired|rejected)|session.*(?:expired|invalid|rejected)|not logged in|login required|authentication failed|account disabled|confirm your identity/i.test(listenerErrorText);
-            const rateLimited = /1675004|rate.?limit|too many requests/i.test(listenerErrorText);
+            const { authRejected, rateLimited } = classifyListenerError(listenerErrorText);
 
             // Invalidate this listener generation before detaching the API so
             // late callbacks from the dead MQTT client cannot process messages.
@@ -7588,9 +7589,10 @@ function attemptLogin() {
             // 15 minutes) so repeated rejections do not create a login loop.
             if (!loginRetryTimer) {
               if (rateLimited) rateLimitFailureCount++;
-              const recoveryDelayMs = rateLimited
-                ? Math.min(15 * 60_000, 120_000 * (2 ** Math.min(rateLimitFailureCount - 1, 3)))
-                : 30_000;
+              const recoveryDelayMs = getListenerRecoveryDelayMs({
+                rateLimited,
+                failureCount: rateLimitFailureCount,
+              });
               const waitMinutes = Math.ceil(recoveryDelayMs / 60_000);
               dashboardLoginError = rateLimited
                 ? "Messenger was rate-limited; waiting " + waitMinutes + " minute(s) before reconnecting."

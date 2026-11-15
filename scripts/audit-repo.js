@@ -3,6 +3,7 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const { spawnSync } = require("node:child_process");
+const { classifyListenerError, getListenerRecoveryDelayMs, getLoginRetryDelayMs } = require("../messengerRecoveryPolicy");
 
 const ROOT = path.resolve(__dirname, "..");
 const SKIP_DIRS = new Set([
@@ -87,7 +88,6 @@ if (listenInstallations !== 1) {
 // 2a. Preserve conservative Messenger recovery safeguards.
 const listenerRecoveryChecks = [
   [/const WATCHDOG_LISTENER_STALE_ENABLED =\s*\/\^\(1\|true\|yes\|on\)\$\/i\.test\(/, "listener stale detection must remain explicitly opt-in"],
-  [/Math\.min\(15 \* 60_000, 120_000/, "rate limits must use escalating reconnect cool-offs"],
   [/Array\.isArray\(value\)[\s\S]{0,180}visit\(item, depth \+ 1\)/, "nested ws3-fca listener errors must be normalized"],
   [/if \(authRejected\) \{[\s\S]{0,700}Automatic retries are paused/, "rejected sessions must pause automatic retries"],
   [/thisGeneration !== activeListenerGeneration/, "stale listener generations must be ignored"],
@@ -96,6 +96,23 @@ const listenerRecoveryChecks = [
 for (const [pattern, message] of listenerRecoveryChecks) {
   if (!pattern.test(index)) fail("Messenger recovery invariant missing: " + message + ".");
 }
+if (
+  getListenerRecoveryDelayMs({ rateLimited: true, failureCount: 1 }) !== 120_000 ||
+  getListenerRecoveryDelayMs({ rateLimited: true, failureCount: 2 }) !== 240_000 ||
+  getListenerRecoveryDelayMs({ rateLimited: true, failureCount: 3 }) !== 480_000 ||
+  getListenerRecoveryDelayMs({ rateLimited: true, failureCount: 4 }) !== 900_000 ||
+  getListenerRecoveryDelayMs({ rateLimited: false }) !== 30_000
+) {
+  fail("Messenger recovery policy must preserve bounded escalating rate-limit and transient retry delays.");
+}
+if (getLoginRetryDelayMs(20) !== 300_000) {
+  fail("Messenger login retries must retain the five-minute exponential backoff cap.");
+}
+const authPolicy = classifyListenerError("Facebook checkpoint required");
+if (!authPolicy.authRejected || authPolicy.rateLimited) {
+  fail("Messenger recovery policy must distinguish authentication rejection from rate limiting.");
+}
+
 if (!/WATCHDOG_LISTENER_STALE_ENABLED[\s\S]{0,120}process\.env\.ECLIPSE_WATCHDOG_LISTENER_STALE_ENABLED/.test(index)) {
   fail("Listener-staleness watchdog must remain explicitly configurable rather than silently enabled.");
 }
