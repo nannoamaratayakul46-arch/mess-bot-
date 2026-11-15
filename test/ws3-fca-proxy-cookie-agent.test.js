@@ -38,15 +38,20 @@ test("cookie-aware HTTPS proxy agent tunnels CONNECT and preserves session cooki
   assert.match(patchedAxiosSource, /proxy: false/);
 
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "eclipse-proxy-test-"));
-  fs.writeFileSync(path.join(fixtureDir, "proxy-test-key.pem"), Buffer.from("LS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tCk1JSUV2Z0lCQURBTkJna3Foa2lHOXcwQkFRRUZBQVNDQktnd2dnU2tBZ0VBQW9JQkFRRGJUa0N2clIrdk13ZGwKR1ZHa3NjdSthL05IUEVGNnpBSHZiM1FFcXMrUE85eU9NRHZxL0x3c094M1RDc3hDTzErbU9mOXdQNkt4YUxiYgp1bk9FUm1qanRYR2gwU2FuZGtDL0loTmRYUE14Z0xmSUE3OHBNby9nakhFVzliWnlzOEovbkwwNFVkMTgwOGRyCmp3NkpzVFNvY1RSSzhFZTRvK3YraityYks5cis2MFNFdTJPNTZPZi9wSjF6emdZWm5NRVYzNjVtcmw3STBCUC8Ka2RaUkh5dFdWWXRKeG5HMnNRdGRJZmpqbUZMMm5FN3p4RnljUE1tQWZaMHg1Tm1Obk1vRGhUdVNCQlVpOEFnawoxR2owQ202N01LTjF2ZHJyNGozVXRaSmV3dTFHaWdDQjRoaFQyOWFyZXF4bG5MSFFxbHdRU0tIdFdBdm1vSCswCnlqZFR3ZHFoQWdNQkFBRUNnZ0VBRENmVDVBeHo5d2JWWThPNTFmMERpd3RCWnVUWlZvSWNFY3ZGekpsUTdYQzgKVHZ2Mi95TzZhN2I2cnpnTHFvcGRnZDM0YjU0QVBSMWIrQUd1Yytnbkx4VkMvWGxBTXVmTzlBa3BtUE1WTThBNQo3NUhmWDJwdHRaWElrZ2h4cVAxQ2FMaVd6Tk1qQ1phTnRVT0VHLzVkUmtlSURVTk5XQzB5UTlIRy9OMXMzN2dFCml0Rk1XYW1OQi9sL0lUcXlQbGhweDZLa1pRR3ZHb2NlbVBRUlJhZk1DT293VnN6YVN4RVpzbEtCakY1bFQ1ZHQKMi95bkdzSWxkYU5rTFpnYm1lcEFLNTkxdVNnMG15TUUwcE5xZzhBdmdkemY2SXlna3ZOb2R4c1lLWG0rZnRaNApJYnhqaC9SSWFXMUhNOWcvcGorZzZWTWNRa2x3UlN4U21qVVBDL1FwZFFLQmdRRCtLdFBUYUQ2NDQvOFk2My80CldEd3FDUmhObXgybFpjSkMxVUx0bnEzdlFOS3lPZ3U5bHR5NjNCTnExMDlFZjhjOWwvV1N2dGRUNkpLSGhRc1gKWFpFbDh1cFp1RlhodDFrQldoSmlnbzNYWGs4K05lNzVsMkZjTmpENXBma1NwQVZCU3FBdEJvRkc1dWRxNFZBbwplQW9BWHJnSGo3SkZpUXh2OFcrbWdVaWVmd0tCZ1FEYzR4TE9vdU9PUGU0Ykw0TW9YRGQrdDZYbXBGQlBxVXIwCnU5WTE2cXp3cEg2YUFQcWI0eE9oM1I3WjdQKzdSRkFsWEFtMHZaNVMvWVZOVjdxOGZrd29WR0UvMmFkM3ZYWEEKQnBiSmVzTnNPTHRYRWQ1U0tEVS8wSFhKT1BLakRYb05mMjdXMFMwbWtpbE1Ha3BOSkdiQkQ4MXRnRFY0aVBiUApxa0gxMVc4MjN3S0JnQVl1a0h4aDJyU3dodkhhT0lDWDFNN0k3ZGhsWDNFNGFtTXB3TGo2MVF3dXJYRThURERPClRJd1c4am4xQnE2SjFSVEFiMjZrU2FSMjBhbU9LTmptbzdNaWwyU2JRU3QrUkNIdVNPZ3dlTGEyU29NZTJMTWwKWlc3U3VwbzMyVGtFMkVQZ1Jza1JrVzlpQ2xybEpBZjM4M1pTMTNNSG9iUmpRdlF1RVNNaG5keU5Bb0dCQUwvNgptOTM4dE1wc0NRYVh4T2JQUDJ4ak1VM0VnZ2k2bXVzYVZwT0Y0OGxETHNXckZDVm90eWQzaDlqZ28yT2ZmQWo4CmRYTWhXdm5HWHBWYUtuS3BVb2U2enNzdjROMnhUU1lZay9XSlBWQlIvb0V1aG92aFptYVFSODhjTDhhSGNBMUwKTklxQVF6M0N5eUhadDdwVWFQcGpRYWhxUmc3OCs0YUI4OUkyTHZNQkFvR0JBT1NUdHRhbTN0NnZPS3ozdUVOeQppSkhTU1NtWGxrTlE2UWc4UDBPY1BQOGNUUnhDYWticnViRnhQcUNPVHFnajl5czF5YWhJMkhicTZscUpXYXc3Ck9UblZlRHhzMWJCNVRObElNaU9KRm11R01PTjlERGk5bzZUN2RFUUhScHQ1cHYxNW41bzljeE1ON3NBczdudHkKak9uZjhSQm5CU0NaSi93S3lPdlZhRStjCi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS0K", "base64"));
-  fs.writeFileSync(path.join(fixtureDir, "proxy-test-cert.pem"), fs.readFileSync(path.join(__dirname, "fixtures", "proxy-test-cert.pem")));
+  const keyPath = path.join(fixtureDir, "proxy-test-key.pem");
+  const certPath = path.join(fixtureDir, "proxy-test-cert.pem");
+  execFileSync("openssl", [
+    "req", "-x509", "-newkey", "rsa:2048", "-nodes",
+    "-keyout", keyPath, "-out", certPath,
+    "-subj", "/CN=localhost", "-days", "1",
+  ], { stdio: "ignore" });
   t.after(() => fs.rmSync(fixtureDir, { recursive: true, force: true }));
   let observedCookie = "";
   let connectCount = 0;
 
   const targetServer = https.createServer({
-    key: fs.readFileSync(path.join(fixtureDir, "proxy-test-key.pem")),
-    cert: fs.readFileSync(path.join(fixtureDir, "proxy-test-cert.pem")),
+    key: fs.readFileSync(keyPath),
+    cert: fs.readFileSync(certPath),
   }, (req, res) => {
     observedCookie = String(req.headers.cookie || "");
     res.setHeader("Set-Cookie", "roundtrip=stored; Path=/; Secure");
