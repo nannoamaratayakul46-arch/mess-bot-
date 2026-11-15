@@ -38,6 +38,9 @@ test("ws3-fca compatibility patch routes both HTTP and MQTT through proxy agents
 
   assert.match(source, /ECLIPSE_WS3_FCA_COOKIE_AWARE_PROXY_V1/);
   assert.match(source, /new HttpsProxyCookieAgent\(proxyUrl, \{ cookies: \{ jar \} \}\)/);
+  assert.match(source, /client\.defaults\.httpAgent = proxyAgent/);
+  assert.match(source, /client\.defaults\.httpsAgent = proxyAgent/);
+  assert.match(source, /refusing to restore direct HTTP or HTTPS transport/);
   assert.match(source, /ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1/);
   assert.match(source, /options\.wsOptions\.agent = new HttpsProxyAgent\(ctx\.globalOptions\.proxy\)/);
   assert.match(source, /refusing to patch/);
