@@ -46,6 +46,7 @@ const INTEREST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const LOAN_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 let pool = null;
+let lastPoolTimeoutDiagnosticAt = 0;
 
 // ═══════════════════════════════════════════════════════════
 // DATABASE CONNECTION
@@ -1357,7 +1358,24 @@ function requireConn() {
 }
 
 async function query(text, params = []) {
-  return requireConn().query(text, params);
+  const currentPool = requireConn();
+  try {
+    return await currentPool.query(text, params);
+  } catch (error) {
+    const message = String(error?.message || error || "");
+    const now = Date.now();
+    if (/timeout exceeded when trying to connect|connection timeout/i.test(message) &&
+        now - lastPoolTimeoutDiagnosticAt >= 30_000) {
+      lastPoolTimeoutDiagnosticAt = now;
+      console.error("[DB] PostgreSQL connection acquisition timed out; pool diagnostics:", {
+        total: currentPool.totalCount,
+        idle: currentPool.idleCount,
+        waiting: currentPool.waitingCount,
+        max: currentPool.options?.max,
+      });
+    }
+    throw error;
+  }
 }
 
 async function withTransaction(work) {

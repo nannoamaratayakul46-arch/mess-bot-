@@ -1,6 +1,7 @@
 "use strict";
 
 const { invokeMessengerSend, resolveMessengerIsGroup } = require("./messengerSendRouting");
+const { loadDashboardGroupSettings } = require("./dashboardGroupSettings");
 const { setMessageReactionMqtt, changeGroupMember } = require("./messengerApiCompat");
 const { classifyListenerError, getListenerRecoveryDelayMs, getLoginRetryDelayMs } = require("./messengerRecoveryPolicy");
 const { verifyMessengerProxy, getMessengerProxyUrl } = require("./messengerProxy");
@@ -5378,6 +5379,29 @@ app.delete(
   }
 );
 
+let dashboardArchivedGroupsSchemaPromise = null;
+
+async function ensureDashboardArchivedGroupsTable() {
+  if (!dashboardArchivedGroupsSchemaPromise) {
+    dashboardArchivedGroupsSchemaPromise = (async () => {
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS eclipse_dashboard_archived_groups (
+          thread_id TEXT PRIMARY KEY,
+          group_name TEXT NOT NULL DEFAULT 'Archived group',
+          participant_count INTEGER NOT NULL DEFAULT 0,
+          archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          left_at TIMESTAMPTZ
+        )
+      `);
+      await db.query("ALTER TABLE eclipse_dashboard_archived_groups ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ");
+    })().catch(error => {
+      dashboardArchivedGroupsSchemaPromise = null;
+      throw error;
+    });
+  }
+  return dashboardArchivedGroupsSchemaPromise;
+}
+
 function dashboardFetchThreadList(api, timeoutMs = 8000) {
   return getSharedThreadList(api, { timeoutMs });
 }
@@ -5507,16 +5531,8 @@ app.get(
     // the bot from a conversation; leaving is a separate explicit action.
     const archivedGroups = new Map();
     try {
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS eclipse_dashboard_archived_groups (
-          thread_id TEXT PRIMARY KEY,
-          group_name TEXT NOT NULL DEFAULT 'Archived group',
-          participant_count INTEGER NOT NULL DEFAULT 0,
-          archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          left_at TIMESTAMPTZ
-        )
-      `);
-      await db.query("ALTER TABLE eclipse_dashboard_archived_groups ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ");
+      await ensureDashboardArchivedGroupsTable();
+
       const archivedResult = await db.query(
         "SELECT thread_id, group_name, participant_count, archived_at, left_at FROM eclipse_dashboard_archived_groups ORDER BY archived_at DESC"
       );
@@ -5573,40 +5589,46 @@ app.get(
 
     dashboardKnownGroups.clear();
     const groups = [];
-    for (const group of Array.from(known.values()).slice(0, 200)) {
-      dashboardKnownGroups.set(group.thread_id, group);
+    const orderedGroups = Array.from(known.values()).slice(0, 200);
+    let groupSettingsById = new Map();
+    if (orderedGroups.length) {
       try {
-        const settings = await db.getThreadSettings(group.thread_id);
-        const target = await db.getBanatThreadTarget(group.thread_id);
-        groups.push({
-          ...group,
-          archived: Boolean(group.archived || archivedGroups.has(group.thread_id)),
-          left: Boolean(group.left || archivedGroups.get(group.thread_id)?.left_at),
-          bot_enabled: settings.bot_enabled !== false,
-          roast_enabled: settings.roast_enabled === true,
-          slash_pool_enabled: settings.slash_pool_enabled === true,
-          fun_enabled: settings.fun_enabled === true,
-          target_user_id: target?.target_user_id || null,
-          target_name: target?.target_name || null,
-          bang_enabled: target?.bang_enabled === true,
-          jaiden_interval_seconds: Number(target?.jaiden_interval_seconds) || 3,
-          jaiden_cooldown_mode: target?.jaiden_cooldown_mode || "extend",
-          jaiden_reply_mode: target?.jaiden_reply_mode || "always",
-          jaiden_typing_enabled: target?.jaiden_typing_enabled !== false,
-          target_set_at: target?.updated_at ? new Date(Number(target.updated_at)).toISOString() : null,
-        });
+        groupSettingsById = await loadDashboardGroupSettings(
+          db,
+          orderedGroups.map(group => group.thread_id)
+        );
       } catch (error) {
-        console.warn("[DASHBOARD] Could not read settings for group " + group.thread_id + ":", error?.message || error);
-        groups.push({
-          ...group,
-          archived: Boolean(group.archived || archivedGroups.has(group.thread_id)),
-          left: Boolean(group.left || archivedGroups.get(group.thread_id)?.left_at),
-          bot_enabled: true,
-          roast_enabled: true,
-          slash_pool_enabled: false,
-          fun_enabled: true,
-        });
+        console.warn("[DASHBOARD] Could not load group settings in one batch:", error?.message || error);
       }
+    }
+
+    for (const group of orderedGroups) {
+      dashboardKnownGroups.set(group.thread_id, group);
+      const saved = groupSettingsById.get(group.thread_id);
+      const settings = saved?.settings || {
+        bot_enabled: true,
+        roast_enabled: true,
+        slash_pool_enabled: false,
+        fun_enabled: true,
+      };
+      const target = saved?.target || null;
+      groups.push({
+        ...group,
+        archived: Boolean(group.archived || archivedGroups.has(group.thread_id)),
+        left: Boolean(group.left || archivedGroups.get(group.thread_id)?.left_at),
+        bot_enabled: settings.bot_enabled !== false,
+        roast_enabled: settings.roast_enabled === true,
+        slash_pool_enabled: settings.slash_pool_enabled === true,
+        fun_enabled: settings.fun_enabled === true,
+        target_user_id: target?.target_user_id || null,
+        target_name: target?.target_name || null,
+        bang_enabled: target?.bang_enabled === true,
+        jaiden_interval_seconds: Number(target?.jaiden_interval_seconds) || 3,
+        jaiden_cooldown_mode: target?.jaiden_cooldown_mode || "extend",
+        jaiden_reply_mode: target?.jaiden_reply_mode || "always",
+        jaiden_typing_enabled: target?.jaiden_typing_enabled !== false,
+        target_set_at: target?.updated_at ? new Date(Number(target.updated_at)).toISOString() : null,
+      });
     }
 
     return res.json({
@@ -5629,15 +5651,7 @@ app.post(
     }
     const archived = req.body?.archived !== false;
     try {
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS eclipse_dashboard_archived_groups (
-          thread_id TEXT PRIMARY KEY,
-          group_name TEXT NOT NULL DEFAULT 'Archived group',
-          participant_count INTEGER NOT NULL DEFAULT 0,
-          archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          left_at TIMESTAMPTZ
-        )
-      `);
+      await ensureDashboardArchivedGroupsTable();
       if (archived) {
         await db.query(
           `INSERT INTO eclipse_dashboard_archived_groups (thread_id, group_name, participant_count, archived_at)
@@ -5686,15 +5700,7 @@ app.post(
     }
     try {
       await changeGroupMember(activeMessengerApi, "remove", currentUserID, threadID);
-      await db.query(`
-        CREATE TABLE IF NOT EXISTS eclipse_dashboard_archived_groups (
-          thread_id TEXT PRIMARY KEY,
-          group_name TEXT NOT NULL DEFAULT 'Archived group',
-          participant_count INTEGER NOT NULL DEFAULT 0,
-          archived_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-          left_at TIMESTAMPTZ
-        )
-      `);
+      await ensureDashboardArchivedGroupsTable();
       await db.query(
         `INSERT INTO eclipse_dashboard_archived_groups (thread_id, group_name, participant_count, archived_at, left_at)
          VALUES ($1, $2, $3, NOW(), NOW())
