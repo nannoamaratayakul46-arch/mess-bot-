@@ -53,6 +53,7 @@ test("package manifest pins the audited ws3-fca release", () => {
 test("login diagnostic allowlist forwards safe fb_dtsg shape metadata without token values", () => {
   const indexSource = fs.readFileSync(path.join(root, "index.js"), "utf8");
   assert.match(indexSource, /function isWs3FcaLoginRequired/);
+  assert.match(indexSource, /error retrieving user\\s\*id\|facebook blocked the login\|not logged in/i);
   assert.match(indexSource, /handleLoginRequiredResponse/);
   assert.match(indexSource, /trying the separately configured FB_COOKIES session once/i);
   assert.match(indexSource, /failure_kind: "facebook_login_required"/);
