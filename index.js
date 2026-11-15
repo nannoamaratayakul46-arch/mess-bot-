@@ -6792,9 +6792,18 @@ function isWs3FcaBuildApiParserFailure(error) {
 }
 
 function isWs3FcaLoginRequired(error) {
+  const code = String(error?.code || "");
+  const responseKind = String(error?.eclipseDiagnostics?.responseKind || "");
+  const message = String(error?.message || error || "");
+
   return (
-    String(error?.code || "") === "ECLIPSE_WS3_FCA_LOGIN_REQUIRED" ||
-    String(error?.eclipseDiagnostics?.responseKind || "") === "login"
+    code === "ECLIPSE_WS3_FCA_LOGIN_REQUIRED" ||
+    responseKind === "login" ||
+    // ws3-fca@3.5.2 reports rejected sessions through loginHelper as
+    // "Error retrieving userID" instead of the custom buildAPI error.
+    // Treat these login-callback failures as authentication rejection so
+    // the existing one-time durable-session -> FB_COOKIES fallback runs.
+    /error retrieving user\s*id|facebook blocked the login|not logged in\.?/i.test(message)
   );
 }
 
