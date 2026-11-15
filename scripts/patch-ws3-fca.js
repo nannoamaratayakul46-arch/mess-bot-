@@ -236,4 +236,31 @@ if (!mqttSource.includes("ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1")) {
   console.log("[postinstall] Root HTTPS proxy agent already installed for ws3-fca MQTT.");
 }
 
+// Guard GraphQL batch entries before ws3-fca dereferences response.errors.
+// Facebook may return an empty/malformed batch when the session is rejected;
+// report that as an explicit upstream response error instead of a TypeError.
+const threadInfoPath = path.join(packageRoot, "src", "deltas", "apis", "threads", "getThreadInfo.js");
+if (!fs.existsSync(threadInfoPath)) {
+  throw new Error("[postinstall] ws3-fca getThreadInfo.js was not found; refusing an unverified response guard.");
+}
+let threadInfoSource = fs.readFileSync(threadInfoPath, "utf8");
+const threadInfoPatchMarker = "ECLIPSE_WS3_FCA_THREAD_INFO_RESPONSE_GUARD_V1";
+if (!threadInfoSource.includes(threadInfoPatchMarker)) {
+  const formatterStart = /(function\\s+formatThreadGraphQLResponse\\s*\\(\\s*data\\s*\\)\\s*\\{)/;
+  if (!formatterStart.test(threadInfoSource)) {
+    throw new Error("[postinstall] ws3-fca getThreadInfo formatter did not match the verified response seam; refusing to patch.");
+  }
+  threadInfoSource = threadInfoSource.replace(formatterStart, (match) => match +
+    '\\n  // ' + threadInfoPatchMarker +
+    '\\n  if (!data || typeof data !== "object" || Array.isArray(data)) {' +
+    '\\n    const responseError = new Error("Facebook returned an empty or invalid GraphQL thread response.");' +
+    '\\n    responseError.code = "ECLIPSE_WS3_FCA_INVALID_THREAD_RESPONSE";' +
+    '\\n    throw responseError;' +
+    '\\n  }');
+  fs.writeFileSync(threadInfoPath, threadInfoSource, "utf8");
+  console.log("[postinstall] Applied defensive GraphQL response guard to ws3-fca getThreadInfo.");
+} else {
+  console.log("[postinstall] Defensive GraphQL response guard already present in ws3-fca getThreadInfo.");
+}
+
 console.log("[postinstall] Verified ws3-fca@3.5.2 public API and buildAPI compatibility patch.");
