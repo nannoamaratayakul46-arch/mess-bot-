@@ -246,17 +246,17 @@ if (!fs.existsSync(threadInfoPath)) {
 let threadInfoSource = fs.readFileSync(threadInfoPath, "utf8");
 const threadInfoPatchMarker = "ECLIPSE_WS3_FCA_THREAD_INFO_RESPONSE_GUARD_V1";
 if (!threadInfoSource.includes(threadInfoPatchMarker)) {
-  const formatterStart = /(function\\s+formatThreadGraphQLResponse\\s*\\(\\s*data\\s*\\)\\s*\\{)/;
+  const formatterStart = /(function\s+formatThreadGraphQLResponse\s*\(\s*data\s*\)\s*\{)/;
   if (!formatterStart.test(threadInfoSource)) {
     throw new Error("[postinstall] ws3-fca getThreadInfo formatter did not match the verified response seam; refusing to patch.");
   }
   threadInfoSource = threadInfoSource.replace(formatterStart, (match) => match +
-    '\\n  // ' + threadInfoPatchMarker +
-    '\\n  if (!data || typeof data !== "object" || Array.isArray(data)) {' +
-    '\\n    const responseError = new Error("Facebook returned an empty or invalid GraphQL thread response.");' +
-    '\\n    responseError.code = "ECLIPSE_WS3_FCA_INVALID_THREAD_RESPONSE";' +
-    '\\n    throw responseError;' +
-    '\\n  }');
+    "\n  // " + threadInfoPatchMarker +
+    "\n  if (!data || typeof data !== \"object\" || Array.isArray(data)) {" +
+    "\n    const responseError = new Error(\"Facebook returned an empty or invalid GraphQL thread response.\");" +
+    "\n    responseError.code = \"ECLIPSE_WS3_FCA_INVALID_THREAD_RESPONSE\";" +
+    "\n    throw responseError;" +
+    "\n  }");
   fs.writeFileSync(threadInfoPath, threadInfoSource, "utf8");
   console.log("[postinstall] Applied defensive GraphQL response guard to ws3-fca getThreadInfo.");
 } else {
