@@ -1088,7 +1088,7 @@ async function initDebate(api) {
 
     try {
       await fsp.mkdir(path.dirname(STATE_FILE), { recursive: true });
-      await fsp.writeFile(STATE_FILE, "{}\\n", "utf8");
+      await fsp.writeFile(STATE_FILE, "{}\n", "utf8");
       console.log("[debate] state reset to an empty object.");
     } catch (resetError) {
       console.error("[debate] state reset failed:", resetError);
@@ -1110,7 +1110,7 @@ async function initDebate(api) {
 
     try {
       await fsp.mkdir(path.dirname(STATE_FILE), { recursive: true });
-      await fsp.writeFile(STATE_FILE, "{}\\n", "utf8");
+      await fsp.writeFile(STATE_FILE, "{}\n", "utf8");
       console.log("[debate] state reset to an empty object.");
     } catch (resetError) {
       console.error("[debate] state reset failed:", resetError);
