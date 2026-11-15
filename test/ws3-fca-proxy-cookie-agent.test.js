@@ -12,7 +12,7 @@ const net = require("node:net");
 const axios = require("axios");
 const { CookieJar } = require("tough-cookie");
 const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));
-const ws3PackageRoot = path.resolve(path.dirname(require.resolve("ws3-fca")), "..");
+const ws3PackageRoot = path.dirname(require.resolve("ws3-fca"));
 const cookieJarSupportPath = require.resolve("axios-cookiejar-support", { paths: [ws3PackageRoot] });
 const cookieAgentModule = require(require.resolve("http-cookie-agent/http", {
   paths: [path.dirname(cookieJarSupportPath)],
