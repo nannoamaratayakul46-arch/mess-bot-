@@ -1,6 +1,7 @@
 "use strict";
 
 const { resolveMemberName } = require("./memberNameResolver");
+const { getThreadFromList } = require("./messengerThreadList");
 
 const FIVE_DAYS_MS = 5 * 24 * 60 * 60 * 1000;
 const KICK_LIMIT = 3;
@@ -152,53 +153,38 @@ function registerTemporaryAdminRoutes(app, { auth, db, getApi = () => null, isKn
       await init;
       const { ADMIN_IDS } = require("./permissions");
       const api = getApi();
-      let threadInfo = {};
-      if (api && typeof api.getThreadInfo === "function") {
-        threadInfo = await new Promise((resolve) => {
-          let settled = false;
-          const finish = (value) => { if (settled) return; settled = true; clearTimeout(timer); resolve(value || {}); };
-          const timer = setTimeout(() => finish({}), 7000);
-          try {
-            const result = api.getThreadInfo(threadId, (error, info) => finish(error ? {} : info));
-            if (result && typeof result.then === "function") result.then(info => finish(info)).catch(() => finish({}));
-          } catch { finish({}); }
-        });
+      // Prefer the shared inbox list for the admin roster display. This avoids
+      // repeatedly invoking the currently failing per-thread GraphQL method.
+      // The list is display-only; role changes still require fresh getThreadInfo
+      // verification in messengerApiCompat.changeGroupAdminStatus().
+      let listedThread = null;
+      try {
+        listedThread = await getThreadFromList(api, threadId);
+      } catch {
+        // Keep the endpoint responsive and report native roles unavailable.
       }
-      // ws3-fca's legacy getThreadInfo can fail when Messenger returns no
-      // Mercury payload (the current Render logs show that exact failure).
-      // Fall back to the GraphQL-backed thread list, whose formatter exposes
-      // each thread's native admins as adminIDs.
-      let nativeRows = Array.isArray(threadInfo?.adminIDs) ? threadInfo.adminIDs : [];
-      if (!nativeRows.length && api && typeof api.getThreadList === "function") {
+      let nativeRows = Array.isArray(listedThread?.adminIDs) ? listedThread.adminIDs : [];
+      if (!nativeRows.length && api && typeof api.getThreadInfo === "function") {
         try {
-          const threads = await new Promise((resolve) => {
+          const threadInfo = await new Promise((resolve) => {
             let settled = false;
-            const finish = (rows) => {
+            const finish = value => {
               if (settled) return;
               settled = true;
               clearTimeout(timer);
-              resolve(Array.isArray(rows) ? rows : []);
+              resolve(value || {});
             };
-            const timer = setTimeout(() => finish([]), 9000);
+            const timer = setTimeout(() => finish({}), 7000);
             try {
-              const result = api.getThreadList(1000, null, [], (error, rows) => finish(error ? [] : rows));
-              if (result && typeof result.then === "function") {
-                result.then(rows => finish(rows), () => finish([]));
-              } else if (Array.isArray(result)) {
-                finish(result);
-              }
+              const result = api.getThreadInfo(threadId, (error, info) => finish(error ? {} : info));
+              if (result && typeof result.then === "function") result.then(info => finish(info), () => finish({}));
             } catch {
-              finish([]);
+              finish({});
             }
           });
-          const listedThread = threads.find(item =>
-            String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? "") === threadId
-          );
-          if (Array.isArray(listedThread?.adminIDs)) {
-            nativeRows = listedThread.adminIDs;
-          }
+          nativeRows = Array.isArray(threadInfo?.adminIDs) ? threadInfo.adminIDs : [];
         } catch {
-          // Keep the endpoint responsive and clearly mark native roles unavailable.
+          // Native role display remains unavailable; configured bot admins still show.
         }
       }
       const nativeIds = [...new Set(nativeRows.map(row => String(
