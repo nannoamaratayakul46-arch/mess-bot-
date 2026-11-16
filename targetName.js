@@ -1,5 +1,7 @@
 "use strict";
 
+const { getThreadFromList } = require("./messengerThreadList");
+
 const cache = new Map();
 const TTL_MS = 30 * 60 * 1000;
 const LOOKUP_TIMEOUT_MS = 4000;
@@ -107,6 +109,22 @@ async function resolveTargetName(api, threadID, userID, opts = {}) {
     } catch (error) {
       console.warn("[BANAT] Thread name lookup failed:", error?.message || error);
     }
+  }
+
+  // getThreadInfo is currently returning invalid GraphQL payloads for some
+  // Messenger groups. The inbox list still carries participant/nickname data
+  // for many of those groups, so use it before falling back to user lookup.
+  try {
+    const listed = await getThreadFromList(api, thread);
+    const byNickname = save(listed?.nicknames?.[user], "threadList-nickname");
+    if (byNickname) return byNickname;
+    for (const source of [listed?.userInfo, listed?.participants, listed?.participantList, listed?.participant_list]) {
+      const member = getUserRow(source, user);
+      const byThread = save(memberDisplayName(member), "threadList");
+      if (byThread) return byThread;
+    }
+  } catch (error) {
+    console.warn("[BANAT] Thread-list name fallback failed:", error?.message || error);
   }
 
   if (api && typeof api.getUserInfo === "function") {
