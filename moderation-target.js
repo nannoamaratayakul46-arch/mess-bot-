@@ -1,5 +1,7 @@
 "use strict";
 
+const { getThreadFromList } = require("./messengerThreadList");
+
 const FACEBOOK_USER_ID_RE = /^\d{6,20}$/;
 const LOOKUP_TIMEOUT_MS = 5000;
 
@@ -103,13 +105,20 @@ async function resolveModerationTarget(api, event, threadID, args = []) {
   if (directId) return { targetId: directId, consumedArgs: 1 };
   if (!first) return null;
 
-  let info;
+  let info = null;
   try {
     info = await callGetThreadInfo(api, threadID);
   } catch {
-    return null;
+    // Fall through to the shared inbox-list metadata path below.
   }
-  if (!info) return null;
+  if (!info || typeof info !== "object") {
+    try {
+      info = await getThreadFromList(api, threadID);
+    } catch {
+      return null;
+    }
+  }
+  if (!info || typeof info !== "object") return null;
 
   const candidates = memberCandidates(info);
   const normalizedArgs = args.map(value => String(value || "").trim());

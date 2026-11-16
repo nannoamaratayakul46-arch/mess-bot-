@@ -6,7 +6,7 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
-const { getThreadList: getGatedThreadList } = require("./messengerThreadList");
+const { getThreadList: getSharedThreadList } = require("./messengerThreadList");
 const { canSetGroupTitle, canChangeGroupImage, setGroupTitle, changeGroupImage: changeGroupImageCompat, setMessageReactionMqtt } = require("./messengerApiCompat");
 
 const COOLDOWN_MS = 10 * 60 * 1000;
@@ -198,7 +198,7 @@ async function restoreSavedPhoto(api, db, row) {
 // Share thread-list results across guard passes. A failed request is also
 // cooled down so a Messenger outage/rate limit cannot trigger a request storm.
 const sharedThreadLists = new WeakMap();
-async function getSharedThreadList(api) {
+async function getGatedThreadList(api) {
   if (!api || (typeof api !== "object" && typeof api !== "function")) return null;
   let state = sharedThreadLists.get(api);
   if (!state) {
@@ -209,7 +209,7 @@ async function getSharedThreadList(api) {
   if (state.value && now < state.expiresAt) return state.value;
   if (state.promise) return state.promise;
   if (now < state.failedUntil) return state.value;
-  state.promise = getGatedThreadList(api, { timeoutMs: 10_000 })
+  state.promise = getSharedThreadList(api, { timeoutMs: 10_000 })
     .then(value => {
       if (Array.isArray(value) && value.length) {
         state.value = value;
@@ -229,45 +229,39 @@ async function getSharedThreadList(api) {
 }
 
 async function getThreadInfoWithFallback(api, threadId, threadListState) {
-  let info = null;
-  try {
-    info = await withTimeout(callApi(api, "getThreadInfo", [threadId]), 10_000);
-  } catch (error) {
-    console.warn("[PROFILE-GUARD] getThreadInfo failed for " + threadId + ": " + String(error?.message || error).slice(0, 120));
-  }
   const hasUsefulFields = value => Boolean(value && typeof value === "object" && (
     getImageUrl(value) ||
     ["threadName", "name", "title", "thread_name"].some(key =>
       typeof value[key] === "string" && value[key].trim()
     )
   ));
-  if (hasUsefulFields(info)) return info;
 
-  // Do not call getThreadInfoDeprecated here. In the current ws3-fca
-  // runtime it throws internally when Messenger omits the expected Mercury
-  // payload, producing repeated errors for every protected group. Prefer the
-  // supported thread-list fallback; if it is unavailable, fail closed by
-  // skipping this pass rather than invoking the broken legacy method.
-
-  // If thread info omits the group, fetch the thread list only once per guard
-  // pass and reuse the matching group record for the remaining rows.
+  // Prefer the shared inbox list: it is currently the reliable source for
+  // group metadata, while ws3-fca getThreadInfo frequently receives an empty
+  // Mercury/GraphQL response. Avoid repeatedly hitting that failing endpoint.
   if (typeof api?.getThreadList === "function") {
     try {
-      if (!threadListState.promise) {
-        threadListState.promise = getSharedThreadList(api);
-      }
+      if (!threadListState.promise) threadListState.promise = getGatedThreadList(api);
       const threads = await threadListState.promise;
-      if (Array.isArray(threads)) {
-        const listed = threads.find(item =>
-          String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? "") === String(threadId)
-        );
-        if (hasUsefulFields(listed)) return listed;
-      }
+      const listed = Array.isArray(threads) ? threads.find(item =>
+        String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? "") === String(threadId)
+      ) : null;
+      if (hasUsefulFields(listed)) return listed;
     } catch (error) {
-      console.warn("[PROFILE-GUARD] thread-list fallback failed for " + threadId + ": " + String(error?.message || error).slice(0, 120));
+      console.warn("[PROFILE-GUARD] thread-list lookup failed for " + threadId + ": " + String(error?.message || error).slice(0, 120));
     }
   }
-  return info;
+
+  // Use getThreadInfo only when the list does not contain the required
+  // display/profile fields. It remains a fallback, not an authorization source.
+  try {
+    const info = await withTimeout(callApi(api, "getThreadInfo", [threadId]), 10_000);
+    if (hasUsefulFields(info)) return info;
+    return info;
+  } catch (error) {
+    console.warn("[PROFILE-GUARD] getThreadInfo failed for " + threadId + ": " + String(error?.message || error).slice(0, 120));
+    return null;
+  }
 }
 
 function getGroupTitle(info) {
