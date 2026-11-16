@@ -3,7 +3,7 @@
 // Shared member-name resolver for dashboard member pickers and moderation logs.
 // Numeric Facebook IDs are identity keys; names are display-only and are never
 // passed to removeUserFromGroup.
-const { getThreadList: getSharedThreadList } = require("./messengerThreadList");
+const { getThreadList: getSharedThreadList, getThreadFromList } = require("./messengerThreadList");
 const ID_RE = /^\d{6,32}$/;
 const NAME_FIELDS = [
   "name", "fullName", "full_name", "displayName", "display_name",
@@ -382,6 +382,23 @@ async function resolveMemberName(api, threadID, userID, fallback = "") {
       boundedSet(cache, key, { name: found.name, at: Date.now() }, CACHE_MAX);
       return found.name;
     }
+  }
+
+  // The per-thread GraphQL call may return an invalid/empty response while
+  // the inbox list still contains participant records and group nicknames.
+  try {
+    const listed = await getThreadFromList(api, thread);
+    if (listed && typeof listed === "object") {
+      const { ids, names, nicknameNames } = collectParticipants(listed);
+      const found = names.get(id);
+      nickname = nicknameNames.get(id) || nickname;
+      if (ids.has(id) && found?.name) {
+        boundedSet(cache, key, { name: found.name, at: Date.now() }, CACHE_MAX);
+        return found.name;
+      }
+    }
+  } catch (_) {
+    // Continue to direct profile lookup and event-learned names.
   }
 
   if (typeof api?.getUserInfo === "function") {
