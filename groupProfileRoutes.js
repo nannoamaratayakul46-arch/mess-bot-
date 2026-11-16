@@ -6,7 +6,7 @@ const os = require("os");
 const path = require("path");
 const crypto = require("crypto");
 const express = require("express");
-const { getThreadList: getGatedThreadList } = require("./messengerThreadList");
+const { getThreadList: getSharedThreadList } = require("./messengerThreadList");
 const { canSetGroupTitle, canChangeGroupImage, setGroupTitle, changeGroupImage: changeGroupImageCompat, setMessageReactionMqtt } = require("./messengerApiCompat");
 
 const COOLDOWN_MS = 10 * 60 * 1000;
@@ -209,7 +209,7 @@ async function getGatedThreadList(api) {
   if (state.value && now < state.expiresAt) return state.value;
   if (state.promise) return state.promise;
   if (now < state.failedUntil) return state.value;
-  state.promise = getGatedThreadList(api, { timeoutMs: 10_000 })
+  state.promise = getSharedThreadList(api, { timeoutMs: 10_000 })
     .then(value => {
       if (Array.isArray(value) && value.length) {
         state.value = value;
