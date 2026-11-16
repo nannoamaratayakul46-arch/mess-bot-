@@ -145,4 +145,22 @@ function getThreadList(api, options = {}) {
   return state.promise;
 }
 
-module.exports = { getThreadList };
+
+
+// Resolve ordinary group metadata from the shared inbox list when the
+// per-thread GraphQL endpoint returns an empty/invalid response. This data is
+// for display and name resolution only; callers must not use it as fresh
+// authorization proof for privileged actions.
+async function getThreadFromList(api, threadID, options = {}) {
+  const id = String(threadID ?? "").trim();
+  if (!/^\\d{6,32}$/.test(id)) return null;
+  const rows = Array.isArray(options.threadList)
+    ? options.threadList
+    : await getThreadList(api, options);
+  if (!Array.isArray(rows)) return null;
+  return rows.find(row =>
+    String(row?.threadID ?? row?.threadId ?? row?.thread_id ?? row?.id ?? "").trim() === id
+  ) || null;
+}
+
+module.exports = { getThreadList, getThreadFromList };
