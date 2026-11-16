@@ -153,7 +153,7 @@ function getThreadList(api, options = {}) {
 // authorization proof for privileged actions.
 async function getThreadFromList(api, threadID, options = {}) {
   const id = String(threadID ?? "").trim();
-  if (!/^\\d{6,32}$/.test(id)) return null;
+  if (!/^\d{6,32}$/.test(id)) return null;
   const rows = Array.isArray(options.threadList)
     ? options.threadList
     : await getThreadList(api, options);
