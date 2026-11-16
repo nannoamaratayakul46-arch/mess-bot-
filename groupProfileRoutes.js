@@ -198,7 +198,7 @@ async function restoreSavedPhoto(api, db, row) {
 // Share thread-list results across guard passes. A failed request is also
 // cooled down so a Messenger outage/rate limit cannot trigger a request storm.
 const sharedThreadLists = new WeakMap();
-async function getSharedThreadList(api) {
+async function getGatedThreadList(api) {
   if (!api || (typeof api !== "object" && typeof api !== "function")) return null;
   let state = sharedThreadLists.get(api);
   if (!state) {
@@ -241,7 +241,7 @@ async function getThreadInfoWithFallback(api, threadId, threadListState) {
   // Mercury/GraphQL response. Avoid repeatedly hitting that failing endpoint.
   if (typeof api?.getThreadList === "function") {
     try {
-      if (!threadListState.promise) threadListState.promise = getSharedThreadList(api);
+      if (!threadListState.promise) threadListState.promise = getGatedThreadList(api);
       const threads = await threadListState.promise;
       const listed = Array.isArray(threads) ? threads.find(item =>
         String(item?.threadID ?? item?.threadId ?? item?.thread_id ?? "") === String(threadId)
