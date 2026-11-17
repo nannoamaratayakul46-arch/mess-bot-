@@ -5521,7 +5521,7 @@ app.post(
       clearSharedThreadListCache(api);
       dashboardThreadLists = new WeakMap();
       const currentThreads = await dashboardGetThreadList(api);
-      if (!Array.isArray(currentThreads)) {
+      if (!Array.isArray(currentThreads) || currentThreads.length === 0) {
         return res.status(503).json({
           ok: false,
           error: "Messenger did not return a usable thread list. Persistent settings were left unchanged.",
@@ -5531,7 +5531,7 @@ app.post(
       const activeIds = new Set();
       for (const thread of currentThreads) {
         const id = String(thread?.threadID || thread?.threadId || thread?.thread_id || "").trim();
-        if (!/^\\d{6,32}$/.test(id)) continue;
+        if (id.length < 6 || id.length > 32 || ![...id].every(char => char >= "0" && char <= "9")) continue;
         const participants = Array.isArray(thread?.participantIDs)
           ? thread.participantIDs
           : Array.isArray(thread?.participants)
