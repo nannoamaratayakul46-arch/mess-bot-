@@ -68,6 +68,7 @@ const crypto = require("crypto");
 const express = require("express");
 const { createDashboardSecurity } = require("./dashboardSecurity");
 const { createDashboardAccessRoutes } = require("./dashboardAccessRoutes");
+const { createSpotifyListeningRooms } = require("./spotifyListeningRooms");
 const { login } = require("ws3-fca");
 
 const db = require("./db");
@@ -3801,6 +3802,8 @@ if (/^(1|true|yes|on)$/i.test(process.env.ECLIPSE_DASHBOARD_ACCESS_ENABLED || ""
   });
 }
 
+// Persistent Spotify rooms use the same individual dashboard-session auth as the rest of the API.
+createSpotifyListeningRooms({ app, db, auth: requireDashboardAccess });
 
 // Authenticated, read-only Neon inspection and encrypted dashboard AI settings.
 registerDatabaseAiCenterRoutes(app, requireDashboardAccess);

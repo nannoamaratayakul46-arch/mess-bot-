@@ -151,6 +151,12 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
       req.dashboardAccount = account;
       const method = String(req.method || "GET").toUpperCase();
       const path = String(req.path || req.originalUrl || "").split("?")[0];
+      // Listening Rooms are collaborative personal features: any authenticated
+      // dashboard account may create/join/leave; room routes enforce host ownership.
+      if (/^\/api\/spotify\/rooms(?:\/|$)/.test(path)) {
+        if (["GET", "HEAD", "OPTIONS"].includes(method)) return next();
+        return requireCsrf(req, res, next);
+      }
       if (account.role === "owner") {
         if (["GET", "HEAD", "OPTIONS"].includes(method)) return next();
         return requireCsrf(req, res, next);
