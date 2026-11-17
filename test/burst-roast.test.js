@@ -57,8 +57,9 @@ test("invalid Burst & Roast settings fall back to defaults", () => {
   });
 });
 
-test("Normal Spam contains 100 supplied lines and randomly formats one with the chosen emoji", () => {
-  assert.equal(NORMAL_SPAM_BANATS.length, 100);
+test("Normal Spam contains 700 unique lines and randomly formats one with the chosen emoji", () => {
+  assert.equal(NORMAL_SPAM_BANATS.length, 700);
+  assert.equal(new Set(NORMAL_SPAM_BANATS).size, 700);
   assert.equal(buildSpamMessage(normalize({ emoji: "💀" }), () => 0), NORMAL_SPAM_BANATS[0] + " 💀");
 });
 
