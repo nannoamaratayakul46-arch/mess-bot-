@@ -289,6 +289,10 @@ const MAX_ACTIVE_THREADS = 1000;
 const ACTIVE_THREAD_EXPIRY_MS =
   30 * 24 * 60 * 60 * 1000;
 
+// Group discovery is intentionally short-lived: stale Messenger chats must not
+// be resurrected from historical database rows after one week.
+const DASHBOARD_GROUP_RETENTION_MS = 7 * 24 * 60 * 60 * 1000;
+
 const lastRandomRoastByThread = new Map();
 const activeThreads = new Map();
 const dashboardKnownGroups = new Map();
@@ -306,10 +310,18 @@ async function isDashboardGroupArchived(threadID) {
   const now = Date.now();
   if (now - archivedDashboardGroupsLoadedAt > 30_000 && !archivedDashboardGroupsLoadPromise) {
     const archiveOwnerID = String(eclipseUserID || "").trim();
-    archivedDashboardGroupsLoadPromise = db.query(
-      "SELECT thread_id FROM eclipse_dashboard_archived_groups WHERE messenger_user_id = $1",
-      [archiveOwnerID]
-    ).then(result => {
+    archivedDashboardGroupsLoadPromise = (async () => {
+      await ensureDashboardGroupPresenceTable();
+      return db.query(`
+        SELECT archived.thread_id
+        FROM eclipse_dashboard_archived_groups AS archived
+        INNER JOIN eclipse_dashboard_group_presence AS presence
+          ON presence.messenger_user_id = archived.messenger_user_id
+         AND presence.thread_id = archived.thread_id
+        WHERE archived.messenger_user_id = $1
+          AND presence.last_seen_at >= NOW() - INTERVAL '7 days'
+      `, [archiveOwnerID]);
+    })().then(result => {
       if (archiveOwnerID !== String(eclipseUserID || "").trim()) return;
       archivedDashboardGroups.clear();
       for (const row of result.rows || []) {
@@ -5417,6 +5429,97 @@ async function ensureDashboardArchivedGroupsTable() {
   return dashboardArchivedGroupsSchemaPromise;
 }
 
+let dashboardGroupPresenceSchemaPromise = null;
+
+async function ensureDashboardGroupPresenceTable() {
+  if (!dashboardGroupPresenceSchemaPromise) {
+    dashboardGroupPresenceSchemaPromise = (async () => {
+      await ensureDashboardArchivedGroupsTable();
+      await db.query(`
+        CREATE TABLE IF NOT EXISTS eclipse_dashboard_group_presence (
+          messenger_user_id TEXT NOT NULL,
+          thread_id TEXT NOT NULL,
+          last_seen_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+          PRIMARY KEY (messenger_user_id, thread_id)
+        )
+      `);
+      // Preserve legacy archived groups for up to seven days based on their
+      // actual archive timestamp; do not treat old records as newly seen.
+      await db.query(`
+        INSERT INTO eclipse_dashboard_group_presence
+          (messenger_user_id, thread_id, last_seen_at)
+        SELECT messenger_user_id, thread_id, archived_at
+        FROM eclipse_dashboard_archived_groups
+        WHERE messenger_user_id IS NOT NULL AND messenger_user_id <> ''
+        ON CONFLICT (messenger_user_id, thread_id) DO NOTHING
+      `);
+    })().catch(error => {
+      dashboardGroupPresenceSchemaPromise = null;
+      throw error;
+    });
+  }
+  return dashboardGroupPresenceSchemaPromise;
+}
+
+function normalizeDashboardGroupIds(values) {
+  return [...new Set((Array.isArray(values) ? values : [])
+    .map(value => String(value || "").trim())
+    .filter(id => /^\d{6,32}$/.test(id)))];
+}
+
+async function recordDashboardGroupPresence(messengerUserId, threadIds) {
+  const ownerId = String(messengerUserId || "").trim();
+  const ids = normalizeDashboardGroupIds(threadIds);
+  if (!ownerId || !ids.length) return 0;
+  await ensureDashboardGroupPresenceTable();
+  const { rowCount } = await db.query(`
+    INSERT INTO eclipse_dashboard_group_presence (messenger_user_id, thread_id, last_seen_at)
+    SELECT $1, group_id, NOW()
+    FROM UNNEST($2::text[]) AS groups(group_id)
+    ON CONFLICT (messenger_user_id, thread_id)
+    DO UPDATE SET last_seen_at = EXCLUDED.last_seen_at
+  `, [ownerId, ids]);
+  return Number(rowCount) || 0;
+}
+
+async function pruneExpiredDashboardGroupPresence(messengerUserId) {
+  const ownerId = String(messengerUserId || "").trim();
+  if (!ownerId) return 0;
+  await ensureDashboardGroupPresenceTable();
+  const { rowCount } = await db.query(`
+    DELETE FROM eclipse_dashboard_group_presence
+    WHERE messenger_user_id = $1
+      AND last_seen_at < NOW() - ($2::bigint * INTERVAL '1 millisecond')
+  `, [ownerId, DASHBOARD_GROUP_RETENTION_MS]);
+  return Number(rowCount) || 0;
+}
+
+async function getRecentDashboardGroupPresenceIds(messengerUserId) {
+  const ownerId = String(messengerUserId || "").trim();
+  if (!ownerId) return new Set();
+  await pruneExpiredDashboardGroupPresence(ownerId);
+  const { rows } = await db.query(`
+    SELECT thread_id
+    FROM eclipse_dashboard_group_presence
+    WHERE messenger_user_id = $1
+      AND last_seen_at >= NOW() - ($2::bigint * INTERVAL '1 millisecond')
+  `, [ownerId, DASHBOARD_GROUP_RETENTION_MS]);
+  return new Set((rows || []).map(row => String(row.thread_id || "").trim()).filter(Boolean));
+}
+
+async function pruneExpiredDashboardArchivedGroups(messengerUserId, recentThreadIds = []) {
+  const ownerId = String(messengerUserId || "").trim();
+  if (!ownerId) return 0;
+  await ensureDashboardArchivedGroupsTable();
+  const ids = normalizeDashboardGroupIds(recentThreadIds);
+  const { rowCount } = await db.query(`
+    DELETE FROM eclipse_dashboard_archived_groups
+    WHERE messenger_user_id = $1
+      AND thread_id <> ALL($2::text[])
+  `, [ownerId, ids]);
+  return Number(rowCount) || 0;
+}
+
 function dashboardFetchThreadList(api, timeoutMs = 8000) {
   return getSharedThreadList(api, { timeoutMs });
 }
@@ -5550,10 +5653,19 @@ app.post(
         });
       }
 
+      const messengerUserId = String(eclipseUserID || "").trim();
+      // Stamp only groups confirmed in this account's freshly fetched inbox.
+      // Historical settings without a recent presence stamp are not eligible
+      // to repopulate the Groups directory.
+      await recordDashboardGroupPresence(messengerUserId, [...activeIds]);
+      const expiredPresenceCount = await pruneExpiredDashboardGroupPresence(messengerUserId);
+      const recentGroupIds = await getRecentDashboardGroupPresenceIds(messengerUserId);
+      const expiredArchivedCount = await pruneExpiredDashboardArchivedGroups(messengerUserId, [...recentGroupIds]);
+
       await ensureDashboardArchivedGroupsTable();
       const archivedResult = await db.query(
-        "SELECT thread_id FROM eclipse_dashboard_archived_groups WHERE messenger_user_id = $1",
-        [String(eclipseUserID || "").trim()]
+        "SELECT thread_id FROM eclipse_dashboard_archived_groups WHERE messenger_user_id = $1 AND thread_id = ANY($2::text[])",
+        [messengerUserId, [...recentGroupIds]]
       );
       const archivedIds = (archivedResult.rows || [])
         .map(row => String(row.thread_id || "").trim())
@@ -5589,13 +5701,14 @@ app.post(
       }).length;
 
       console.info(
-        "[DASHBOARD] Force-cleaned stale default group settings; removed=" +
+        "[DASHBOARD] Force-cleaned stale group directory (7-day retention); removed=" +
         cleanup.removedCount + ", preserved_configured=" +
         cleanup.preservedConfiguredCount + ", live_groups=" + activeIds.size
       );
       return res.json({
         ok: true,
         removedCount: cleanup.removedCount,
+        expiredCount: expiredPresenceCount + expiredArchivedCount,
         preservedCount: cleanup.preservedConfiguredCount,
         activeCount: activeIds.size,
         loadedCount,
@@ -5626,6 +5739,7 @@ app.get(
   async (_req, res) => {
     const messengerConnected = Boolean(activeMessengerApi && activeListenerGeneration > 0);
     const known = new Map();
+    const observedInboxGroupIds = new Set();
     if (!messengerConnected) {
       // Keep previously discovered group metadata usable while Facebook is offline.
       for (const [threadID, group] of dashboardKnownGroups.entries()) {
@@ -5647,6 +5761,7 @@ app.get(
           String(thread.threadType || "").toUpperCase() === "GROUP" ||
           participants.length >= 3;
         if (!isGroup) continue;
+        observedInboxGroupIds.add(threadID);
         const seenAt = activeThreads.get(threadID);
         const messageTime = Number(thread.lastMessageTimestamp || thread.last_message_timestamp || 0);
         const fallbackTime = messageTime > 0
@@ -5667,16 +5782,39 @@ app.get(
 
     }
 
-    // Archived groups stay available in the dashboard's Archived view even
-    // after they disappear from the Messenger inbox. Archiving never removes
-    // the bot from a conversation; leaving is a separate explicit action.
+    // Presence is scoped to the authenticated Messenger identity. The
+    // seven-day window is refreshed only by a verified live inbox observation.
+    let recentGroupIds = new Set();
+    let groupPresenceAvailable = false;
+    try {
+      const messengerUserId = String(eclipseUserID || "").trim();
+      if (messengerConnected && observedInboxGroupIds.size) {
+        await recordDashboardGroupPresence(messengerUserId, [...observedInboxGroupIds]);
+      }
+      recentGroupIds = await getRecentDashboardGroupPresenceIds(messengerUserId);
+      groupPresenceAvailable = true;
+      await pruneExpiredDashboardArchivedGroups(messengerUserId, [...recentGroupIds]);
+    } catch (error) {
+      console.warn("[DASHBOARD] Could not refresh seven-day group presence:", error?.message || error);
+    }
+
+    // Keep freshly verified live inbox groups even if the presence-table write
+    // is temporarily unavailable. Offline cached entries must pass the TTL.
+    if (!messengerConnected && groupPresenceAvailable) {
+      for (const threadID of known.keys()) {
+        if (!recentGroupIds.has(String(threadID))) known.delete(threadID);
+      }
+    }
+
+    // Archived groups remain available only while their account-scoped group
+    // presence is within the seven-day retention window.
     const archivedGroups = new Map();
     try {
       await ensureDashboardArchivedGroupsTable();
 
       const archivedResult = await db.query(
-        "SELECT thread_id, group_name, participant_count, archived_at, left_at FROM eclipse_dashboard_archived_groups WHERE messenger_user_id = $1 ORDER BY archived_at DESC",
-        [String(eclipseUserID || "").trim()]
+        "SELECT thread_id, group_name, participant_count, archived_at, left_at FROM eclipse_dashboard_archived_groups WHERE messenger_user_id = $1 AND thread_id = ANY($2::text[]) ORDER BY archived_at DESC",
+        [String(eclipseUserID || "").trim(), [...recentGroupIds]]
       );
       for (const row of archivedResult.rows || []) {
         const threadID = String(row.thread_id || "").trim();
@@ -5713,7 +5851,9 @@ app.get(
         const savedGroupIds = await db.getConfiguredDashboardGroupIds();
         for (const rawThreadID of savedGroupIds) {
           const threadID = String(rawThreadID || "").trim();
-          if (!threadID) continue;
+          // Keep customized values safely stored, but do not surface or use a
+          // saved GC unless this account saw it in the last seven days.
+          if (!threadID || !recentGroupIds.has(threadID)) continue;
           configuredSavedGroupIds.add(threadID);
           const existing = known.get(threadID);
           if (existing) {

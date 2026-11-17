@@ -14,10 +14,18 @@ test("Messenger account replacement clears previous account group discovery stat
 
 test("dashboard archived groups are scoped to the authenticated Messenger identity", () => {
   assert.match(source, /ADD COLUMN IF NOT EXISTS messenger_user_id TEXT NOT NULL DEFAULT ''/);
-  assert.match(source, /WHERE messenger_user_id = \$1 ORDER BY archived_at DESC/);
+  assert.match(source, /FROM eclipse_dashboard_archived_groups WHERE messenger_user_id = \$1 AND thread_id = ANY\(\$2::text\[\]\) ORDER BY archived_at DESC/);
+  assert.match(source, /INNER JOIN eclipse_dashboard_group_presence AS presence[\s\S]*?WHERE archived\.messenger_user_id = \$1[\s\S]*?presence\.last_seen_at >= NOW\(\) - INTERVAL '7 days'/);
   assert.match(source, /WHERE messenger_user_id = \$1/);
   assert.match(source, /thread_id, messenger_user_id, group_name, participant_count/);
   assert.match(source, /DELETE FROM eclipse_dashboard_archived_groups WHERE thread_id = \$1 AND messenger_user_id = \$2/);
+});
+
+test("stale Messenger group history expires after seven days and cannot repopulate saved groups", () => {
+  assert.match(source, /DASHBOARD_GROUP_RETENTION_MS = 7 \* 24 \* 60 \* 60 \* 1000/);
+  assert.match(source, /DELETE FROM eclipse_dashboard_group_presence[\s\S]*?last_seen_at < NOW\(\) - \(\$2::bigint \* INTERVAL '1 millisecond'\)/);
+  assert.match(source, /if \(!threadID \|\| !recentGroupIds\.has\(threadID\)\) continue/);
+  assert.match(source, /if \(!messengerConnected && groupPresenceAvailable\)/);
 });
 
 test("uploaded replacement cookies become the durable session when getAppState is unavailable", () => {
