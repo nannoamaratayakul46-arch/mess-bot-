@@ -5503,82 +5503,104 @@ app.post(
   "/api/groups/clean-cache",
   requireDashboardAccess,
   async (req, res) => {
-    // A full directory cleanup is owner-only, matching the existing cache-clear
-    // endpoint. No persistent group settings or moderation records are deleted.
     if (req.dashboardAccount && req.dashboardAccount.role !== "owner") {
-      return res.status(403).json({ ok: false, error: "Owner access is required to clean the group cache." });
+      return res.status(403).json({ ok: false, error: "Owner access is required to force-clean group settings." });
     }
 
     const api = activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null;
+    if (!api) {
+      return res.status(409).json({
+        ok: false,
+        error: "Messenger must be connected before Force clean can safely compare saved groups with the live inbox. No persistent settings were changed.",
+      });
+    }
+
     try {
-      const configuredIds = new Set(await db.getConfiguredDashboardGroupIds());
-      const archivedIds = new Set();
+      // Invalidate both layers before reading so Force clean compares against a
+      // fresh Messenger inbox snapshot, not an old cached list.
+      clearSharedThreadListCache(api);
+      dashboardThreadLists = new WeakMap();
+      const currentThreads = await dashboardGetThreadList(api);
+      if (!Array.isArray(currentThreads)) {
+        return res.status(503).json({
+          ok: false,
+          error: "Messenger did not return a usable thread list. Persistent settings were left unchanged.",
+        });
+      }
+
+      const activeIds = new Set();
+      for (const thread of currentThreads) {
+        const id = String(thread?.threadID || thread?.threadId || thread?.thread_id || "").trim();
+        if (!/^\\d{6,32}$/.test(id)) continue;
+        const participants = Array.isArray(thread?.participantIDs)
+          ? thread.participantIDs
+          : Array.isArray(thread?.participants)
+            ? thread.participants
+            : [];
+        const isGroup = Number(thread?.threadType) === 2 ||
+          String(thread?.threadType || "").toUpperCase() === "GROUP" ||
+          thread?.isGroup === true ||
+          participants.length >= 3;
+        if (isGroup) activeIds.add(id);
+      }
+
       await ensureDashboardArchivedGroupsTable();
       const archivedResult = await db.query(
         "SELECT thread_id FROM eclipse_dashboard_archived_groups WHERE messenger_user_id = $1",
         [String(eclipseUserID || "").trim()]
       );
-      for (const row of archivedResult.rows || []) {
-        const id = String(row.thread_id || "").trim();
-        if (id) archivedIds.add(id);
-      }
+      const archivedIds = (archivedResult.rows || [])
+        .map(row => String(row.thread_id || "").trim())
+        .filter(Boolean);
 
-      let currentThreads = null;
-      const activeIds = new Set();
-      if (api) {
-        currentThreads = await dashboardGetThreadList(api);
-        if (!Array.isArray(currentThreads) || currentThreads.length === 0) {
-          return res.status(503).json({
-            ok: false,
-            error: "Messenger did not return a usable thread list. The group cache was left unchanged.",
-          });
-        }
-        for (const thread of currentThreads) {
-          const id = String(thread?.threadID || thread?.threadId || thread?.thread_id || "").trim();
-          if (!/^\\d{6,32}$/.test(id)) continue;
-          const participants = Array.isArray(thread?.participantIDs)
-            ? thread.participantIDs
-            : Array.isArray(thread?.participants)
-              ? thread.participants
-              : [];
-          const isGroup = Number(thread?.threadType) === 2 ||
-            String(thread?.threadType || "").toUpperCase() === "GROUP" ||
-            thread?.isGroup === true ||
-            participants.length >= 3;
-          if (isGroup) activeIds.add(id);
-        }
-      }
+      // The DB helper independently protects every customized setting, target,
+      // Automod rule, moderation ban, and saved group override. Only stale,
+      // untouched default thread-settings rows can be removed.
+      const cleanup = await db.pruneStaleDashboardGroupSettings(
+        [...activeIds],
+        archivedIds
+      );
 
-      const protectedIds = new Set([...configuredIds, ...archivedIds, ...activeIds]);
-      const removedCount = Array.from(dashboardKnownGroups.keys())
-        .map(id => String(id))
-        .filter(id => !protectedIds.has(id)).length;
-
-      // Invalidate stale name/thread metadata, but keep the just-observed live
-      // inbox snapshot available for the immediate dashboard refresh.
-      if (api) clearSharedThreadListCache(api);
-      dashboardThreadLists = new WeakMap();
-      if (api && Array.isArray(currentThreads)) {
-        dashboardThreadLists.set(api, {
-          value: currentThreads,
-          expiresAt: Date.now() + 60_000,
-          failedUntil: 0,
-          promise: null,
-        });
-      }
       dashboardKnownGroups.clear();
       dashboardSavedGroupDirectoryCleared = false;
+      dashboardThreadLists.set(api, {
+        value: currentThreads,
+        expiresAt: Date.now() + 60_000,
+        failedUntil: 0,
+        promise: null,
+      });
 
-      console.info("[DASHBOARD] Force-cleaned stale group metadata; removed=" + removedCount +
-        ", preserved_configured=" + configuredIds.size + ", active=" + activeIds.size);
+      const loadedCount = currentThreads.filter(thread => {
+        const participants = Array.isArray(thread?.participantIDs)
+          ? thread.participantIDs
+          : Array.isArray(thread?.participants)
+            ? thread.participants
+            : [];
+        return Number(thread?.threadType) === 2 ||
+          String(thread?.threadType || "").toUpperCase() === "GROUP" ||
+          thread?.isGroup === true ||
+          participants.length >= 3;
+      }).length;
+
+      console.info(
+        "[DASHBOARD] Force-cleaned stale default group settings; removed=" +
+        cleanup.removedCount + ", preserved_configured=" +
+        cleanup.preservedConfiguredCount + ", live_groups=" + activeIds.size
+      );
       return res.json({
         ok: true,
-        removedCount,
-        preservedCount: configuredIds.size,
+        removedCount: cleanup.removedCount,
+        preservedCount: cleanup.preservedConfiguredCount,
+        activeCount: activeIds.size,
+        loadedCount,
+        messenger_connected: true,
       });
     } catch (error) {
-      console.error("[DASHBOARD] Force clean group cache failed:", error?.message || error);
-      return res.status(503).json({ ok: false, error: "Could not safely clean the group cache. Existing data was left intact." });
+      console.error("[DASHBOARD] Force clean group settings failed:", error?.message || error);
+      return res.status(503).json({
+        ok: false,
+        error: "Could not safely force-clean group settings. Existing customized data was left intact.",
+      });
     }
   }
 );
