@@ -17,6 +17,7 @@ test("Burst & Roast defaults preserve the configured pacing", () => {
   assert.equal(DEFAULTS.messages_per_burst, 700);
   assert.equal(DEFAULTS.delay_seconds, 30);
   assert.equal(DEFAULTS.cooldown_seconds, 120);
+  assert.equal(DEFAULTS.time_check_enabled, false);
 });
 
 test("Burst & Roast settings are bounded and mode/name inputs are normalized", () => {
@@ -50,8 +51,8 @@ test("invalid Burst & Roast settings fall back to defaults", () => {
     emoji: "\n",
     suffix_names: [],
   }), {
-    messages_per_burst: 5,
-    delay_seconds: 3,
+    messages_per_burst: 700,
+    delay_seconds: 30,
     cooldown_seconds: 120,
     time_check_enabled: false,
     content_mode: "normal",
