@@ -3456,46 +3456,25 @@ async function clearAllCombatEffects(combatId) {
 
 async function getThreadSettings(threadId) {
   const conn = requireConn();
-  const id = String(threadId);
-
-  let { rows } = await conn.query(
-    `
-    SELECT *
-    FROM thread_settings
-    WHERE thread_id = $1
-    `,
+  const id = String(threadId || "").trim();
+  const { rows } = await conn.query(
+    `SELECT * FROM thread_settings WHERE thread_id = $1`,
     [id]
   );
 
-  if (!rows.length) {
-    await conn.query(
-      `
-      INSERT INTO thread_settings(
-        thread_id,
-        roast_enabled,
-        fun_enabled,
-        banat_link_enabled,
-        banat_meme_enabled,
-        slash_pool_enabled,
-        bot_enabled
-      )
-      VALUES($1, TRUE, TRUE, FALSE, FALSE, FALSE, TRUE)
-      ON CONFLICT(thread_id) DO NOTHING
-      `,
-      [id]
-    );
-
-    ({ rows } = await conn.query(
-      `
-      SELECT *
-      FROM thread_settings
-      WHERE thread_id = $1
-      `,
-      [id]
-    ));
-  }
-
-  return rows[0];
+  // Message handling reads settings for every incoming thread. A read must
+  // never create persistent state: only an explicit dashboard/command edit
+  // should create a customized row.
+  return rows[0] || {
+    thread_id: id,
+    roast_enabled: true,
+    fun_enabled: true,
+    banat_link_enabled: false,
+    banat_meme_enabled: false,
+    slash_pool_enabled: false,
+    bot_enabled: true,
+    customized_fields: [],
+  };
 }
 
 async function getBanatThreadTarget(threadId) {
@@ -3583,10 +3562,7 @@ async function clearBanatThreadTarget(threadId) {
 
 async function setThreadSettings(threadId, fields) {
   const conn = requireConn();
-  const id = String(threadId);
-
-  await getThreadSettings(id);
-
+  const id = String(threadId || "").trim();
   const allowedFields = [
     "roast_enabled",
     "fun_enabled",
@@ -3595,33 +3571,39 @@ async function setThreadSettings(threadId, fields) {
     "slash_pool_enabled",
     "bot_enabled",
   ];
-
-  const safeFields = Object.keys(fields || {}).filter((key) =>
-    allowedFields.includes(key)
+  const safeFields = Object.keys(fields || {}).filter(key =>
+    allowedFields.includes(key) && typeof fields[key] === "boolean"
   );
+  if (!id || !safeFields.length) return getThreadSettings(id);
 
-  if (!safeFields.length) {
-    return getThreadSettings(id);
-  }
+  const defaults = {
+    roast_enabled: true,
+    fun_enabled: true,
+    banat_link_enabled: false,
+    banat_meme_enabled: false,
+    slash_pool_enabled: false,
+    bot_enabled: true,
+  };
+  const columns = allowedFields.join(", ");
+  const placeholders = allowedFields.map((_, index) => `$${index + 2}`).join(", ");
+  const updates = safeFields.map(key => `${key} = EXCLUDED.${key}`).join(", ");
+  const customizedFieldsParam = allowedFields.length + 2;
 
-  const setClause = safeFields
-    .map((key, index) => `${key} = $${index + 2}`)
-    .join(", ");
-
-  const values = safeFields.map((key) => fields[key]);
-
-  const customizedFieldsParam = safeFields.length + 2;
+  // Explicit edits create the row. Defaults are supplied only to satisfy the
+  // schema; only fields actually edited are marked as user-customized.
   await conn.query(
-    `
-    UPDATE thread_settings AS settings
-    SET ${setClause},
-        customized_fields = ARRAY(
-          SELECT DISTINCT tracked_field
-          FROM unnest(COALESCE(settings.customized_fields, '{}'::text[]) || $${customizedFieldsParam}::text[]) AS tracked(tracked_field)
-        )
-    WHERE settings.thread_id = $1
-    `,
-    [id, ...values, safeFields]
+    `INSERT INTO thread_settings (thread_id, ${columns}, customized_fields)
+     VALUES ($1, ${placeholders}, $${customizedFieldsParam}::text[])
+     ON CONFLICT (thread_id) DO UPDATE SET
+       ${updates},
+       customized_fields = ARRAY(
+         SELECT DISTINCT tracked_field
+         FROM unnest(
+           COALESCE(thread_settings.customized_fields, '{}'::text[]) ||
+           EXCLUDED.customized_fields
+         ) AS tracked(tracked_field)
+       )`,
+    [id, ...allowedFields.map(key => safeFields.includes(key) ? fields[key] : defaults[key]), safeFields]
   );
 
   return getThreadSettings(id);
@@ -3711,6 +3693,40 @@ async function getConfiguredDashboardGroupIds() {
   return (rows || []).map(row => String(row.thread_id || "").trim()).filter(Boolean);
 }
 
+
+async function pruneStaleDashboardGroupSettings(activeThreadIds = [], additionalProtectedIds = []) {
+  const conn = requireConn();
+  const configuredIds = await getConfiguredDashboardGroupIds();
+  const normalizeIds = values => (Array.isArray(values) ? values : [])
+    .map(value => String(value || "").trim())
+    .filter(value => /^\\d{6,32}$/.test(value));
+  const protectedIds = [...new Set([
+    ...configuredIds,
+    ...normalizeIds(activeThreadIds),
+    ...normalizeIds(additionalProtectedIds),
+  ])];
+
+  // Delete only untouched default rows. A customized_fields marker protects a
+  // setting even if the user later changed it back to its default value.
+  const { rows } = await conn.query(
+    `DELETE FROM thread_settings
+      WHERE NOT (thread_id = ANY($1::text[]))
+        AND COALESCE(array_length(customized_fields, 1), 0) = 0
+        AND roast_enabled IS TRUE
+        AND fun_enabled IS TRUE
+        AND banat_link_enabled IS FALSE
+        AND banat_meme_enabled IS FALSE
+        AND slash_pool_enabled IS FALSE
+        AND bot_enabled IS TRUE
+      RETURNING thread_id`,
+    [protectedIds]
+  );
+
+  return {
+    removedCount: (rows || []).length,
+    preservedConfiguredCount: configuredIds.length,
+  };
+}
 
 function isAdminForBible(userId) {
   const target = String(userId || "").trim();
@@ -4487,6 +4503,7 @@ module.exports = {
   getThreadSettings,
   setThreadSettings,
   getConfiguredDashboardGroupIds,
+  pruneStaleDashboardGroupSettings,
   getBanatThreadTarget,
   setBanatThreadTarget,
   clearBanatThreadTarget,
