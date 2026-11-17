@@ -103,7 +103,7 @@ test("optional Time Check sends the Manila template at most once per run", async
     });
     const checks = sent.filter(item => item.text.startsWith("time check: "));
     assert.equal(checks.length, 1);
-    assert.match(checks[0].text, /^time check: \\d{1,2}:\\d{2}, wag sana d\\.o isa jan$/);
+    assert.match(checks[0].text, /^time check: \d{1,2}:\d{2}, wag sana d\.o isa jan$/);
     assert.equal(result.timeChecks, 1);
     assert.equal(result.sentThisBatch, 2);
   } finally {
