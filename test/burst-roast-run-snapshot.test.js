@@ -29,7 +29,7 @@ function makeHarness(savedSettings = { ...DEFAULTS }, options = {}) {
     getApi: () => api,
     isKnownGroup: id => id === "gc-1",
     random: options.random,
-    now: options.now,
+    getNow: options.now,
     send: async (_api, message, threadID) => {
       sent.push({ message, threadID });
       return { messageID: "msg-1" };
