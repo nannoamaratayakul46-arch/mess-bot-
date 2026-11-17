@@ -112,7 +112,7 @@ function reactLaugh(api, messageID) {
     console.warn("[BURST-ROAST] Auto-laugh reaction failed:", error?.message || error);
   });
 }
-function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () => false, send = null, random = Math.random, now = () => new Date() }) {
+function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () => false, send = null, random = Math.random, getNow = () => new Date() }) {
   let settings = { ...DEFAULTS };
   let initialized = false;
   const lastRunAt = new Map();
@@ -246,7 +246,7 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
             for (let i = 0; i < count && !controller.stopped; i += 1) {
               startTyping(api, threadID);
               try {
-                // Fixed typing lead-in; no randomized or evasive pacing.
+                // Keep the short typing lead-in; randomized pacing is applied between sends.
                 if (await waitOrStop(2000, controller)) break;
               } finally {
                 stopTyping(api, threadID);
@@ -254,7 +254,7 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
               if (controller.stopped) break;
               try {
                 const useTimeCheck = mode === "burst" && config.time_check_enabled && random() < 0.2;
-                const message = useTimeCheck ? formatTimeCheck(now()) : buildSpamMessage(config, random);
+                const message = useTimeCheck ? formatTimeCheck(getNow()) : buildSpamMessage(config, random);
                 const info = typeof send === "function"
                   ? await send(api, message, threadID)
                   : await sendMessage(api, message, threadID);
