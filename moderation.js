@@ -148,11 +148,13 @@ async function ensureAutoModTables() {
         enabled BOOLEAN NOT NULL DEFAULT FALSE,
         owner_away_timeout BIGINT NOT NULL DEFAULT 900000,
         owner_last_seen BIGINT NOT NULL DEFAULT 0,
+        customized BOOLEAN NOT NULL DEFAULT FALSE,
         updated_at BIGINT NOT NULL
       );
 
       ALTER TABLE automod_settings
-        ADD COLUMN IF NOT EXISTS owner_last_seen BIGINT NOT NULL DEFAULT 0;
+        ADD COLUMN IF NOT EXISTS owner_last_seen BIGINT NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS customized BOOLEAN NOT NULL DEFAULT FALSE;
 
       CREATE TABLE IF NOT EXISTS automod_incidents (
         id BIGSERIAL PRIMARY KEY,
@@ -238,8 +240,12 @@ async function ensureModerationSettingsTable() {
         mention_window_ms BIGINT NOT NULL DEFAULT 10000,
         mention_max INTEGER NOT NULL DEFAULT 5,
 
+        customized_fields TEXT[] NOT NULL DEFAULT '{}'::text[],
         updated_at BIGINT NOT NULL
       );
+
+      ALTER TABLE moderation_settings
+        ADD COLUMN IF NOT EXISTS customized_fields TEXT[] NOT NULL DEFAULT '{}'::text[];
     `);
   })();
 
@@ -421,13 +427,17 @@ async function updateModerationSetting(
 
   await db.query(
     `
-    UPDATE moderation_settings
+    UPDATE moderation_settings AS settings
     SET
       ${column} = $1,
-      updated_at = $2
-    WHERE thread_id = $3
+      updated_at = $2,
+      customized_fields = ARRAY(
+        SELECT DISTINCT tracked_field
+        FROM unnest(COALESCE(settings.customized_fields, '{}'::text[]) || $4::text[]) AS tracked(tracked_field)
+      )
+    WHERE settings.thread_id = $3
     `,
-    [value, now(), String(threadID)]
+    [value, now(), String(threadID), [column]]
   );
 
   moderationSettingsCache.delete(String(threadID));
@@ -615,15 +625,17 @@ async function setAutoModEnabled(
       enabled,
       owner_away_timeout,
       owner_last_seen,
+      customized,
       updated_at
     )
     VALUES
-    ($1, $2, $3, 0, $4)
+    ($1, $2, $3, 0, TRUE, $4)
 
     ON CONFLICT (thread_id)
     DO UPDATE SET
       enabled = EXCLUDED.enabled,
       owner_away_timeout = EXCLUDED.owner_away_timeout,
+      customized = TRUE,
       updated_at = EXCLUDED.updated_at
     `,
     [

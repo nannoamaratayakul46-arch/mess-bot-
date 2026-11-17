@@ -167,7 +167,8 @@ async function connect() {
       banat_link_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       slash_pool_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      bot_enabled BOOLEAN NOT NULL DEFAULT TRUE
+      bot_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      customized_fields TEXT[] NOT NULL DEFAULT '{}'::text[]
     );
   `);
 
@@ -177,7 +178,8 @@ async function connect() {
       ADD COLUMN IF NOT EXISTS banat_link_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS banat_meme_enabled BOOLEAN NOT NULL DEFAULT FALSE,
       ADD COLUMN IF NOT EXISTS slash_pool_enabled BOOLEAN NOT NULL DEFAULT FALSE,
-      ADD COLUMN IF NOT EXISTS bot_enabled BOOLEAN NOT NULL DEFAULT TRUE;
+      ADD COLUMN IF NOT EXISTS bot_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      ADD COLUMN IF NOT EXISTS customized_fields TEXT[] NOT NULL DEFAULT '{}'::text[];
   `);
 
   // Existing databases keep the old column default when ADD COLUMN IF NOT EXISTS
@@ -367,8 +369,11 @@ async function connect() {
       thread_id TEXT PRIMARY KEY,
       enabled BOOLEAN DEFAULT FALSE,
       owner_away_timeout BIGINT DEFAULT 900000,
+      customized BOOLEAN NOT NULL DEFAULT FALSE,
       updated_at BIGINT NOT NULL
     );
+    ALTER TABLE automod_settings
+      ADD COLUMN IF NOT EXISTS customized BOOLEAN NOT NULL DEFAULT FALSE;
 
     CREATE TABLE IF NOT EXISTS automod_incidents (
       id BIGSERIAL PRIMARY KEY,
@@ -3605,16 +3610,105 @@ async function setThreadSettings(threadId, fields) {
 
   const values = safeFields.map((key) => fields[key]);
 
+  const customizedFieldsParam = safeFields.length + 2;
   await conn.query(
     `
-    UPDATE thread_settings
-    SET ${setClause}
-    WHERE thread_id = $1
+    UPDATE thread_settings AS settings
+    SET ${setClause},
+        customized_fields = ARRAY(
+          SELECT DISTINCT tracked_field
+          FROM unnest(COALESCE(settings.customized_fields, '{}'::text[]) || $${customizedFieldsParam}::text[]) AS tracked(tracked_field)
+        )
+    WHERE settings.thread_id = $1
     `,
-    [id, ...values]
+    [id, ...values, safeFields]
   );
 
   return getThreadSettings(id);
+}
+
+async function getConfiguredDashboardGroupIds() {
+  const conn = requireConn();
+  const optionalTables = [
+    "automod_spam_settings",
+    "moderation_settings",
+    "group_targeted_laugh_reactions",
+    "dashboard_group_permanent_admins",
+    "dashboard_temp_admins",
+    "raid_shield_state",
+    "raid_shield_approval_actions",
+  ];
+  const availableResult = await conn.query(
+    `SELECT table_name, column_name FROM information_schema.columns
+     WHERE table_schema = current_schema() AND table_name = ANY($1::text[])`,
+    [optionalTables]
+  );
+  const available = new Set((availableResult.rows || []).map(row => String(row.table_name)));
+  const moderationColumns = new Set((availableResult.rows || [])
+    .filter(row => String(row.table_name) === "moderation_settings")
+    .map(row => String(row.column_name)));
+
+  const queries = [
+    `SELECT thread_id FROM thread_settings
+     WHERE COALESCE(array_length(customized_fields, 1), 0) > 0
+        OR roast_enabled IS DISTINCT FROM TRUE
+        OR fun_enabled IS DISTINCT FROM TRUE
+        OR slash_pool_enabled IS DISTINCT FROM FALSE
+        OR bot_enabled IS DISTINCT FROM TRUE
+        OR banat_link_enabled IS DISTINCT FROM FALSE
+        OR banat_meme_enabled IS DISTINCT FROM FALSE`,
+    "SELECT thread_id FROM banat_thread_targets",
+    `SELECT thread_id FROM automod_settings
+     WHERE customized IS TRUE
+        OR enabled IS DISTINCT FROM FALSE
+        OR owner_away_timeout IS DISTINCT FROM 900000`,
+    "SELECT thread_id FROM moderation_bans",
+    // Rows in group_photo_guard are created only by explicit profile/name/photo settings.
+    "SELECT thread_id FROM group_photo_guard",
+    "SELECT thread_id FROM bible_verse_settings WHERE enabled IS DISTINCT FROM TRUE",
+  ];
+
+  if (available.has("automod_spam_settings")) {
+    queries.push("SELECT thread_id FROM automod_spam_settings");
+  }
+  if (available.has("moderation_settings")) {
+    const overridePredicate = moderationColumns.has("customized_fields")
+      ? "COALESCE(array_length(customized_fields, 1), 0) > 0 OR "
+      : "";
+    queries.push(`SELECT thread_id FROM moderation_settings
+      WHERE ${overridePredicate}
+         links_enabled IS DISTINCT FROM FALSE
+         OR spam_enabled IS DISTINCT FROM TRUE
+         OR mentions_enabled IS DISTINCT FROM TRUE
+         OR raid_enabled IS DISTINCT FROM TRUE
+         OR warnings_enabled IS DISTINCT FROM TRUE
+         OR warn_limit IS DISTINCT FROM 3
+         OR automod_mute_level IS DISTINCT FROM 3
+         OR automod_ban_level IS DISTINCT FROM 6
+         OR automod_min_confidence IS DISTINCT FROM 0.88
+         OR spam_window_ms IS DISTINCT FROM 10000
+         OR spam_max_messages IS DISTINCT FROM 6
+         OR mention_window_ms IS DISTINCT FROM 10000
+         OR mention_max IS DISTINCT FROM 5`);
+  }
+  if (available.has("group_targeted_laugh_reactions")) {
+    queries.push("SELECT thread_id FROM group_targeted_laugh_reactions");
+  }
+  if (available.has("dashboard_group_permanent_admins")) {
+    queries.push("SELECT thread_id FROM dashboard_group_permanent_admins");
+  }
+  if (available.has("dashboard_temp_admins")) {
+    queries.push("SELECT thread_id FROM dashboard_temp_admins WHERE status = 'active' AND expires_at > NOW()");
+  }
+  if (available.has("raid_shield_state")) {
+    queries.push("SELECT thread_id FROM raid_shield_state WHERE protection_level <> 'normal' OR lockdown_until > NOW()");
+  }
+  if (available.has("raid_shield_approval_actions")) {
+    queries.push("SELECT thread_id FROM raid_shield_approval_actions WHERE status IN ('pending', 'approved')");
+  }
+
+  const { rows } = await conn.query(queries.join("\nUNION\n") + "\nORDER BY thread_id");
+  return (rows || []).map(row => String(row.thread_id || "").trim()).filter(Boolean);
 }
 
 
@@ -4392,6 +4486,7 @@ module.exports = {
   // Thread settings
   getThreadSettings,
   setThreadSettings,
+  getConfiguredDashboardGroupIds,
   getBanatThreadTarget,
   setBanatThreadTarget,
   clearBanatThreadTarget,
