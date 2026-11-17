@@ -62,7 +62,7 @@ test("stopSession interrupts the active delay and keeps unsent messages queued",
 
   scheduler.enqueueItems("group-stop", ["first", "second"]);
   const run = scheduler.startSession(api, "group-stop", {
-    maxMinutes: 1, minDelayMs: 1, maxDelayMs: 1,
+    maxMinutes: 1, minDelayMs: 1_000, maxDelayMs: 1_000,
   });
 
   await wait(20);
