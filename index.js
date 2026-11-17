@@ -3854,7 +3854,7 @@ app.post("/api/dashboard/schedule/start", requireDashboardAccess, async (req, re
       return res.status(409).json({ ok: false, error: "A schedule is already running in this group." });
     }
     const run = schedule.startSession(api, threadID, {
-      maxMinutes, enableTimeCheck,
+      maxMinutes, maxMessages, enableTimeCheck,
       sendMessage: (messenger, message, targetThreadID) =>
         sendMessengerMessage(messenger, message, targetThreadID),
     });
@@ -3867,7 +3867,7 @@ app.post("/api/dashboard/schedule/start", requireDashboardAccess, async (req, re
     return res.status(202).json({
       ok: true, started: true, thread_id: threadID,
       queued: schedule.getSessionStatus(threadID).pending,
-      max_batch: schedule.MAX_BATCH, max_queue_items: maxMessages,
+      max_batch: maxMessages, max_queue_items: maxMessages,
       max_minutes: maxMinutes, enable_time_check: enableTimeCheck,
     });
   } catch (error) {
@@ -9514,7 +9514,7 @@ async function handleMessage(
       sendReplyWithTyping(api, [
         "SCHEDULE STATUS", "State · " + (status.active ? "RUNNING" : "IDLE"),
         "Pending · " + status.pending, "Sent · " + status.sent, "Failed · " + status.failed,
-        "Batch limit · " + schedule.MAX_BATCH,
+        "Batch limit · " + schedule.MAX_QUEUE_ITEMS,
         "Time Check · " + (status.timeCheckActive ? "ACTIVE" : "idle"),
         "Time Checks · " + status.timeChecks,
         status.lastError ? "Last error · " + status.lastError : "",
@@ -9536,7 +9536,7 @@ async function handleMessage(
     try {
       if (messageLines.length) {
         const queued = schedule.enqueueItems(threadID, messageLines);
-        sendReplyWithTyping(api, "Queued " + queued.added + " announcements (" + queued.pending + " pending). Starting up to " + schedule.MAX_BATCH + " this run.", threadID);
+        sendReplyWithTyping(api, "Queued " + queued.added + " announcements (" + queued.pending + " pending). Starting up to " + schedule.MAX_QUEUE_ITEMS + " this run.", threadID);
       } else if (!schedule.getSessionStatus(threadID).pending) {
         sendReplyWithTyping(api, "Add announcements after !schedule start (maximum " + schedule.MAX_QUEUE_ITEMS + ").", threadID);
         return;
