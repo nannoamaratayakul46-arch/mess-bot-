@@ -75,15 +75,32 @@ function formatTimeCheck(date = new Date()) {
   return "time check: " + formattedTime + ", wag sana d.o isa jan";
 }
 function createRunController() {
-  let resolveStop;
-  const stopPromise = new Promise(resolve => { resolveStop = resolve; });
-  return { stopped: false, stop() { if (!this.stopped) { this.stopped = true; resolveStop(true); } }, stopPromise };
+  const waiters = new Set();
+  return {
+    stopped: false,
+    waiters,
+    stop() {
+      if (this.stopped) return;
+      this.stopped = true;
+      for (const wake of waiters) wake();
+      waiters.clear();
+    },
+  };
 }
 function waitOrStop(ms, controller) {
   if (controller.stopped) return Promise.resolve(true);
   return new Promise(resolve => {
-    const timer = setTimeout(() => resolve(false), ms);
-    controller.stopPromise.then(() => { clearTimeout(timer); resolve(true); });
+    let timer;
+    const onStop = () => {
+      clearTimeout(timer);
+      controller.waiters.delete(onStop);
+      resolve(true);
+    };
+    timer = setTimeout(() => {
+      controller.waiters.delete(onStop);
+      resolve(false);
+    }, ms);
+    controller.waiters.add(onStop);
   });
 }
 function sendMessage(api, text, threadID) {
