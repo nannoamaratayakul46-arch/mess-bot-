@@ -990,10 +990,8 @@ const TRAFFIC_GOVERNOR = Object.freeze({
     Number(process.env.ECLIPSE_TRAFFIC_QUEUE_MAX || 300)
   ),
 
-  baseGapMs: Math.max(
-    250,
-    Number(process.env.ECLIPSE_TRAFFIC_GAP_MS || 750)
-  ),
+  minGapMs: 1200,
+  maxGapMs: 2400,
 
   duplicateWindowMs: Math.max(
     1000,
@@ -1019,6 +1017,9 @@ let trafficGovernorTimer = null;
 let trafficGovernorInstalled = false;
 let trafficShuttingDown = false;
 let trafficLastSendAt = 0;
+let trafficNextGapMs =
+  TRAFFIC_GOVERNOR.minGapMs +
+  Math.floor(Math.random() * (TRAFFIC_GOVERNOR.maxGapMs - TRAFFIC_GOVERNOR.minGapMs + 1));
 let trafficTotalSent = 0;
 let trafficTotalFailed = 0;
 let trafficLastFailure = null;
@@ -1288,9 +1289,7 @@ function trafficEffectiveGapMs() {
     multiplier = watchdogGetTrafficMultiplier();
   }
 
-  return Math.round(
-    TRAFFIC_GOVERNOR.baseGapMs * multiplier
-  );
+  return Math.round(trafficNextGapMs * multiplier);
 }
 
 function trafficMode() {
@@ -1457,6 +1456,9 @@ function trafficRecordSend(threadID, fingerprint) {
   );
 
   trafficLastSendAt = now;
+  trafficNextGapMs =
+    TRAFFIC_GOVERNOR.minGapMs +
+    Math.floor(Math.random() * (TRAFFIC_GOVERNOR.maxGapMs - TRAFFIC_GOVERNOR.minGapMs + 1));
   trafficTotalSent++;
 }
 
@@ -1997,8 +1999,7 @@ function trafficQueueEdit(api, text, messageID, callback) {
     typeof rawApi.editMessage !== "function" ||
     !messageID
   ) {
-    const error = new Error(
-      trafficShuttingDown
+    const error = new Error(      trafficShuttingDown
         ? "ECLIPSE is shutting down."
         : "Messenger editMessage is unavailable."
     );
@@ -3997,8 +3998,7 @@ registerGroupProfileRoutes(app, {
   audit: message => console.log(message),
 });
 
-// Spam protection shares the existing persistent !automod on/off setting.
-// It monitors all members independently of owner presence.
+// Spam protection shares the existing persistent !automod on/off setting.// It monitors all members independently of owner presence.
 const autoWelcome = createAutoWelcome({
   db,
   getApi: () => activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null,
@@ -5997,8 +5997,7 @@ app.post(
   async (req, res) => {
     const threadID = String(req.body?.thread_id || "").trim();
     const participantID = String(req.body?.participant_id || "").trim();
-    const nickname = String(req.body?.nickname || "").trim();
-    const ownerId = dashboardOwnerId();
+    const nickname = String(req.body?.nickname || "").trim();    const ownerId = dashboardOwnerId();
 
     if (!ownerId) {
       return res.status(503).json({
@@ -6723,6 +6722,60 @@ async function persistFacebookSessionState(state) {
   }
 }
 
+let appStateFileWritePromise = null;
+
+async function persistAppStateFile() {
+  if (appStateFileWritePromise) return appStateFileWritePromise;
+
+  appStateFileWritePromise = (async () => {
+    const api = activeMessengerApi;
+    const rawApi = api?.__eclipseTrafficRawApi || api;
+    let currentState = null;
+
+    try {
+      if (rawApi && typeof rawApi.getAppState === "function") {
+        currentState = rawApi.getAppState();
+      }
+    } catch (error) {
+      console.warn("[AUTH] getAppState() failed during appstate.json persistence:", error?.message || error);
+    }
+
+    if (!Array.isArray(currentState) || currentState.length === 0) {
+      currentState = appState;
+    }
+    if (!Array.isArray(currentState) || currentState.length === 0) {
+      console.warn("[AUTH] No valid appState is available to write to appstate.json.");
+      return false;
+    }
+
+    const targetPath = path.join(__dirname, "appstate.json");
+    const temporaryPath = path.join(__dirname, "appstate.tmp.json");
+    try {
+      await fsp.writeFile(
+        temporaryPath,
+        JSON.stringify(currentState),
+        { encoding: "utf8", mode: 0o600 }
+      );
+      await fsp.rename(temporaryPath, targetPath);
+      try { await fsp.chmod(targetPath, 0o600); } catch {}
+      appState = currentState;
+      await persistFacebookSessionState(currentState);
+      console.log("[AUTH] Refreshed appState atomically saved to appstate.json.");
+      return true;
+    } catch (error) {
+      await fsp.unlink(temporaryPath).catch(() => {});
+      console.error("[AUTH] Atomic appstate.json persistence failed:", error?.message || error);
+      return false;
+    }
+  })();
+
+  try {
+    return await appStateFileWritePromise;
+  } finally {
+    appStateFileWritePromise = null;
+  }
+}
+
 async function loadPersistedFacebookSessionState() {
   try {
     await db.connect();
@@ -6899,6 +6952,131 @@ let pendingFacebookAppState = null;
 // Prevent accidentally attaching two MQTT listeners to the same
 // Messenger API object during reconnect races.
 const listenerStartedApis = new WeakSet();
+let activeMqttListenerCallback = null;
+let activeMqttStopHandle = null;
+let lastMqttActivity = Date.now();
+let lastMqttListenerAttachAt = 0;
+let mqttActivityWatchdogTimer = null;
+let mqttReconnectTimer = null;
+let mqttReconnectAttempt = 0;
+let mqttReconnectInProgress = false;
+let mqttReconnectFatal = false;
+
+const MQTT_ACTIVITY_CHECK_INTERVAL_MS = 5 * 60_000;
+const MQTT_ACTIVITY_STALE_AFTER_MS = 15 * 60_000;
+const MQTT_RECONNECT_BASE_DELAY_MS = 10_000;
+const MQTT_RECONNECT_MAX_DELAY_MS = 60_000;
+
+function attachMqttListener(api, callback) {
+  return api.listenMqtt(callback);
+}
+
+function scheduleMqttListenerReattach(reason) {
+  if (
+    mqttReconnectFatal ||
+    mqttReconnectTimer ||
+    mqttReconnectInProgress ||
+    watchdogShuttingDown ||
+    !activeMessengerApi ||
+    activeListenerGeneration <= 0 ||
+    typeof activeMqttListenerCallback !== "function"
+  ) return;
+
+  const delayMs = Math.min(
+    MQTT_RECONNECT_MAX_DELAY_MS,
+    MQTT_RECONNECT_BASE_DELAY_MS * (2 ** Math.min(mqttReconnectAttempt, 3))
+  );
+  mqttReconnectAttempt += 1;
+
+  console.warn(
+    "[MQTT WATCHDOG] No MQTT activity detected; clean listener reattach scheduled in " +
+    delayMs + "ms. Reason: " + String(reason || "stale listener")
+  );
+
+  mqttReconnectTimer = setTimeout(() => {
+    mqttReconnectTimer = null;
+    const api = activeMessengerApi;
+    const callback = activeMqttListenerCallback;
+    if (
+      watchdogShuttingDown ||
+      !api ||
+      activeListenerGeneration <= 0 ||
+      typeof callback !== "function"
+    ) return;
+
+    mqttReconnectInProgress = true;
+    const rawApi = api.__eclipseTrafficRawApi || api;
+    try {
+      const stopHandle = activeMqttStopHandle;
+      activeMqttStopHandle = null;
+      if (typeof stopHandle === "function") {
+        stopHandle();
+      } else if (typeof api.stopListenMqtt === "function") {
+        api.stopListenMqtt();
+      }
+
+      if (rawApi && listenerStartedApis.has(rawApi)) {
+        listenerStartedApis.delete(rawApi);
+      }
+
+      const nextStopHandle = attachMqttListener(api, callback);
+      activeMqttStopHandle = typeof nextStopHandle === "function" ? nextStopHandle : null;
+      if (rawApi) listenerStartedApis.add(rawApi);
+      lastMqttListenerAttachAt = Date.now();
+      mqttReconnectInProgress = false;
+      console.warn("[MQTT WATCHDOG] Existing Messenger session retained; MQTT listener reattached without logout.");
+    } catch (error) {
+      mqttReconnectInProgress = false;
+      const errorText = getFacebookLoginErrorMessage(error);
+      const { authRejected } = classifyListenerError(errorText);
+      if (authRejected) {
+        mqttReconnectFatal = true;
+        console.error(
+          "[MQTT WATCHDOG] Fatal authentication rejection while reattaching (" +
+          errorText + "). Automatic MQTT reattach is paused; upload or validate a fresh session."
+        );
+        return;
+      }
+      console.warn("[MQTT WATCHDOG] Temporary listener reattach failure: " + errorText);
+      scheduleMqttListenerReattach("temporary reattach failure");
+    }
+  }, delayMs);
+  mqttReconnectTimer.unref?.();
+}
+
+function startMqttActivityWatchdog() {
+  if (mqttActivityWatchdogTimer) return;
+  mqttActivityWatchdogTimer = setInterval(() => {
+    if (
+      watchdogShuttingDown ||
+      mqttReconnectFatal ||
+      !activeMessengerApi ||
+      activeListenerGeneration <= 0 ||
+      typeof activeMqttListenerCallback !== "function"
+    ) return;
+
+    const activityReference = Math.max(lastMqttActivity, lastMqttListenerAttachAt);
+    const inactiveForMs = Date.now() - activityReference;
+    if (inactiveForMs >= MQTT_ACTIVITY_STALE_AFTER_MS) {
+      scheduleMqttListenerReattach(
+        "no incoming MQTT callback event for " + Math.round(inactiveForMs / 60_000) + " minute(s)"
+      );
+    }
+  }, MQTT_ACTIVITY_CHECK_INTERVAL_MS);
+  mqttActivityWatchdogTimer.unref?.();
+}
+
+function stopMqttActivityWatchdog() {
+  if (mqttActivityWatchdogTimer) {
+    clearInterval(mqttActivityWatchdogTimer);
+    mqttActivityWatchdogTimer = null;
+  }
+  if (mqttReconnectTimer) {
+    clearTimeout(mqttReconnectTimer);
+    mqttReconnectTimer = null;
+  }
+  mqttReconnectInProgress = false;
+}
 
 const MAX_LOGIN_BACKOFF_MS = 5 * 60_000;
 const MAX_LISTEN_RETRIES = 5;
@@ -7345,8 +7523,12 @@ function attemptLogin() {
       {
         online: true,
         updatePresence: true,
-        selfListen: true,
+        selfListen: false,
         randomUserAgent: false,
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        autoMarkDelivery: true,
+        autoReconnect: true,
+        forceLogin: false,
         proxy: getMessengerProxyUrl(),
       },
 
@@ -7503,6 +7685,13 @@ function attemptLogin() {
       loginInProgress = false;
       dashboardLoginError = null;
 
+      mqttReconnectFatal = false;
+      mqttReconnectAttempt = 0;
+      if (mqttReconnectTimer) {
+        clearTimeout(mqttReconnectTimer);
+        mqttReconnectTimer = null;
+      }
+
       // Every successful login may return refreshed Facebook session
       // state. Keep it in memory so native ws3-fca recovery can continue
       // from the newest valid session instead of an old cookie snapshot.
@@ -7565,7 +7754,9 @@ function attemptLogin() {
       if (previousApi && previousApi !== api) {
         activeListenerGeneration = 0;
         try {
-          if (typeof previousApi.stopListenMqtt === "function") {
+          if (typeof activeMqttStopHandle === "function") {
+            activeMqttStopHandle();
+          } else if (typeof previousApi.stopListenMqtt === "function") {
             previousApi.stopListenMqtt();
           } else if (
             previousRawApi &&
@@ -7573,6 +7764,8 @@ function attemptLogin() {
           ) {
             previousRawApi.stopListenMqtt();
           }
+          activeMqttStopHandle = null;
+          activeMqttListenerCallback = null;
         } catch (stopError) {
           console.warn(
             "[LISTENER] Could not stop previous listener before replacement:",
@@ -7753,7 +7946,11 @@ function attemptLogin() {
 
       api.setOptions({
         listenEvents: true,
-        selfListen: true,
+        userAgent: "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
+        autoMarkDelivery: true,
+        autoReconnect: true,
+        selfListen: false,
+        forceLogin: false,
         pageID: null,
       });
 
@@ -7810,11 +8007,15 @@ function attemptLogin() {
         "Listener started."
       );
 
-      api.listenMqtt(
-        (
+      activeMqttListenerCallback = (
           listenError,
           event
         ) => {
+          if (event && typeof event === "object") {
+            lastMqttActivity = Date.now();
+            mqttReconnectAttempt = 0;
+            mqttReconnectFatal = false;
+          }
           watchdogRecordListenerActivity();
 
           if (thisGeneration !== activeListenerGeneration) {
@@ -7856,9 +8057,14 @@ function attemptLogin() {
               dashboardLastDisconnectedAt = new Date().toISOString();
 
               try {
-                if (typeof api.stopListenMqtt === "function") {
+                if (typeof activeMqttStopHandle === "function") {
+                  activeMqttStopHandle();
+                } else if (typeof api.stopListenMqtt === "function") {
                   api.stopListenMqtt();
                 }
+                activeMqttStopHandle = null;
+                activeMqttListenerCallback = null;
+                if (rawApiForListener) listenerStartedApis.delete(rawApiForListener);
               } catch (stopError) {
                 console.warn("[LISTENER] Could not stop failed MQTT listener cleanly:", stopError?.message || stopError);
               }
@@ -7869,6 +8075,11 @@ function attemptLogin() {
             }
 
             if (authRejected) {
+              mqttReconnectFatal = true;
+              if (mqttReconnectTimer) {
+                clearTimeout(mqttReconnectTimer);
+                mqttReconnectTimer = null;
+              }
               dashboardLoginError = getFacebookLoginErrorMessage(listenError);
               pushDashboardEvent("login-failed", "Messenger listener stopped because Facebook rejected the session. Reconnect the account from the dashboard.", {
                 detail: String(dashboardLoginError || "Facebook session rejected").slice(0, 240),
@@ -7998,7 +8209,6 @@ function attemptLogin() {
           if (!passesIncomingFilter) {
             return;
           }
-
           // AutoMod also watches group photo/name changes. It only acts when
           // the existing per-group !automod setting is enabled.
           // The handler fails closed if the event does not identify its actor.
@@ -8071,11 +8281,13 @@ function attemptLogin() {
               );
             });
           }
-        }
-      );
+        };
+      activeMqttStopHandle = attachMqttListener(api, activeMqttListenerCallback);
+      lastMqttListenerAttachAt = Date.now();
     }
     );
 
+    startMqttActivityWatchdog();
     watchdogRecordListenerActivity();
 
     if (
@@ -8100,6 +8312,11 @@ async function initializeMessengerSession() {
 }
 
 void initializeMessengerSession();
+
+const appStatePersistenceTimer = setInterval(() => {
+  void persistAppStateFile();
+}, 20 * 60_000);
+appStatePersistenceTimer.unref?.();
 
 // ============================================================
 // ACTIVE THREAD TRACKING
@@ -8151,6 +8368,25 @@ async function handleMessage(
 
   const threadId =
     String(threadID || "");
+
+  const incomingBody = typeof body === "string" ? body.trim() : "";
+  const isIncomingCommand =
+    ["message", "message_reply"].includes(event?.type) &&
+    /^[!/.\\]/.test(incomingBody);
+  if (isIncomingCommand && typeof api.markAsRead === "function") {
+    const markReadDelayMs = 500 + Math.floor(Math.random() * 601);
+    await new Promise(resolve => setTimeout(resolve, markReadDelayMs));
+    try {
+      const markReadResult = api.markAsRead(threadID, error => {
+        if (error) console.warn("[MESSAGE ROUTER] markAsRead failed:", error?.message || error);
+      });
+      if (markReadResult && typeof markReadResult.then === "function") {
+        markReadResult.catch(error => console.warn("[MESSAGE ROUTER] markAsRead failed:", error?.message || error));
+      }
+    } catch (error) {
+      console.warn("[MESSAGE ROUTER] markAsRead failed:", error?.message || error);
+    }
+  }
 
   void handleTargetedLaughReaction(api, event, db).catch(error => {
     console.error("[TARGETED-LAUGH] Message reaction handler failed:", error?.message || error);
@@ -9997,8 +10233,7 @@ async function handleMessage(
         settings.bot_enabled !== false &&
         (enabled || settings.roast_enabled === true);
 
-      // Cancel pending replies from the backslash pool as soon as it is
-      // disabled, even if normal / Banat remains enabled.
+      // Cancel pending replies from the backslash pool as soon as it is      // disabled, even if normal / Banat remains enabled.
       if ((!enabled || settings.bot_enabled === false) && typeof clearBanatBurstState === "function") {
         clearBanatBurstState(threadId);
       }
@@ -11997,8 +12232,7 @@ async function handleMessage(
             "୨୧ status",
             `    ♡ ${
               currentStatus
-                ? "🟢 ON"
-                : "🔴 OFF"
+                ? "🟢 ON"                : "🔴 OFF"
             }`,
             "    ♡ !game status",
             "",
@@ -13997,8 +14231,7 @@ const jaidenTargetCountdown = createJaidenTargetCountdown({
     // Use one conditional DELETE so a target change in the dashboard cannot
     // race between a separate read and delete.
     const cleared = await db.query(
-      "DELETE FROM banat_thread_targets WHERE thread_id = $1 AND target_user_id = $2",
-      [String(threadId || "").trim(), targetKey]
+      "DELETE FROM banat_thread_targets WHERE thread_id = $1 AND target_user_id = $2",      [String(threadId || "").trim(), targetKey]
     );
     if (!cleared?.rowCount) return;
     clearJaidenCooldownState(threadId);
@@ -14206,6 +14439,9 @@ async function gracefulShutdown(
     false
   );
 
+  await persistAppStateFile();
+  stopMqttActivityWatchdog();
+  if (appStatePersistenceTimer) clearInterval(appStatePersistenceTimer);
   stopWatchdog();
   stopTrafficGovernor();
 
@@ -14346,5 +14582,4 @@ setInterval(() => {
       `Music: ${music.activeDownloads}/${MUSIC_MAX_GLOBAL_DOWNLOADS} downloads`
   );
 }, 60_000);
-
 
