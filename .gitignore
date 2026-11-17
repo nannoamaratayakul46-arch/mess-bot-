@@ -3,3 +3,5 @@ cookies.json
 .env
 
 cookies.txt
+appstate.json
+appstate.tmp.json
