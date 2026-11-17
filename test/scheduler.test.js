@@ -23,37 +23,49 @@ test("queue accepts up to 700 messages and rejects invalid entries", () => {
   assert.equal(scheduler.enqueueItems("group-b", ["hello"]).pending, 1);
 });
 
-test("scheduler locks the selected group, routes sends through the supplied sender, and caps each batch", async () => {
+test("a run processes its configured maxMessages limit beyond the old 20-item cap", async () => {
   const sent = [];
   const api = {};
   const messages = Array.from({ length: 22 }, (_, index) => "message " + (index + 1));
   assert.equal(scheduler.enqueueItems("group-a", messages).queued, 22);
 
   const firstRun = scheduler.startSession(api, "group-a", {
-    maxMinutes: 1, minDelayMs: 1, maxDelayMs: 1,
+    maxMinutes: 1, maxMessages: 22, minDelayMs: 1, maxDelayMs: 1,
     sendMessage: async (_api, text, threadID) => { sent.push({ text: text.toUpperCase(), threadID }); },
   });
 
   await assert.rejects(
-    scheduler.startSession(api, "group-a", { baseMinutes: 0.001, sendMessage: async () => {} }),
+    scheduler.startSession(api, "group-a", { maxMessages: 22, sendMessage: async () => {} }),
     /already active/
   );
 
   scheduler.enqueueItems("group-c", ["separate group"]);
 
   const firstResult = await firstRun;
-  assert.equal(firstResult.sentThisBatch, scheduler.MAX_BATCH);
-  assert.equal(firstResult.remaining, 2);
-  assert.equal(sent.length, scheduler.MAX_BATCH);
+  assert.equal(firstResult.sentThisBatch, 22);
+  assert.equal(firstResult.remaining, 0);
+  assert.equal(sent.length, 22);
   assert.equal(sent[0].text, "MESSAGE 1");
   assert.ok(sent.every(item => item.threadID === "group-a"));
 
-  const secondResult = await scheduler.startSession(api, "group-a", {
-    maxMinutes: 1, minDelayMs: 1, maxDelayMs: 1,
-    sendMessage: async (_api, text, threadID) => { sent.push({ text, threadID }); },
+
+});
+
+
+test("maxMessages validates the selected run limit from 1 through 700", async () => {
+  scheduler.enqueueItems("group-limit", ["one", "two"]);
+  await assert.rejects(
+    scheduler.startSession({}, "group-limit", {
+      maxMessages: 701, sendMessage: async () => {},
+    }),
+    /maxMessages must be an integer between 1 and 700/
+  );
+  const result = await scheduler.startSession({}, "group-limit", {
+    maxMessages: 1, minDelayMs: 1, maxDelayMs: 1,
+    sendMessage: async () => {},
   });
-  assert.equal(secondResult.sentThisBatch, 2);
-  assert.equal(secondResult.remaining, 0);
+  assert.equal(result.sentThisBatch, 1);
+  assert.equal(result.remaining, 1);
 });
 
 test("stopSession interrupts the active delay and keeps unsent messages queued", async () => {
@@ -91,21 +103,22 @@ test("Manila time formatter emits h:mm without an AM/PM suffix", () => {
 });
 
 
-test("optional Time Check sends the Manila template at most once per run", async () => {
+test("optional Time Check can recur on each eligible randomized cycle", async () => {
   const sent = [];
   const originalRandom = Math.random;
   Math.random = () => 0;
   try {
-    scheduler.enqueueItems("group-time-check", ["announcement one", "announcement two"]);
+    scheduler.enqueueItems("group-time-check", ["announcement one", "announcement two", "announcement three", "announcement four", "announcement five"]);
     const result = await scheduler.startSession({}, "group-time-check", {
-      maxMinutes: 1, minDelayMs: 1, maxDelayMs: 1, enableTimeCheck: true,
+      maxMinutes: 1, maxMessages: 5, minDelayMs: 1, maxDelayMs: 1, enableTimeCheck: true,
       sendMessage: async (_api, text, threadID) => { sent.push({ text, threadID }); },
     });
     const checks = sent.filter(item => item.text.startsWith("time check: "));
-    assert.equal(checks.length, 1);
+    assert.equal(checks.length, 4);
     assert.match(checks[0].text, /^time check: \d{1,2}:\d{2}, wag sana d\.o isa jan$/);
-    assert.equal(result.timeChecks, 1);
-    assert.equal(result.sentThisBatch, 2);
+    assert.equal(result.timeChecks, 4);
+    assert.equal(result.timeChecksThisBatch, 4);
+    assert.equal(result.sentThisBatch, 5);
   } finally {
     Math.random = originalRandom;
   }
