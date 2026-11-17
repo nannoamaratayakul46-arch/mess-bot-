@@ -1,8 +1,7 @@
 "use strict";
 
-// Queue up to 700 operator-authored announcements. Each run is deliberately
-// bounded to 20 sends; remaining items stay queued for a later operator start.
-const MAX_BATCH = 20;
+// Queue up to 700 operator-authored announcements. Each run processes its
+// configured maxMessages limit (1-700); unsent items remain queued.
 const MAX_QUEUE_ITEMS = 700;
 const DEFAULT_MAX_MINUTES = 5;
 const MIN_MAX_MINUTES = 1;
@@ -112,13 +111,17 @@ async function startSession(api, threadID, options = {}) {
   if (!Number.isFinite(maxMinutes) || maxMinutes < MIN_MAX_MINUTES || maxMinutes > MAX_MAX_MINUTES) {
     throw new Error("maxMinutes must be between 1 and 10.");
   }
+  const maxMessages = options.maxMessages == null ? MAX_QUEUE_ITEMS : Number(options.maxMessages);
+  if (!Number.isInteger(maxMessages) || maxMessages < 1 || maxMessages > MAX_QUEUE_ITEMS) {
+    throw new Error("maxMessages must be an integer between 1 and " + MAX_QUEUE_ITEMS + ".");
+  }
   const sendOverride = options.sendMessage;
   if (sendOverride !== undefined && typeof sendOverride !== "function") throw new TypeError("sendMessage must be a function.");
   if (typeof sendOverride !== "function" && typeof api?.sendMessage !== "function") throw new Error("api.sendMessage is unavailable.");
 
   const session = {
-    threadID: id, stopped: false, sentThisBatch: 0, timeCheckActive: false,
-    timeCheckSentThisBatch: false, timeChecksThisBatch: 0,
+    threadID: id, stopped: false, sentThisBatch: 0, maxMessages, timeCheckActive: false,
+    timeChecksThisBatch: 0,
     enableTimeCheck: options.enableTimeCheck === true,
     startedAt: new Date().toISOString(), cancelSleep: null,
     stop() {
@@ -130,7 +133,7 @@ async function startSession(api, threadID, options = {}) {
   activeSessions.set(id, session);
 
   try {
-    while (!session.stopped && session.sentThisBatch < MAX_BATCH && state.items.length) {
+    while (!session.stopped && session.sentThisBatch < session.maxMessages && state.items.length) {
       const text = state.items[0];
       try {
         await sendMessageAsync(api, text, id, sendOverride);
@@ -147,18 +150,16 @@ async function startSession(api, threadID, options = {}) {
         break;
       }
 
-      if (session.stopped || session.sentThisBatch >= MAX_BATCH || !state.items.length) break;
+      if (session.stopped || session.sentThisBatch >= session.maxMessages || !state.items.length) break;
       const waited = await interruptibleSleep(session, randomDelayMs(maxMinutes, options.minDelayMs, options.maxDelayMs));
       if (!waited || session.stopped) break;
 
-      // Time Check is optional and capped to one status post per bounded run.
-      if (session.enableTimeCheck && !session.timeCheckSentThisBatch &&
-          Math.random() < TIME_CHECK_PROBABILITY && !session.stopped) {
+      // Each eligible cycle independently has a 20% chance to send a Manila Time Check.
+      if (session.enableTimeCheck && Math.random() < TIME_CHECK_PROBABILITY && !session.stopped) {
         session.timeCheckActive = true;
         try {
           const timeMessage = "time check: " + formatManilaTime() + ", wag sana d.o isa jan";
           await sendMessageAsync(api, timeMessage, id, sendOverride);
-          session.timeCheckSentThisBatch = true;
           session.timeChecksThisBatch += 1;
           state.timeChecks += 1;
           state.updatedAt = new Date().toISOString();
@@ -199,14 +200,15 @@ function getSessionStatus(threadID) {
     timeChecks: state.timeChecks,
     timeChecksThisBatch: session?.timeChecksThisBatch || 0,
     lastError: state.lastError, startedAt: session?.startedAt || null,
-    updatedAt: state.updatedAt, maxBatch: MAX_BATCH, maxQueueItems: MAX_QUEUE_ITEMS,
+    updatedAt: state.updatedAt, maxMessages: session?.maxMessages || MAX_QUEUE_ITEMS,
+    maxQueueItems: MAX_QUEUE_ITEMS,
   };
 }
 
 function getActiveThreadIDs() { return Array.from(activeSessions.keys()); }
 
 module.exports = {
-  MAX_BATCH, MAX_QUEUE_ITEMS, DEFAULT_MAX_MINUTES,
+  MAX_QUEUE_ITEMS, DEFAULT_MAX_MINUTES,
   enqueueItems, startSession, stopSession, getSessionStatus, getActiveThreadIDs,
   randomDelayMs, formatManilaTime,
 };
