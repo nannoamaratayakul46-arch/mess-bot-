@@ -9462,7 +9462,7 @@ async function handleMessage(
   // ==========================================================
 
   const adminControlAttempt =
-    /^(?:!owner(?:\s+(?:bot|automated|economy|rpg|music|moderation|system))?|!pause(?:\s+status)?|!resume|!(?:bot(?:\s+(?:off|on|status))?|shutdown|startup)|!watchdog(?:\s+(?:status|restart))?|!cleanup(?:\s+(?:status|disk|run|repair|optimize|full))?|!gcstatus|!broadcast(?:\s|$)|!schedule(?:\s|$)|!game(?:\s+(?:on|off|status))?|!mod(?:\s|$)|!automod(?:\s|$)|!economy(?:\s|$)|!debug(?:\s|$)|!lucien(?:\s|$)|!warn(?:\s|$)|!ban(?:\s|$)|!kick(?:\s|$)|!unban(?:\s|$)|!modlog(?:\s|$)|!banat(?:\s|$)|!music\s+(?:pause|resume|play))$/i.test(originalText);  if (
+    /^(?:!owner(?:\s+(?:bot|automated|economy|rpg|music|moderation|system))?|!pause(?:\s+status)?|!resume|!(?:bot(?:\s+(?:off|on|status))?|shutdown|startup)|!watchdog(?:\s+(?:status|restart))?|!cleanup(?:\s+(?:status|disk|run|repair|optimize|full))?|!gcstatus|!broadcast(?:\s|$)|!game(?:\s+(?:on|off|status))?|!mod(?:\s|$)|!automod(?:\s|$)|!economy(?:\s|$)|!debug(?:\s|$)|!lucien(?:\s|$)|!warn(?:\s|$)|!ban(?:\s|$)|!kick(?:\s|$)|!unban(?:\s|$)|!modlog(?:\s|$)|!banat(?:\s|$)|!music\s+(?:pause|resume|play))$/i.test(originalText);  if (
     adminControlAttempt &&
     !senderIsAdmin
   ) {
