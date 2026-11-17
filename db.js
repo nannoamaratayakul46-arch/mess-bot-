@@ -3699,7 +3699,7 @@ async function pruneStaleDashboardGroupSettings(activeThreadIds = [], additional
   const configuredIds = await getConfiguredDashboardGroupIds();
   const normalizeIds = values => (Array.isArray(values) ? values : [])
     .map(value => String(value || "").trim())
-    .filter(value => /^\\d{6,32}$/.test(value));
+    .filter(Boolean);
   const protectedIds = [...new Set([
     ...configuredIds,
     ...normalizeIds(activeThreadIds),
