@@ -4283,19 +4283,21 @@ app.post(
   "/api/dashboard/connect-session",
   requireDashboardAccess,
   (req, res) => {
-    if (loginInProgress) {
-      return res.status(409).json({
-        ok: false,
-        error: "A Facebook login is already in progress. Wait for it to finish, then try again.",
-      });
-    }
-
     let incoming;
 
     try {
       incoming = normalizeFacebookAppState(req.body?.appState, "Facebook appState");
     } catch (error) {
       return res.status(400).json({ ok: false, error: error?.message || "Invalid Facebook session export." });
+    }
+
+    // An explicit replacement upload must be able to recover a login attempt
+    // that has stalled after a disconnect. Invalidate its callback generation
+    // before starting the new attempt; late callbacks from the old login are
+    // ignored by the generation checks inside attemptLogin().
+    if (loginInProgress) {
+      loginInProgress = false;
+      console.warn("[AUTH] Superseding a stalled Messenger login with an explicit replacement session.");
     }
 
     // Validate the replacement session before touching the currently

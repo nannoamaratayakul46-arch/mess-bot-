@@ -70,3 +70,16 @@ assert(!indexForAuth.includes("preferDashboardCredentials"));
 assert(!indexForAuth.includes('/api/dashboard/connect-credentials'));
 
 console.log("Authentication diagnostics and recovery source checks passed");
+
+// An explicit cookie upload must supersede a stalled login attempt instead
+// of returning 409 and leaving the dashboard permanently in Connecting.
+const connectSessionStart = indexSource.indexOf('app.post(\n  "/api/dashboard/connect-session"');
+const connectSessionEnd = indexSource.indexOf('app.post(\n  "/api/dashboard/reconnect"', connectSessionStart);
+const connectSessionRoute = indexSource.slice(connectSessionStart, connectSessionEnd);
+assert.ok(connectSessionStart >= 0 && connectSessionEnd > connectSessionStart);
+assert.doesNotMatch(connectSessionRoute, /A Facebook login is already in progress/);
+assert.match(connectSessionRoute, /if \(loginInProgress\) \{\s*loginInProgress = false;[\s\S]*?Superseding a stalled Messenger login/);
+assert.match(connectSessionRoute, /listenerGeneration\+\+/);
+assert.match(connectSessionRoute, /pendingFacebookAppState = incoming/);
+
+console.log("Replacement-cookie recovery source checks passed");
