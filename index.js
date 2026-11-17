@@ -268,7 +268,6 @@ const {
 // ============================================================
 
 const { ADMIN_IDS, isAdmin, isOwner } = require("./permissions");
-const schedule = require("./scheduler");
 
 const RANDOM_ROAST_ENABLED =
   !/^(0|false|no|off)$/i.test(
@@ -3817,85 +3816,7 @@ const burstRoastSettings = createBurstRoastSettings({
 
 burstRoastSettings.registerRoutes(app, requireDashboardAccess);
 
-const scheduleMessengerApi = () =>
-  activeMessengerApi && activeListenerGeneration > 0 ? activeMessengerApi : null;
 
-app.post("/api/dashboard/schedule/start", requireDashboardAccess, async (req, res) => {
-  const api = scheduleMessengerApi();
-  if (!api) return res.status(409).json({ ok: false, error: "Messenger is not connected." });
-  const threadID = String(req.body?.thread_id || "").trim();
-  const maxMinutes = Number(req.body?.max_minutes ?? schedule.DEFAULT_MAX_MINUTES);
-  const maxMessages = Number(req.body?.max_messages ?? schedule.MAX_QUEUE_ITEMS);
-  const enableTimeCheck = req.body?.enable_time_check === true;
-  const messages = req.body?.messages;
-  if (!threadID) return res.status(400).json({ ok: false, error: "Choose a group chat first." });
-  const group = dashboardKnownGroups.get(threadID);
-  if (!group || group.is_group !== true || group.archived || group.left) {
-    return res.status(400).json({ ok: false, error: "Choose an active group from the dashboard group list." });
-  }
-  if (!Number.isInteger(maxMessages) || maxMessages < 1 || maxMessages > schedule.MAX_QUEUE_ITEMS) {
-    return res.status(400).json({ ok: false, error: "Queue limit must be between 1 and 700 items." });
-  }
-  if (!Number.isFinite(maxMinutes) || maxMinutes < 1 || maxMinutes > 10) {
-    return res.status(400).json({ ok: false, error: "Maximum interval must be between 1 and 10 minutes." });
-  }
-  if (Array.isArray(messages) && messages.length > maxMessages) {
-    return res.status(400).json({ ok: false, error: "This queue exceeds the selected item limit (" + maxMessages + ")." });
-  }
-  if ((!Array.isArray(messages) || !messages.length) && schedule.getSessionStatus(threadID).pending > maxMessages) {
-    return res.status(400).json({ ok: false, error: "The existing queue exceeds the selected item limit (" + maxMessages + ")." });
-  }
-  try {
-    if (Array.isArray(messages) && messages.length) schedule.enqueueItems(threadID, messages);
-    else if (!schedule.getSessionStatus(threadID).pending) {
-      return res.status(400).json({ ok: false, error: "Enter at least one announcement to start a new queue." });
-    }
-    if (schedule.getSessionStatus(threadID).active) {
-      return res.status(409).json({ ok: false, error: "A schedule is already running in this group." });
-    }
-    const run = schedule.startSession(api, threadID, {
-      maxMinutes, maxMessages, enableTimeCheck,
-      sendMessage: (messenger, message, targetThreadID) =>
-        sendMessengerMessage(messenger, message, targetThreadID),
-    });
-    void run.then(result => {
-      pushDashboardEvent("scheduler", "Announcement schedule batch finished for " + threadID + ".", result);
-    }).catch(error => {
-      console.error("[SCHEDULER] Dashboard batch failed:", error?.message || error);
-      pushDashboardEvent("error", "Announcement schedule failed for " + threadID + ".");
-    });
-    return res.status(202).json({
-      ok: true, started: true, thread_id: threadID,
-      queued: schedule.getSessionStatus(threadID).pending,
-      max_batch: maxMessages, max_queue_items: maxMessages,
-      max_minutes: maxMinutes, enable_time_check: enableTimeCheck,
-    });
-  } catch (error) {
-    return res.status(400).json({ ok: false, error: String(error?.message || error) });
-  }
-});
-
-app.post("/api/dashboard/schedule/stop", requireDashboardAccess, (req, res) => {
-  const threadID = String(req.body?.thread_id || "").trim();
-  if (!threadID) return res.status(400).json({ ok: false, error: "thread_id is required." });
-  const stopped = schedule.stopSession(threadID);
-  return res.json({
-    ok: true, stopped, thread_id: threadID,
-    message: stopped
-      ? "Stop requested. The active wait is cancelled; an in-flight Messenger send may finish."
-      : "No active schedule exists for this group.",
-  });
-});
-
-app.get("/api/dashboard/schedule/status", requireDashboardAccess, (req, res) => {
-  const threadID = String(req.query.thread_id || "").trim();
-  if (!threadID) return res.status(400).json({ ok: false, error: "thread_id is required." });
-  try {
-    return res.json({ ok: true, status: schedule.getSessionStatus(threadID) });
-  } catch (error) {
-    return res.status(400).json({ ok: false, error: String(error?.message || error) });
-  }
-});
 
 
 const liveChat = createLiveChat({
@@ -9553,73 +9474,6 @@ async function handleMessage(
 
     return;
   }
-
-  if (/^!schedule(?:\s|$)/i.test(originalText)) {
-    if (!ADMIN_IDS.has(senderId)) {
-      sendReplyWithTyping(api, "🔒 !schedule is restricted to ADMIN_IDS.", threadID);
-      return;
-    }
-    const lines = originalText.split(/\r?\n/);
-    const firstLine = String(lines.shift() || "").trim();
-    const command = firstLine.match(/^!schedule\s+(start|stop|status)(?:\s+([0-9]+(?:\.[0-9]+)?))?\s*$/i);
-    if (!command) {
-      sendReplyWithTyping(api, "Usage:\n!schedule start [maxMinutes: 1-10]\nPaste one announcement per line after the start command.\n!schedule stop\n!schedule status", threadID);
-      return;
-    }
-    const action = command[1].toLowerCase();
-    if (action === "status") {
-      const status = schedule.getSessionStatus(threadID);
-      sendReplyWithTyping(api, [
-        "SCHEDULE STATUS", "State · " + (status.active ? "RUNNING" : "IDLE"),
-        "Pending · " + status.pending, "Sent · " + status.sent, "Failed · " + status.failed,
-        "Batch limit · " + schedule.MAX_QUEUE_ITEMS,
-        "Time Check · " + (status.timeCheckActive ? "ACTIVE" : "idle"),
-        "Time Checks · " + status.timeChecks,
-        status.lastError ? "Last error · " + status.lastError : "",
-      ].filter(Boolean).join("\n"), threadID);
-      return;
-    }
-    if (action === "stop") {
-      const stopped = schedule.stopSession(threadID);
-      sendReplyWithTyping(api, stopped
-        ? "⏹ Schedule stop requested. The active wait is cancelled immediately; an in-flight send may finish."
-        : "No active schedule batch. Pending announcements are kept.", threadID);
-      return;
-    }
-    if (schedule.getSessionStatus(threadID).active) {
-      sendReplyWithTyping(api, "A schedule batch is already running. Use !schedule status or !schedule stop.", threadID);
-      return;
-    }
-    const messageLines = lines.map(line => line.trim()).filter(Boolean);
-    try {
-      if (messageLines.length) {
-        const queued = schedule.enqueueItems(threadID, messageLines);
-        sendReplyWithTyping(api, "Queued " + queued.added + " announcements (" + queued.pending + " pending). Starting up to " + schedule.MAX_QUEUE_ITEMS + " this run.", threadID);
-      } else if (!schedule.getSessionStatus(threadID).pending) {
-        sendReplyWithTyping(api, "Add announcements after !schedule start (maximum " + schedule.MAX_QUEUE_ITEMS + ").", threadID);
-        return;
-      }
-      const maxMinutes = command[2] == null ? schedule.DEFAULT_MAX_MINUTES : Number(command[2]);
-      if (!Number.isFinite(maxMinutes) || maxMinutes < 1 || maxMinutes > 10) {
-        sendReplyWithTyping(api, "Maximum interval must be between 1 and 10 minutes.", threadID);
-        return;
-      }
-      void schedule.startSession(api, threadID, {
-        maxMinutes,
-        sendMessage: (messenger, message, targetThreadID) =>
-          sendMessengerMessage(messenger, message, targetThreadID),
-      }).then(result => console.log("[SCHEDULER] Chat batch finished:", JSON.stringify(result)))
-        .catch(error => {
-          console.warn("[SCHEDULER] Could not start batch:", error?.message || error);
-          sendReplyWithTyping(api, "Schedule could not start: " + String(error?.message || error), threadID);
-        });
-    } catch (error) {
-      sendReplyWithTyping(api, "Schedule error: " + String(error?.message || error), threadID);
-    }
-    return;
-  }
-
-
 
   // ==========================================================
   // TRAFFIC GOVERNOR — INCOMING COMMAND GUARD
