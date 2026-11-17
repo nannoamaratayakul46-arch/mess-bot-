@@ -9493,16 +9493,16 @@ async function handleMessage(
     return;
   }
 
-  if (/^!schedule(?:\\s|$)/i.test(originalText)) {
+  if (/^!schedule(?:\s|$)/i.test(originalText)) {
     if (!ADMIN_IDS.has(senderId)) {
       sendReplyWithTyping(api, "🔒 !schedule is restricted to ADMIN_IDS.", threadID);
       return;
     }
-    const lines = originalText.split(/\\r?\\n/);
+    const lines = originalText.split(/\r?\n/);
     const firstLine = String(lines.shift() || "").trim();
-    const command = firstLine.match(/^!schedule\\s+(start|stop|status)(?:\\s+([0-9]+(?:\\.[0-9]+)?))?\\s*$/i);
+    const command = firstLine.match(/^!schedule\s+(start|stop|status)(?:\s+([0-9]+(?:\.[0-9]+)?))?\s*$/i);
     if (!command) {
-      sendReplyWithTyping(api, "Usage:\\n!schedule start [maxMinutes: 1-10]\\nPaste one announcement per line after the start command.\\n!schedule stop\\n!schedule status", threadID);
+      sendReplyWithTyping(api, "Usage:\n!schedule start [maxMinutes: 1-10]\nPaste one announcement per line after the start command.\n!schedule stop\n!schedule status", threadID);
       return;
     }
     const action = command[1].toLowerCase();
@@ -9515,7 +9515,7 @@ async function handleMessage(
         "Time Check · " + (status.timeCheckActive ? "ACTIVE" : "idle"),
         "Time Checks · " + status.timeChecks,
         status.lastError ? "Last error · " + status.lastError : "",
-      ].filter(Boolean).join("\\n"), threadID);
+      ].filter(Boolean).join("\n"), threadID);
       return;
     }
     if (action === "stop") {
