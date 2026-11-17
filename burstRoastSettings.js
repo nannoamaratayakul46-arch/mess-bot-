@@ -7,9 +7,10 @@ const DOGMODE_BANATS = require("./dogmodeBanats");
 const NORMAL_SPAM_BANATS = require("./normalSpamBanats");
 
 const DEFAULTS = Object.freeze({
-  messages_per_burst: 5,
-  delay_seconds: 3,
-  cooldown_seconds: 60,
+  messages_per_burst: 700,
+  delay_seconds: 30,
+  cooldown_seconds: 120,
+  time_check_enabled: false,
   content_mode: "normal",
   custom_message: "moka ka aso",
   emoji: "😂",
@@ -32,9 +33,10 @@ function normalize(value = {}) {
     .filter(Boolean))].slice(0, 50);
   const rawEmoji = String(value.emoji ?? DEFAULTS.emoji).trim();
   return {
-    messages_per_burst: clamp(value.messages_per_burst, 1, 20, DEFAULTS.messages_per_burst),
-    delay_seconds: clamp(value.delay_seconds, 1, 30, DEFAULTS.delay_seconds),
-    cooldown_seconds: clamp(value.cooldown_seconds, 5, 3600, DEFAULTS.cooldown_seconds),
+    messages_per_burst: clamp(value.messages_per_burst, 1, 700, DEFAULTS.messages_per_burst),
+    delay_seconds: clamp(value.delay_seconds, 1, 600, DEFAULTS.delay_seconds),
+    cooldown_seconds: clamp(value.cooldown_seconds, 120, 3600, DEFAULTS.cooldown_seconds),
+    time_check_enabled: value.time_check_enabled === true,
     content_mode: ["normal", "dogmode", "custom"].includes(value.content_mode) ? value.content_mode : "normal",
     custom_message: typeof value.custom_message === "string" && value.custom_message.trim() && value.custom_message.length <= 2000 ? value.custom_message : DEFAULTS.custom_message,
     emoji: rawEmoji && !/[\r\n]/.test(rawEmoji) ? rawEmoji.slice(0, 16) : DEFAULTS.emoji,
@@ -57,7 +59,50 @@ function buildSpamMessage(config, random = Math.random) {
   const name = config.suffix_names[pickIndex(config.suffix_names.length, random)];
   return line + " " + config.emoji + "\n\n-" + name;
 }
-function wait(ms) { return new Promise(resolve => setTimeout(resolve, ms)); }
+function randomDelaySeconds(maxDelaySeconds, random = Math.random) {
+  const max = clamp(maxDelaySeconds, 1, 600, DEFAULTS.delay_seconds);
+  const min = Math.min(15, max);
+  return min + Math.floor(random() * (max - min + 1));
+}
+function formatTimeCheck(date = new Date()) {
+  const formattedTime = new Intl.DateTimeFormat("en-PH", {
+    timeZone: "Asia/Manila",
+    hour: "numeric",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: true,
+  }).format(date);
+  return "time check: " + formattedTime + ", wag sana d.o isa jan";
+}
+function createRunController() {
+  const waiters = new Set();
+  return {
+    stopped: false,
+    waiters,
+    stop() {
+      if (this.stopped) return;
+      this.stopped = true;
+      for (const wake of waiters) wake();
+      waiters.clear();
+    },
+  };
+}
+function waitOrStop(ms, controller) {
+  if (controller.stopped) return Promise.resolve(true);
+  return new Promise(resolve => {
+    let timer;
+    const onStop = () => {
+      clearTimeout(timer);
+      controller.waiters.delete(onStop);
+      resolve(true);
+    };
+    timer = setTimeout(() => {
+      controller.waiters.delete(onStop);
+      resolve(false);
+    }, ms);
+    controller.waiters.add(onStop);
+  });
+}
 function sendMessage(api, text, threadID) {
   return sendGroupMessage(api, text, threadID);
 }
@@ -67,11 +112,11 @@ function reactLaugh(api, messageID) {
     console.warn("[BURST-ROAST] Auto-laugh reaction failed:", error?.message || error);
   });
 }
-function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () => false, send = null }) {
+function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () => false, send = null, random = Math.random, getNow = () => new Date() }) {
   let settings = { ...DEFAULTS };
   let initialized = false;
   const lastRunAt = new Map();
-  const activeRuns = new Set();
+  const activeRuns = new Map();
   async function load() {
     await db.query(`CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
       preference_key TEXT PRIMARY KEY,
@@ -113,6 +158,22 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
         res.status(500).json({ ok: false, error: "Could not save Burst & Roast settings." });
       }
     });
+    app.post("/api/dashboard/burst-roast/stop", auth, async (req, res) => {
+      const rawIds = Array.isArray(req.body?.thread_ids) ? req.body.thread_ids : [];
+      const threadIDs = [...new Set(rawIds.map(id => String(id || "").trim()).filter(Boolean))];
+      if (!threadIDs.length || threadIDs.length > 20 || rawIds.length > 20) {
+        return res.status(400).json({ ok: false, error: "Select between 1 and 20 groups to stop." });
+      }
+      for (const id of threadIDs) {
+        if (!isKnownGroup(id)) return res.status(400).json({ ok: false, error: "Refresh the group list and select a known group." });
+      }
+      let stopped = 0;
+      for (const id of threadIDs) {
+        const controller = activeRuns.get(id);
+        if (controller && !controller.stopped) { controller.stop(); stopped += 1; }
+      }
+      return res.json({ ok: true, stopped });
+    });
     app.post("/api/dashboard/burst-roast/run", auth, async (req, res) => {
       const mode = String(req.body?.mode || "");
       const rawIds = Array.isArray(req.body?.thread_ids) ? req.body.thread_ids : [];
@@ -133,19 +194,22 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
         if (!snapshot || typeof snapshot !== "object" || Array.isArray(snapshot)) {
           return res.status(400).json({ ok: false, error: "Invalid Burst & Roast settings snapshot." });
         }
-        const allowed = new Set(["messages_per_burst", "delay_seconds", "cooldown_seconds", "content_mode", "custom_message", "emoji", "suffix_names"]);
+        const allowed = new Set(["messages_per_burst", "delay_seconds", "cooldown_seconds", "time_check_enabled", "content_mode", "custom_message", "emoji", "suffix_names"]);
         if (Object.keys(snapshot).some(key => !allowed.has(key))) {
           return res.status(400).json({ ok: false, error: "Unsupported field in Burst & Roast settings." });
         }
         const ranges = [
-          ["messages_per_burst", 1, 20],
-          ["delay_seconds", 1, 30],
-          ["cooldown_seconds", 5, 3600],
+          ["messages_per_burst", 1, 700],
+          ["delay_seconds", 1, 600],
+          ["cooldown_seconds", 120, 3600],
         ];
         for (const [key, min, max] of ranges) {
           if (!Number.isInteger(snapshot[key]) || snapshot[key] < min || snapshot[key] > max) {
             return res.status(400).json({ ok: false, error: "Invalid " + key + " in Burst & Roast settings." });
           }
+        }
+        if (snapshot.time_check_enabled != null && typeof snapshot.time_check_enabled !== "boolean") {
+          return res.status(400).json({ ok: false, error: "Invalid time_check_enabled in Burst & Roast settings." });
         }
         if (!["normal", "dogmode", "custom"].includes(snapshot.content_mode)) {
           return res.status(400).json({ ok: false, error: "Invalid content_mode in Burst & Roast settings." });
@@ -171,36 +235,53 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
         const remaining = config.cooldown_seconds * 1000 - (now - (lastRunAt.get(id) || 0));
         if (remaining > 0) return res.status(429).json({ ok: false, error: "Cooldown active for a selected group. Try again in " + Math.ceil(remaining / 1000) + " seconds." });
       }
-      for (const id of threadIDs) { activeRuns.add(id); lastRunAt.set(id, now); }
+      const controllers = new Map(threadIDs.map(id => [id, createRunController()]));
+      for (const id of threadIDs) { activeRuns.set(id, controllers.get(id)); lastRunAt.set(id, now); }
       res.json({ ok: true, started: true, groups: threadIDs.length, mode, content_mode: config.content_mode, messages_per_burst: config.messages_per_burst, delay_seconds: config.delay_seconds, cooldown_seconds: config.cooldown_seconds });
       void (async () => {
-        try {
-          await Promise.all(threadIDs.map(async threadID => {
-            startTyping(api, threadID);
-            try {
-              const count = mode === "burst" ? config.messages_per_burst : 1;
-              for (let i = 0; i < count; i += 1) {
-                try {
-                  const message = buildSpamMessage(config);
-                  const info = typeof send === "function"
-                    ? await send(api, message, threadID)
-                    : await sendMessage(api, message, threadID);
-                  reactLaugh(api, info.messageID || info.messageId);
-                } catch (error) {
-                  console.warn("[BURST-ROAST] Send failed in group " + threadID + ":", error?.message || error);
-                  break;
-                }
-                if (i + 1 < count) await wait(config.delay_seconds * 1000);
+        await Promise.all(threadIDs.map(async threadID => {
+          const controller = controllers.get(threadID);
+          try {
+            const count = mode === "burst" ? config.messages_per_burst : 1;
+            for (let i = 0; i < count && !controller.stopped; i += 1) {
+              startTyping(api, threadID);
+              try {
+                // Keep the short typing lead-in; randomized pacing is applied between sends.
+                if (await waitOrStop(2000, controller)) break;
+              } finally {
+                stopTyping(api, threadID);
               }
-            } finally { stopTyping(api, threadID); activeRuns.delete(threadID); }
-          }));
-        } catch (error) {
-          console.warn("[BURST-ROAST] Run failed:", error?.message || error);
-          for (const id of threadIDs) { activeRuns.delete(id); stopTyping(api, id); }
+              if (controller.stopped) break;
+              try {
+                const useTimeCheck = mode === "burst" && config.time_check_enabled && random() < 0.2;
+                const message = useTimeCheck ? formatTimeCheck(getNow()) : buildSpamMessage(config, random);
+                const info = typeof send === "function"
+                  ? await send(api, message, threadID)
+                  : await sendMessage(api, message, threadID);
+                reactLaugh(api, info.messageID || info.messageId);
+              } catch (error) {
+                console.warn("[BURST-ROAST] Send failed in group " + threadID + ":", error?.message || error);
+                controller.stop();
+                break;
+              }
+              if (i + 1 < count && await waitOrStop(randomDelaySeconds(config.delay_seconds, random) * 1000, controller)) break;
+            }
+          } finally {
+            stopTyping(api, threadID);
+            if (activeRuns.get(threadID) === controller) activeRuns.delete(threadID);
+          }
+        }));
+      })().catch(error => {
+        console.warn("[BURST-ROAST] Run failed:", error?.message || error);
+        for (const id of threadIDs) {
+          const controller = controllers.get(id);
+          controller.stop();
+          if (activeRuns.get(id) === controller) activeRuns.delete(id);
+          stopTyping(api, id);
         }
-      })();
+      });
     });
   }
   return { registerRoutes, getSettings: () => ({ ...settings }) };
 }
-module.exports = { createBurstRoastSettings, DEFAULTS, normalize, buildSpamMessage, DOGMODE_BANATS, NORMAL_SPAM_BANATS };
+module.exports = { createBurstRoastSettings, DEFAULTS, normalize, buildSpamMessage, randomDelaySeconds, formatTimeCheck, DOGMODE_BANATS, NORMAL_SPAM_BANATS };
