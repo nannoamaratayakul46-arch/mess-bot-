@@ -304,9 +304,12 @@ let archivedDashboardGroupsLoadPromise = null;
 async function isDashboardGroupArchived(threadID) {
   const now = Date.now();
   if (now - archivedDashboardGroupsLoadedAt > 30_000 && !archivedDashboardGroupsLoadPromise) {
+    const archiveOwnerID = String(eclipseUserID || "").trim();
     archivedDashboardGroupsLoadPromise = db.query(
-      "SELECT thread_id FROM eclipse_dashboard_archived_groups"
+      "SELECT thread_id FROM eclipse_dashboard_archived_groups WHERE messenger_user_id = $1",
+      [archiveOwnerID]
     ).then(result => {
+      if (archiveOwnerID !== String(eclipseUserID || "").trim()) return;
       archivedDashboardGroups.clear();
       for (const row of result.rows || []) {
         const id = String(row.thread_id || "").trim();
@@ -4357,6 +4360,10 @@ app.post(
     listenerGeneration++;
     activeListenerGeneration = 0;
     activeMessengerApi = null;
+    activeThreads.clear();
+    dashboardKnownGroups.clear();
+    archivedDashboardGroups.clear();
+    archivedDashboardGroupsLoadedAt = 0;
     watchdogSetMessengerConnected(false);
     dashboardLastDisconnectedAt = new Date().toISOString();
 
@@ -5394,6 +5401,7 @@ async function ensureDashboardArchivedGroupsTable() {
         )
       `);
       await db.query("ALTER TABLE eclipse_dashboard_archived_groups ADD COLUMN IF NOT EXISTS left_at TIMESTAMPTZ");
+      await db.query("ALTER TABLE eclipse_dashboard_archived_groups ADD COLUMN IF NOT EXISTS messenger_user_id TEXT NOT NULL DEFAULT ''");
     })().catch(error => {
       dashboardArchivedGroupsSchemaPromise = null;
       throw error;
@@ -5534,7 +5542,8 @@ app.get(
       await ensureDashboardArchivedGroupsTable();
 
       const archivedResult = await db.query(
-        "SELECT thread_id, group_name, participant_count, archived_at, left_at FROM eclipse_dashboard_archived_groups ORDER BY archived_at DESC"
+        "SELECT thread_id, group_name, participant_count, archived_at, left_at FROM eclipse_dashboard_archived_groups WHERE messenger_user_id = $1 ORDER BY archived_at DESC",
+        [String(eclipseUserID || "").trim()]
       );
       for (const row of archivedResult.rows || []) {
         const threadID = String(row.thread_id || "").trim();
@@ -5654,16 +5663,20 @@ app.post(
       await ensureDashboardArchivedGroupsTable();
       if (archived) {
         await db.query(
-          `INSERT INTO eclipse_dashboard_archived_groups (thread_id, group_name, participant_count, archived_at)
-           VALUES ($1, $2, $3, NOW())
+          `INSERT INTO eclipse_dashboard_archived_groups (thread_id, messenger_user_id, group_name, participant_count, archived_at)
+           VALUES ($1, $2, $3, $4, NOW())
            ON CONFLICT (thread_id) DO UPDATE SET
+             messenger_user_id = EXCLUDED.messenger_user_id,
              group_name = EXCLUDED.group_name,
              participant_count = EXCLUDED.participant_count,
              archived_at = NOW()`,
-          [threadID, String(group.name || "Archived group").slice(0, 160), Number(group.participant_count) || 0]
+          [threadID, String(eclipseUserID || "").trim(), String(group.name || "Archived group").slice(0, 160), Number(group.participant_count) || 0]
         );
       } else {
-        await db.query("DELETE FROM eclipse_dashboard_archived_groups WHERE thread_id = $1", [threadID]);
+        await db.query(
+          "DELETE FROM eclipse_dashboard_archived_groups WHERE thread_id = $1 AND messenger_user_id = $2",
+          [threadID, String(eclipseUserID || "").trim()]
+        );
       }
       group.archived = archived;
       if (archived) archivedDashboardGroups.add(threadID);
@@ -5702,14 +5715,15 @@ app.post(
       await changeGroupMember(activeMessengerApi, "remove", currentUserID, threadID);
       await ensureDashboardArchivedGroupsTable();
       await db.query(
-        `INSERT INTO eclipse_dashboard_archived_groups (thread_id, group_name, participant_count, archived_at, left_at)
-         VALUES ($1, $2, $3, NOW(), NOW())
+        `INSERT INTO eclipse_dashboard_archived_groups (thread_id, messenger_user_id, group_name, participant_count, archived_at, left_at)
+         VALUES ($1, $2, $3, $4, NOW(), NOW())
          ON CONFLICT (thread_id) DO UPDATE SET
+           messenger_user_id = EXCLUDED.messenger_user_id,
            group_name = EXCLUDED.group_name,
            participant_count = EXCLUDED.participant_count,
            archived_at = NOW(),
            left_at = NOW()`,
-        [threadID, String(group.name || "Archived group").slice(0, 160), Number(group.participant_count) || 0]
+        [threadID, String(eclipseUserID || "").trim(), String(group.name || "Archived group").slice(0, 160), Number(group.participant_count) || 0]
       );
       group.archived = true;
       group.left = true;
@@ -7335,6 +7349,14 @@ function attemptLogin() {
         );
       }
 
+      // If the adapter did not return a refreshed state, persist the exact
+      // replacement cookie set that just authenticated instead of retaining
+      // the previous account's durable checkpoint.
+      if (pendingFacebookAppState) {
+        appState = pendingFacebookAppState;
+        pendingFacebookAppState = null;
+      }
+
       // Persist the newest session returned by ws3-fca. This is what makes
       // a refreshed cookie survive Render restarts and redeploys.
       await persistFacebookSessionState(appState);
@@ -7384,6 +7406,7 @@ function attemptLogin() {
       // listener callback will fail the generation check below.
       api = installTrafficGovernor(api) || api;
       activeMessengerApi = api;
+      const previousMessengerUserID = String(eclipseUserID || "").trim();
 
       try {
         eclipseUserID = typeof api.getCurrentUserID === "function"
@@ -7414,6 +7437,18 @@ function attemptLogin() {
           "[AUTH] Could not determine ECLIPSE user ID:",
           error?.message || error
         );
+      }
+
+      if (
+        previousMessengerUserID &&
+        eclipseUserID &&
+        previousMessengerUserID !== eclipseUserID
+      ) {
+        activeThreads.clear();
+        dashboardKnownGroups.clear();
+        archivedDashboardGroups.clear();
+        archivedDashboardGroupsLoadedAt = 0;
+        console.log("[DASHBOARD] Messenger identity changed; cleared previous account's cached group discovery state.");
       }
 
       watchdogSetMessengerConnected(
