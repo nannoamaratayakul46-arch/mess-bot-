@@ -147,6 +147,21 @@ function getThreadList(api, options = {}) {
 
 
 
+// Explicitly invalidate this Messenger session's cached inbox list. If a
+// lookup is already in flight, keep its promise so a manual refresh does not
+// create a second overlapping getThreadList request.
+function clearThreadListCache(api) {
+  if (!api || (typeof api !== "object" && typeof api !== "function")) return false;
+  const state = sessions.get(api);
+  if (!state) return true;
+  state.value = null;
+  state.expiresAt = 0;
+  state.blockedUntil = 0;
+  if (!state.promise) sessions.delete(api);
+  return true;
+}
+
+
 // Resolve ordinary group metadata from the shared inbox list when the
 // per-thread GraphQL endpoint returns an empty/invalid response. This data is
 // for display and name resolution only; callers must not use it as fresh
@@ -163,4 +178,4 @@ async function getThreadFromList(api, threadID, options = {}) {
   ) || null;
 }
 
-module.exports = { getThreadList, getThreadFromList };
+module.exports = { getThreadList, getThreadFromList, clearThreadListCache };

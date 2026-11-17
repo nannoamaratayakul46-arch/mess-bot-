@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { getThreadList, getThreadFromList } = require("../messengerThreadList");
+const { getThreadList, getThreadFromList, clearThreadListCache } = require("../messengerThreadList");
 
 test("thread-list lookup finds a matching Messenger group", async () => {
   let calls = 0;
@@ -62,4 +62,22 @@ test("thread-list lookup returns null when the requested group is absent", async
     }
   };
   assert.equal(await getThreadFromList(api, "523456789012345"), null);
+});
+
+
+test("manual cache clear forces the next lookup to fetch fresh Messenger groups", async () => {
+  let calls = 0;
+  const api = {
+    getThreadList(_limit, _timestamp, _tags, callback) {
+      calls++;
+      callback(null, [{ threadID: "123456789012345", threadName: calls === 1 ? "Old GC" : "New GC" }]);
+    }
+  };
+
+  const first = await getThreadList(api);
+  assert.equal(first[0].threadName, "Old GC");
+  assert.equal(clearThreadListCache(api), true);
+  const second = await getThreadList(api);
+  assert.equal(second[0].threadName, "New GC");
+  assert.equal(calls, 2);
 });

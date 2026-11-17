@@ -82,7 +82,7 @@ const { createJaidenTargetPersonalitySettings } = require("./jaidenTargetPersona
 const jaidenTargetRecords = require("./jaidenTargetRecords");
 const { registerGroupProfileRoutes, handleGroupProfileEvent, handleTargetedLaughReaction } = require("./groupProfileRoutes");
 const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
-const { getThreadList: getSharedThreadList } = require("./messengerThreadList");
+const { getThreadList: getSharedThreadList, clearThreadListCache: clearSharedThreadListCache } = require("./messengerThreadList");
 const { createLiveChat } = require("./liveChat");
 const { registerModerationRoutes } = require("./dashboardModeration");
 const { registerTemporaryAdminRoutes } = require("./temporaryGroupAdmins");
@@ -5417,7 +5417,8 @@ function dashboardFetchThreadList(api, timeoutMs = 8000) {
   return getSharedThreadList(api, { timeoutMs });
 }
 
-const dashboardThreadLists = new WeakMap();
+let dashboardThreadLists = new WeakMap();
+let dashboardSavedGroupDirectoryCleared = false;
 
 function dashboardGetThreadList(api, timeoutMs = 8000) {
   if (!api || (typeof api !== "object" && typeof api !== "function")) {
@@ -5458,6 +5459,42 @@ function dashboardGetThreadList(api, timeoutMs = 8000) {
   return state.promise;
 }
 
+app.post(
+  "/api/dashboard/groups/cache/clear",
+  requireDashboardAccess,
+  async (req, res) => {
+    // Clearing the live group directory can disrupt other dashboard users, so
+    // reserve it for the owner. Legacy shared-key sessions are owner-only.
+    if (req.dashboardAccount && req.dashboardAccount.role !== "owner") {
+      return res.status(403).json({ ok: false, error: "Owner access is required to clear the group cache." });
+    }
+    const api = activeMessengerApi;
+    try {
+      if (api) clearSharedThreadListCache(api);
+      dashboardThreadLists = new WeakMap();
+      // Suppress only the synthetic offline "Saved group" placeholders. These
+      // rows are derived from persistent settings; never delete those settings.
+      dashboardSavedGroupDirectoryCleared = true;
+      // activeThreads is also used by runtime broadcast and activity tracking;
+      // do not clear it as part of the dashboard's display-cache reset.
+      dashboardKnownGroups.clear();
+      console.info("[DASHBOARD] Owner cleared the live Messenger group cache; the next group refresh will fetch fresh data.");
+      return res.json({
+        ok: true,
+        cleared: true,
+        messenger_connected: Boolean(api && activeListenerGeneration > 0),
+        message: api && activeListenerGeneration > 0
+          ? "Temporary group cache cleared. Refresh to load fresh Messenger groups."
+          : "Saved offline group placeholders cleared. Connect Messenger to load current group chats.",
+      });
+    } catch (error) {
+      console.error("[DASHBOARD] Could not clear live group cache:", error?.message || error);
+      return res.status(503).json({ ok: false, error: "Could not clear the temporary group cache." });
+    }
+  }
+);
+
+
 function dashboardOwnerId() {
   const { ADMIN_IDS, isOwner } = require("./permissions");
   for (const candidate of ADMIN_IDS) {
@@ -5480,6 +5517,7 @@ app.get(
     } else {
       try {
       const inboxThreads = await dashboardGetThreadList(activeMessengerApi);
+      if (Array.isArray(inboxThreads) && inboxThreads.length) dashboardSavedGroupDirectoryCleared = false;
       for (const thread of inboxThreads) {
         const threadID = String(thread.threadID || thread.threadId || thread.thread_id || "").trim();
         if (!threadID) continue;
@@ -5575,7 +5613,7 @@ app.get(
       console.warn("[DASHBOARD] Could not load archived groups:", error?.message || error);
     }
 
-    if (!messengerConnected) {
+    if (!messengerConnected && !dashboardSavedGroupDirectoryCleared) {
       // Thread settings are already persisted per group. Use them as an offline
       // directory so operators can still inspect and manage saved controls.
       try {
@@ -7449,6 +7487,7 @@ function attemptLogin() {
       ) {
         activeThreads.clear();
         dashboardKnownGroups.clear();
+        dashboardSavedGroupDirectoryCleared = false;
         archivedDashboardGroups.clear();
         archivedDashboardGroupsLoadedAt = 0;
         console.log("[DASHBOARD] Messenger identity changed; cleared previous account's cached group discovery state.");

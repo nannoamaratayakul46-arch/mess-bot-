@@ -9,7 +9,7 @@ const source = fs.readFileSync(path.join(__dirname, "..", "index.js"), "utf8");
 
 test("Messenger account replacement clears previous account group discovery state", () => {
   assert.match(source, /previousMessengerUserID !== eclipseUserID/);
-  assert.match(source, /activeThreads\.clear\(\);[\s\S]*?dashboardKnownGroups\.clear\(\);[\s\S]*?archivedDashboardGroups\.clear\(\)/);
+  assert.match(source, /activeThreads\.clear\(\);[\s\S]*?dashboardKnownGroups\.clear\(\);[\s\S]*?dashboardSavedGroupDirectoryCleared = false;[\s\S]*?archivedDashboardGroups\.clear\(\)/);
 });
 
 test("dashboard archived groups are scoped to the authenticated Messenger identity", () => {
@@ -32,3 +32,17 @@ test("disconnect clears previous account group caches", () => {
   assert.match(body, /dashboardKnownGroups\.clear\(\)/);
 });
 
+test("owner group-cache reset clears only in-memory Messenger discovery state", () => {
+  const start = source.indexOf('app.post(\n  "/api/dashboard/groups/cache/clear"');
+  const end = source.indexOf('function dashboardOwnerId()', start);
+  const body = source.slice(start, end);
+  assert.ok(start >= 0 && end > start);
+  assert.match(body, /req\.dashboardAccount\.role !== "owner"/);
+  assert.match(body, /clearSharedThreadListCache\(api\)/);
+  assert.match(body, /dashboardThreadLists = new WeakMap\(\)/);
+  assert.match(body, /dashboardKnownGroups\.clear\(\)/);
+  assert.match(body, /dashboardSavedGroupDirectoryCleared = true/);
+  assert.doesNotMatch(body, /activeThreads\.clear\(\)/);
+  assert.doesNotMatch(body, /DELETE FROM|TRUNCATE TABLE/);
+  assert.doesNotMatch(body, /activeListenerGeneration <= 0/);
+});
