@@ -23,6 +23,17 @@ test("listener errors distinguish authentication rejection from rate limiting", 
   });
 });
 
+test("Facebook blocked-login and ws3-fca user-ID failures are recoverable auth rejections", () => {
+  assert.deepEqual(classifyListenerError(new Error("Facebook blocked the login")), {
+    authRejected: true,
+    rateLimited: false,
+  });
+  assert.deepEqual(classifyListenerError("Error retrieving userID. Not logged in."), {
+    authRejected: true,
+    rateLimited: false,
+  });
+});
+
 test("listener rate-limit retry delay escalates and caps at fifteen minutes", () => {
   assert.equal(getListenerRecoveryDelayMs({ rateLimited: true, failureCount: 1 }), 120_000);
   assert.equal(getListenerRecoveryDelayMs({ rateLimited: true, failureCount: 2 }), 240_000);
