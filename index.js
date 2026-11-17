@@ -5543,6 +5543,12 @@ app.post(
           participants.length >= 3;
         if (isGroup) activeIds.add(id);
       }
+      if (activeIds.size === 0) {
+        return res.status(503).json({
+          ok: false,
+          error: "Messenger returned threads but no groups could be verified. Persistent settings were left unchanged.",
+        });
+      }
 
       await ensureDashboardArchivedGroupsTable();
       const archivedResult = await db.query(
