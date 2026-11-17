@@ -3842,6 +3842,9 @@ app.post("/api/dashboard/schedule/start", requireDashboardAccess, async (req, re
   if (Array.isArray(messages) && messages.length > maxMessages) {
     return res.status(400).json({ ok: false, error: "This queue exceeds the selected item limit (" + maxMessages + ")." });
   }
+  if ((!Array.isArray(messages) || !messages.length) && schedule.getSessionStatus(threadID).pending > maxMessages) {
+    return res.status(400).json({ ok: false, error: "The existing queue exceeds the selected item limit (" + maxMessages + ")." });
+  }
   try {
     if (Array.isArray(messages) && messages.length) schedule.enqueueItems(threadID, messages);
     else if (!schedule.getSessionStatus(threadID).pending) {
