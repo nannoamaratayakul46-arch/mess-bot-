@@ -5699,14 +5699,21 @@ app.get(
       console.warn("[DASHBOARD] Could not load archived groups:", error?.message || error);
     }
 
+    const configuredSavedGroupIds = new Set();
     if (!dashboardSavedGroupDirectoryCleared) {
-      // Only explicitly customized groups belong in the saved directory.
-      // getThreadSettings() creates default rows during normal message handling,
-      // so including every thread_settings row recreates the stale-group bloat.
+      // Only groups with explicit overrides belong in the saved directory.
+      // Default settings are now read without creating persistent rows.
       try {
         const savedGroupIds = await db.getConfiguredDashboardGroupIds();
-        for (const threadID of savedGroupIds) {
-          if (!threadID || known.has(threadID)) continue;
+        for (const rawThreadID of savedGroupIds) {
+          const threadID = String(rawThreadID || "").trim();
+          if (!threadID) continue;
+          configuredSavedGroupIds.add(threadID);
+          const existing = known.get(threadID);
+          if (existing) {
+            existing.has_custom_settings = true;
+            continue;
+          }
           known.set(threadID, {
             thread_id: threadID,
             name: "Saved group · " + threadID.slice(-6),
@@ -5714,11 +5721,16 @@ app.get(
             last_seen_at: null,
             is_group: true,
             metadata_unavailable: true,
+            has_custom_settings: true,
           });
         }
       } catch (error) {
         console.warn("[DASHBOARD] Could not load configured group directory:", error?.message || error);
       }
+    }
+    for (const group of known.values()) {
+      group.has_custom_settings = group.has_custom_settings === true ||
+        configuredSavedGroupIds.has(String(group.thread_id || ""));
     }
 
     dashboardKnownGroups.clear();
