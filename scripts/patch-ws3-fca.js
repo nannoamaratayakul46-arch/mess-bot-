@@ -151,7 +151,15 @@ const client = axios.create({
   const setProxyPattern = /function setProxy\(proxyUrl\) \{[\s\S]*?^\}/m;
   const newSetProxy = `function setProxy(proxyUrl) {
     if (!proxyUrl) {
-        throw new Error("Messenger proxy is required; refusing to restore direct HTTP or HTTPS transport.");
+        // Direct transport is permitted only when the application loaded an
+        // explicit, persisted owner setting before starting Messenger login.
+        if (process.env.ECLIPSE_MESSENGER_PROXY_MODE !== "direct") {
+            throw new Error("Messenger proxy is required; refusing an implicit direct-network fallback.");
+        }
+        client.defaults.httpAgent = new HttpCookieAgent({ cookies: { jar } });
+        client.defaults.httpsAgent = new HttpsCookieAgent({ cookies: { jar } });
+        proxyConfig = { proxy: false };
+        return;
     }
 
     let parsedProxy;
@@ -165,8 +173,7 @@ const client = axios.create({
     }
 
     // Use the authenticated CONNECT tunnel for BOTH protocols. This keeps
-    // accidental plain-HTTP Messenger requests inside the configured proxy
-    // instead of leaving HttpCookieAgent as a direct-network bypass.
+    // accidental plain-HTTP Messenger requests inside the configured proxy.
     const proxyAgent = new HttpsProxyCookieAgent(proxyUrl, { cookies: { jar } });
     client.defaults.httpAgent = proxyAgent;
     client.defaults.httpsAgent = proxyAgent;
@@ -201,6 +208,27 @@ if (axiosSource.includes(proxyPatchMarker) && axiosSource.includes("new HttpsPro
 }
 
 
+
+// Upgrade an already-patched node_modules cache as well as fresh installs.
+// Render may reuse the generated axios.js containing the previous fail-closed
+// guard, so the explicit direct-mode branch must be migrated idempotently.
+const legacyDirectGuard = /if \(!proxyUrl\) \{\s*throw new Error\("Messenger proxy is required; refusing to restore direct HTTP or HTTPS transport\."\);\s*\}/;
+if (axiosSource.includes(proxyPatchMarker) && legacyDirectGuard.test(axiosSource)) {
+  axiosSource = axiosSource.replace(
+    legacyDirectGuard,
+    `if (!proxyUrl) {
+        if (process.env.ECLIPSE_MESSENGER_PROXY_MODE !== "direct") {
+            throw new Error("Messenger proxy is required; refusing an implicit direct-network fallback.");
+        }
+        client.defaults.httpAgent = new HttpCookieAgent({ cookies: { jar } });
+        client.defaults.httpsAgent = new HttpsCookieAgent({ cookies: { jar } });
+        proxyConfig = { proxy: false };
+        return;
+    }`
+  );
+  fs.writeFileSync(axiosPath, axiosSource, "utf8");
+  console.log("[postinstall] Migrated cached ws3-fca transport for explicit direct mode.");
+}
 
 // ws3-fca@3.5.2 bundles https-proxy-agent@4 for MQTT. On the current
 // Node runtime that nested agent can be incompatible with the WebSocket

@@ -37,6 +37,9 @@ function close(server) {
 test("cookie-aware HTTPS proxy agent tunnels CONNECT and preserves session cookies", async (t) => {
   assert.match(proxyPatchSource, /ECLIPSE_WS3_FCA_COOKIE_AWARE_PROXY_V1/);
   assert.match(proxyPatchSource, /new HttpsProxyCookieAgent/);
+  assert.match(proxyPatchSource, /new HttpCookieAgent\(\{ cookies: \{ jar \} \}\)/);
+  assert.match(proxyPatchSource, /ECLIPSE_MESSENGER_PROXY_MODE !== "direct"/);
+  assert.match(proxyPatchSource, /Migrated cached ws3-fca transport for explicit direct mode/);
   assert.match(proxyPatchSource, /proxy: false/);
 
   const fixtureDir = fs.mkdtempSync(path.join(os.tmpdir(), "eclipse-proxy-test-"));

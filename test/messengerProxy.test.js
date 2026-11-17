@@ -11,7 +11,7 @@ const read = (file) => fs.readFileSync(path.join(root, file), "utf8");
 test("Messenger login is gated on successful proxy verification", () => {
   const source = read("index.js");
 
-  assert.match(source, /const \{ verifyMessengerProxy, getMessengerProxyUrl \} = require\("\.\/messengerProxy"\)/);
+  assert.match(source, /verifyMessengerProxy, getMessengerProxyUrl, setMessengerProxyEnabled, isMessengerProxyEnabled/);
   assert.match(source, /let proxyGateVerified = false/);
   assert.match(source, /if \(!proxyGateVerified\)\s*\{[\s\S]*?verifyMessengerProxy\(\)\.then\(\(\) => \{[\s\S]*?proxyGateVerified = true;[\s\S]*?attemptLogin\(\);/);
   assert.match(source, /proxyGateRetryTimer = setTimeout/);
@@ -40,8 +40,30 @@ test("ws3-fca compatibility patch routes both HTTP and MQTT through proxy agents
   assert.match(source, /new HttpsProxyCookieAgent\(proxyUrl, \{ cookies: \{ jar \} \}\)/);
   assert.match(source, /client\.defaults\.httpAgent = proxyAgent/);
   assert.match(source, /client\.defaults\.httpsAgent = proxyAgent/);
-  assert.match(source, /refusing to restore direct HTTP or HTTPS transport/);
+  assert.match(source, /refusing an implicit direct-network fallback/);
   assert.match(source, /ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1/);
   assert.match(source, /options\.wsOptions\.agent = new HttpsProxyAgent\(ctx\.globalOptions\.proxy\)/);
   assert.match(source, /refusing to patch/);
+});
+
+test("direct Messenger mode is available only through an explicit in-memory selection", async () => {
+  const { getMessengerProxyUrl, verifyMessengerProxy, setMessengerProxyEnabled, isMessengerProxyEnabled } = require("../messengerProxy");
+  const oldProxyUrl = process.env.PROXY_URL;
+  try {
+    delete process.env.PROXY_URL;
+    setMessengerProxyEnabled(true);
+    assert.equal(isMessengerProxyEnabled(), true);
+    assert.throws(() => getMessengerProxyUrl(), /PROXY_URL is required/);
+
+    setMessengerProxyEnabled(false);
+    assert.equal(isMessengerProxyEnabled(), false);
+    assert.equal(getMessengerProxyUrl(), null);
+    assert.deepEqual(await verifyMessengerProxy(), {
+      mode: "direct", provider: null, ip: null, country: null, city: null
+    });
+  } finally {
+    setMessengerProxyEnabled(true);
+    if (oldProxyUrl === undefined) delete process.env.PROXY_URL;
+    else process.env.PROXY_URL = oldProxyUrl;
+  }
 });

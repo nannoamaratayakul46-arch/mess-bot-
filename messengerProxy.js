@@ -5,8 +5,20 @@ const { HttpsProxyAgent } = require("https-proxy-agent");
 
 let verificationPromise = null;
 let verifiedProxyUrl = null;
+let messengerProxyEnabled = true;
+
+function setMessengerProxyEnabled(enabled) {
+  messengerProxyEnabled = enabled !== false;
+  verificationPromise = null;
+  verifiedProxyUrl = null;
+}
+
+function isMessengerProxyEnabled() {
+  return messengerProxyEnabled;
+}
 
 function getMessengerProxyUrl() {
+  if (!messengerProxyEnabled) return null;
   const raw = String(process.env.PROXY_URL || "").trim();
   if (!raw) throw new Error("PROXY_URL is required for Messenger transport.");
 
@@ -35,6 +47,9 @@ function safeError(error, proxyUrl) {
 }
 
 async function verifyMessengerProxy() {
+  if (!messengerProxyEnabled) {
+    return { mode: "direct", provider: null, ip: null, country: null, city: null };
+  }
   const proxyUrl = getMessengerProxyUrl();
   if (verificationPromise && verifiedProxyUrl === proxyUrl) return verificationPromise;
 
@@ -101,4 +116,4 @@ async function verifyMessengerProxy() {
   }
 }
 
-module.exports = { getMessengerProxyUrl, verifyMessengerProxy };
+module.exports = { getMessengerProxyUrl, verifyMessengerProxy, setMessengerProxyEnabled, isMessengerProxyEnabled };

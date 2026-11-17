@@ -4,7 +4,7 @@ const { invokeMessengerSend, resolveMessengerIsGroup } = require("./messengerSen
 const { loadDashboardGroupSettings } = require("./dashboardGroupSettings");
 const { setMessageReactionMqtt, changeGroupMember } = require("./messengerApiCompat");
 const { classifyListenerError, getListenerRecoveryDelayMs, getLoginRetryDelayMs } = require("./messengerRecoveryPolicy");
-const { verifyMessengerProxy, getMessengerProxyUrl } = require("./messengerProxy");
+const { verifyMessengerProxy, getMessengerProxyUrl, setMessengerProxyEnabled, isMessengerProxyEnabled } = require("./messengerProxy");
 
 // "/" is an admin-only Banat toggle. Keep unauthorized-attempt state at
 // module scope so it survives individual message-handler invocations.
@@ -35,6 +35,33 @@ function normalizeReactionConfig(value = {}) {
     eclipse_messages: value.eclipse_messages !== false,
     reaction: allowedReactions.has(reaction) ? reaction : DEFAULT_REACTION_CONFIG.reaction,
   };
+}
+
+async function loadMessengerProxyMode() {
+  try {
+    await db.query(
+      `CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
+        preference_key TEXT PRIMARY KEY,
+        preference_value JSONB NOT NULL,
+        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      )`
+    );
+    const { rows } = await db.query(
+      "SELECT preference_value FROM eclipse_dashboard_preferences WHERE preference_key = $1 LIMIT 1",
+      ["messenger_proxy_enabled"]
+    );
+    // Missing preference is deliberately fail-closed to the existing proxy-only behavior.
+    const enabled = rows[0]?.preference_value !== false;
+    setMessengerProxyEnabled(enabled);
+    process.env.ECLIPSE_MESSENGER_PROXY_MODE = enabled ? "proxy" : "direct";
+    console.log("[PROXY] Active Messenger network mode: " + (enabled ? "PROXY" : "RENDER DIRECT"));
+    return enabled;
+  } catch (error) {
+    setMessengerProxyEnabled(true);
+    process.env.ECLIPSE_MESSENGER_PROXY_MODE = "proxy";
+    console.error("[PROXY] Could not load saved network mode; keeping PROXY ON:", error?.message || error);
+    return true;
+  }
 }
 
 async function loadDashboardReactionConfig() {
@@ -3797,6 +3824,87 @@ function requireDashboardAccess(req, res, next) {
 
 app.use(dashboardCors);
 
+app.get(
+  "/api/dashboard/messenger-proxy/settings",
+  requireDashboardAccess,
+  async (_req, res) => {
+    try {
+      await db.connect();
+      await db.query(
+        `CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
+          preference_key TEXT PRIMARY KEY,
+          preference_value JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )`
+      );
+      const { rows } = await db.query(
+        "SELECT preference_value, updated_at FROM eclipse_dashboard_preferences WHERE preference_key = $1 LIMIT 1",
+        ["messenger_proxy_enabled"]
+      );
+      const enabled = rows[0]?.preference_value !== false;
+      return res.json({
+        ok: true,
+        enabled,
+        active_enabled: isMessengerProxyEnabled(),
+        mode: enabled ? "proxy" : "direct",
+        active_mode: isMessengerProxyEnabled() ? "proxy" : "direct",
+        restart_required: enabled !== isMessengerProxyEnabled(),
+        default_enabled: true,
+        updated_at: rows[0]?.updated_at || null
+      });
+    } catch (error) {
+      console.error("[PROXY] Could not load network-mode setting:", error?.message || error);
+      return res.status(500).json({ ok: false, error: "Could not load Messenger network setting." });
+    }
+  }
+);
+
+app.put(
+  "/api/dashboard/messenger-proxy/settings",
+  requireDashboardAccess,
+  async (req, res) => {
+    if (typeof req.body?.enabled !== "boolean") {
+      return res.status(400).json({ ok: false, error: "enabled must be a boolean." });
+    }
+    try {
+      await db.connect();
+      await db.query(
+        `CREATE TABLE IF NOT EXISTS eclipse_dashboard_preferences (
+          preference_key TEXT PRIMARY KEY,
+          preference_value JSONB NOT NULL,
+          updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+        )`
+      );
+      await db.query(
+        `INSERT INTO eclipse_dashboard_preferences (preference_key, preference_value, updated_at)
+         VALUES ($1, $2::jsonb, NOW())
+         ON CONFLICT (preference_key) DO UPDATE
+         SET preference_value = EXCLUDED.preference_value, updated_at = NOW()`,
+        ["messenger_proxy_enabled", JSON.stringify(req.body.enabled)]
+      );
+      const activeEnabled = isMessengerProxyEnabled();
+      const restartRequired = req.body.enabled !== activeEnabled;
+      pushDashboardEvent(
+        "proxy",
+        "Messenger network mode saved as " + (req.body.enabled ? "PROXY" : "RENDER DIRECT") +
+          (restartRequired ? ". A Render restart is required before it becomes active." : ".")
+      );
+      return res.json({
+        ok: true,
+        enabled: req.body.enabled,
+        active_enabled: activeEnabled,
+        restart_required: restartRequired,
+        message: restartRequired
+          ? "Saved. Restart the Render service to apply the new Messenger network mode."
+          : "Saved. The selected Messenger network mode is already active."
+      });
+    } catch (error) {
+      console.error("[PROXY] Could not save network-mode setting:", error?.message || error);
+      return res.status(500).json({ ok: false, error: "Could not save Messenger network setting." });
+    }
+  }
+);
+
 // Individual account sessions are the only authentication method for normal
 // dashboard routes. The shared Dashboard API Key is reserved for owner setup
 // and Passkey reset through /api/access/bootstrap.
@@ -6882,6 +6990,7 @@ async function persistAppStateFile() {
 async function loadPersistedFacebookSessionState() {
   try {
     await db.connect();
+    await loadMessengerProxyMode();
     await loadDashboardReactionConfig();
     try {
       await jaidenTargetPersonalitySettings.load();
@@ -14667,4 +14776,7 @@ setInterval(() => {
       `Music: ${music.activeDownloads}/${MUSIC_MAX_GLOBAL_DOWNLOADS} downloads`
   );
 }, 60_000);
+
+
+
 
