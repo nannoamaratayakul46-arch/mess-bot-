@@ -54,18 +54,15 @@ test("Banat retains sender-aware queue protections", () => {
   }
 });
 
-test("fatal asynchronous errors use Render-restart exit codes", () => {
+test("unknown process errors remain fatal, but Messenger auth rejections are isolated", () => {
   const index = read("index.js");
-
-  assert.match(
-    index,
-    /gracefulShutdown\("uncaughtException",\s*1\)/
-  );
-
-  assert.match(
-    index,
-    /gracefulShutdown\("unhandledRejection",\s*1\)/
-  );
+  assert.match(index, /gracefulShutdown\("uncaughtException",\s*1\)/);
+  assert.match(index, /gracefulShutdown\("unhandledRejection",\s*1\)/);
+  assert.match(index, /process\.on\("uncaughtException"/);
+  assert.match(index, /process\.on\("unhandledRejection"/);
+  assert.match(index, /handleRecoverableMessengerProcessFailure\("unhandled rejection", reason\)/);
+  assert.match(index, /activeMqttListenerCallback\(reason, null\)/);
+  assert.match(index, /dashboard remains online/);
 });
 
 test("repository has no second broadcast transport implementation", () => {

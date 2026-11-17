@@ -176,13 +176,17 @@ for (const required of [
   }
 }
 
-// 6. Fatal process errors must exit non-zero so Render can restart them.
+// 6. Unknown process errors remain fatal, while known Messenger auth failures are isolated.
 if (!index.includes('gracefulShutdown("uncaughtException", 1)')) {
-  fail("uncaughtException does not use fatal exit code 1.");
+  fail("uncaughtException does not use fatal exit code 1 for unknown errors.");
 }
 
 if (!index.includes('gracefulShutdown("unhandledRejection", 1)')) {
-  fail("unhandledRejection does not use fatal exit code 1.");
+  fail("unhandledRejection does not use fatal exit code 1 for unknown errors.");
+}
+
+if (!/function handleRecoverableMessengerProcessFailure[\s\S]{0,2200}classifyListenerError\(reason\)[\s\S]{0,2200}activeMqttListenerCallback\(reason, null\)/.test(index)) {
+  fail("Known Messenger authentication rejections must be routed through listener recovery without shutting down the process.");
 }
 
 // 7. Do not allow the old duplicate broadcast runtime wrapper to return.
