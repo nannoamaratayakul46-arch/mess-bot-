@@ -23,7 +23,7 @@ function classifyListenerError(value) {
     // broken coercion hooks. Classification should fail closed to transient.
   }
   return {
-    authRejected: /checkpoint|two.factor|2fa|invalid cookie|cookie.*(?:invalid|expired|rejected)|session.*(?:expired|invalid|rejected)|not logged in|login required|authentication failed|account disabled|confirm your identity|facebook blocked the login|error retrieving user.?id/i.test(text),
+    authRejected: /checkpoint|two.factor|2fa|invalid cookie|cookie.*(?:invalid|expired|rejected)|session.*(?:expired|invalid|rejected)|not logged in|login required|authentication failed|account disabled|confirm your identity/i.test(text),
     rateLimited: /1675004|rate.?limit|too many requests/i.test(text),
   };
 }

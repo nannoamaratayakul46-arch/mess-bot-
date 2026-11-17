@@ -14561,61 +14561,12 @@ async function gracefulShutdown(
   );
 }
 
-function handleRecoverableMessengerProcessFailure(kind, reason) {
-  const { authRejected } = classifyListenerError(reason);
-  if (!authRejected) return false;
-
-  const detail = String(reason?.message || reason || "Facebook rejected the Messenger session.")
-    .slice(0, 240);
-  console.error("[SYSTEM] Recoverable Messenger " + kind + ":", detail);
-
-  // ws3-fca 3.5.2 can reject internal MQTT delivery/thread-info promises
-  // after Facebook invalidates the session. Route that failure through the
-  // existing listener recovery path instead of taking down Express, Neon,
-  // dashboard routes, and every unrelated bot subsystem.
-  if (
-    activeMessengerApi &&
-    activeListenerGeneration > 0 &&
-    typeof activeMqttListenerCallback === "function"
-  ) {
-    try {
-      activeMqttListenerCallback(reason, null);
-      return true;
-    } catch (recoveryError) {
-      console.error(
-        "[SYSTEM] Messenger listener recovery callback failed:",
-        recoveryError?.message || recoveryError
-      );
-    }
-  }
-
-  // A second rejection may arrive after the first one detached the listener.
-  // Keep the process alive and leave Messenger paused; the existing login
-  // flow owns retries and will require a fresh session after its one recheck.
-  watchdogSetMessengerConnected(false);
-  dashboardLastDisconnectedAt = new Date().toISOString();
-  dashboardLoginError =
-    "Facebook rejected the Messenger session. Upload a fresh session from the dashboard if revalidation does not recover it.";
-  try {
-    pushDashboardEvent("login-failed", "Messenger authentication was rejected; the dashboard remains online.", {
-      detail,
-      failure_kind: "messenger_auth_rejected",
-    });
-  } catch (eventError) {
-    console.warn("[SYSTEM] Could not publish Messenger auth failure event:", eventError?.message || eventError);
-  }
-  console.warn("[SYSTEM] Messenger is paused; the dashboard and independent services will remain online.");
-  return true;
-}
-
-process.on("uncaughtException", (error) => {
-  if (handleRecoverableMessengerProcessFailure("uncaught exception", error)) return;
+process.once("uncaughtException", (error) => {
   console.error("[SYSTEM] Uncaught exception:", error);
   void gracefulShutdown("uncaughtException", 1);
 });
 
-process.on("unhandledRejection", (reason) => {
-  if (handleRecoverableMessengerProcessFailure("unhandled rejection", reason)) return;
+process.once("unhandledRejection", (reason) => {
   console.error("[SYSTEM] Unhandled rejection:", reason);
   void gracefulShutdown("unhandledRejection", 1);
 });
