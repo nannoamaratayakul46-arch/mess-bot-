@@ -2,6 +2,7 @@
 
 const axios = require("axios");
 const { HttpsProxyAgent } = require("https-proxy-agent");
+const messengerProxyUsage = require("./messengerProxyUsage");
 
 let verificationPromise = null;
 let verifiedProxyUrl = null;
@@ -53,7 +54,7 @@ async function verifyMessengerProxy() {
   const proxyUrl = getMessengerProxyUrl();
   if (verificationPromise && verifiedProxyUrl === proxyUrl) return verificationPromise;
 
-  const agent = new HttpsProxyAgent(proxyUrl);
+  const agent = messengerProxyUsage.instrumentAgent(new HttpsProxyAgent(proxyUrl));
   const providers = [
     { name: "ipinfo.io", url: "https://ipinfo.io/json" },
     { name: "ipwho.is", url: "https://ipwho.is/" },

@@ -5,6 +5,7 @@ const { loadDashboardGroupSettings } = require("./dashboardGroupSettings");
 const { setMessageReactionMqtt, changeGroupMember } = require("./messengerApiCompat");
 const { classifyListenerError, getListenerRecoveryDelayMs, getLoginRetryDelayMs } = require("./messengerRecoveryPolicy");
 const { verifyMessengerProxy, getMessengerProxyUrl, setMessengerProxyEnabled, isMessengerProxyEnabled } = require("./messengerProxy");
+const messengerProxyUsage = require("./messengerProxyUsage");
 
 // "/" is an admin-only Banat toggle. Keep unauthorized-attempt state at
 // module scope so it survives individual message-handler invocations.
@@ -54,6 +55,10 @@ async function loadMessengerProxyMode() {
     const enabled = rows[0]?.preference_value !== false;
     setMessengerProxyEnabled(enabled);
     process.env.ECLIPSE_MESSENGER_PROXY_MODE = enabled ? "proxy" : "direct";
+    await messengerProxyUsage.initialize(db, {
+      onLimit: status => pushDashboardEvent("proxy", "Messenger proxy bandwidth safety cap reached. New logins are blocked until the next monthly cycle or owner review.", { failure_kind: "proxy_bandwidth_hard_stop", used_bytes: status.used_bytes }),
+      onWarning: (level, status) => pushDashboardEvent("proxy", level === "critical" ? "Messenger proxy bandwidth usage is critical (1.7 GB of 2 GB). New connections will stop at 1.8 GB." : "Messenger proxy bandwidth reached 1.4 GB of 2 GB.", { failure_kind: "proxy_bandwidth_" + level, used_bytes: status.used_bytes })
+    });
     console.log("[PROXY] Active Messenger network mode: " + (enabled ? "PROXY" : "RENDER DIRECT"));
     return enabled;
   } catch (error) {
@@ -3825,6 +3830,12 @@ function requireDashboardAccess(req, res, next) {
 app.use(dashboardCors);
 
 app.get(
+  "/api/dashboard/messenger-proxy/usage",
+  requireDashboardAccess,
+  (_req, res) => res.json({ ok: true, usage: messengerProxyUsage.getStatus() })
+);
+
+app.get(
   "/api/dashboard/messenger-proxy/settings",
   requireDashboardAccess,
   async (_req, res) => {
@@ -7498,6 +7509,11 @@ function fallbackFromRejectedDurableSession() {
 }
 
 function attemptLogin() {
+  if (isMessengerProxyEnabled() && !messengerProxyUsage.isAllowed()) {
+    dashboardLoginError = "Messenger login is paused by the proxy bandwidth safety guard or because usage accounting is unavailable.";
+    console.error("[PROXY USAGE] Login blocked: bandwidth meter is not ready or the 1.8 GB safety cap has been reached.");
+    return;
+  }
   // Verify the configured proxy before Messenger login. Temporary probe
   // failures retry automatically with bounded backoff and preserve the session.
   if (!proxyGateVerified) {

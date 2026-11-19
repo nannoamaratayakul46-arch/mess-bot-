@@ -26,6 +26,7 @@ test("proxy verification validates credentials and probes through the explicit p
   assert.match(source, /\[["']http:["'], ["']https:["']\]/);
   assert.match(source, /parsed\.username \|\| !parsed\.password/);
   assert.match(source, /new HttpsProxyAgent\(proxyUrl\)/);
+  assert.match(source, /messengerProxyUsage\.instrumentAgent\(new HttpsProxyAgent\(proxyUrl\)\)/);
   assert.match(source, /httpsAgent: agent/);
   assert.match(source, /proxy: false/);
   assert.match(source, /Proxy egress verification failed/);

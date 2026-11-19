@@ -22,12 +22,20 @@ test("ws3-fca postinstall validates the pinned public API and guards the fb_dtsg
   assert.match(patchScript, /did not match the verified fb_dtsg extraction line/);
   assert.match(patchScript, /writeFileSync\(buildApiPath/);
   assert.match(patchScript, /ECLIPSE_WS3_FCA_COOKIE_AWARE_PROXY_V1/);
+  assert.match(patchScript, /instrumentAgent\(new HttpsProxyCookieAgent/);
+  assert.match(patchScript, /instrumentAgent\(new HttpsProxyAgent/);
+  assert.match(patchScript, /cached HTTP proxy agent with bandwidth accounting/);
+  assert.match(patchScript, /cached MQTT proxy agent with bandwidth accounting/);
   assert.match(patchScript, /createCookieAgent\(HttpsProxyAgent\)/);
   assert.match(patchScript, /ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1/);
   assert.match(patchScript, /ECLIPSE_WS3_FCA_THREAD_INFO_RESPONSE_GUARD_V1/);
   assert.match(patchScript, /ECLIPSE_WS3_FCA_INVALID_THREAD_RESPONSE/);
   assert.match(patchScript, /formatThreadGraphQLResponse/);
   assert.match(patchScript, /new HttpsProxyAgent\(ctx\.globalOptions\.proxy\)/);
+  assert.match(patchScript, /Messenger MQTT proxy is required; refusing direct WebSocket transport/);
+  assert.match(patchScript, /ECLIPSE_MESSENGER_PROXY_MODE !== "direct"/);
+  assert.match(patchScript, /legacyMqttSetup/);
+  assert.match(patchScript, /Upgraded cached MQTT transport with a fail-closed proxy guard/);
   assert.match(patchScript, /responseKind:/);
   assert.match(patchScript, /twoFactorFormMarker:/);
   assert.match(patchScript, /checkpointPathMarker:/);
@@ -48,6 +56,14 @@ test("package manifest pins the audited ws3-fca release", () => {
   const pkg = require(path.join(root, "package.json"));
   assert.equal(pkg.dependencies["ws3-fca"], "3.5.2");
   assert.equal(pkg.scripts.postinstall, "node scripts/patch-ws3-fca.js");
+});
+
+test("Messenger login is blocked when the persistent proxy bandwidth meter is unavailable or capped", () => {
+  const indexSource = fs.readFileSync(path.join(root, "index.js"), "utf8");
+  assert.match(indexSource, /messengerProxyUsage\.initialize\(db/);
+  assert.match(indexSource, /messengerProxyUsage\.isAllowed\(\)/);
+  assert.match(indexSource, /proxy bandwidth safety guard/);
+  assert.match(indexSource, /\/api\/dashboard\/messenger-proxy\/usage/);
 });
 
 test("login diagnostic allowlist forwards safe fb_dtsg shape metadata without token values", () => {

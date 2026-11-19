@@ -129,7 +129,8 @@ const proxyPatchMarker = "ECLIPSE_WS3_FCA_COOKIE_AWARE_PROXY_V1";
 if (!axiosSource.includes(proxyPatchMarker)) {
   const oldImport = 'const { wrapper } = require("axios-cookiejar-support");';
   const newImports = `const path = require("node:path");\nconst { HttpCookieAgent, HttpsCookieAgent, createCookieAgent } = require(require.resolve("http-cookie-agent/http", { paths: [path.dirname(require.resolve("axios-cookiejar-support"))] }));
-const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));`;
+const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));
+const eclipseProxyUsage = require(path.join(process.cwd(), "messengerProxyUsage.js"));`;
   if (!axiosSource.includes(oldImport)) {
     throw new Error("[postinstall] ws3-fca axios transport import did not match the verified cookie-jar implementation.");
   }
@@ -174,7 +175,7 @@ const client = axios.create({
 
     // Use the authenticated CONNECT tunnel for BOTH protocols. This keeps
     // accidental plain-HTTP Messenger requests inside the configured proxy.
-    const proxyAgent = new HttpsProxyCookieAgent(proxyUrl, { cookies: { jar } });
+    const proxyAgent = eclipseProxyUsage.instrumentAgent(new HttpsProxyCookieAgent(proxyUrl, { cookies: { jar } }));
     client.defaults.httpAgent = proxyAgent;
     client.defaults.httpsAgent = proxyAgent;
     proxyConfig = { proxy: false };
@@ -209,6 +210,21 @@ if (axiosSource.includes(proxyPatchMarker) && axiosSource.includes("new HttpsPro
 
 
 
+// Upgrade cached ws3-fca agents so both HTTP and MQTT sockets feed the
+// persistent monthly bandwidth guard, even when Render reuses node_modules.
+if (axiosSource.includes(proxyPatchMarker) && !axiosSource.includes("messengerProxyUsage.js")) {
+  axiosSource = axiosSource.replace(
+    'const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));',
+    'const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));\nconst eclipseProxyUsage = require(path.join(process.cwd(), "messengerProxyUsage.js"));'
+  );
+  axiosSource = axiosSource.replace(
+    'new HttpsProxyCookieAgent(proxyUrl, { cookies: { jar } })',
+    'eclipseProxyUsage.instrumentAgent(new HttpsProxyCookieAgent(proxyUrl, { cookies: { jar } }))'
+  );
+  fs.writeFileSync(axiosPath, axiosSource, "utf8");
+  console.log("[postinstall] Upgraded cached HTTP proxy agent with bandwidth accounting.");
+}
+
 // Upgrade an already-patched node_modules cache as well as fresh installs.
 // Render may reuse the generated axios.js containing the previous fail-closed
 // guard, so the explicit direct-mode branch must be migrated idempotently.
@@ -241,14 +257,16 @@ if (!fs.existsSync(mqttPath)) {
 let mqttSource = fs.readFileSync(mqttPath, "utf8");
 if (!mqttSource.includes("ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1")) {
   const oldAgentImport = 'const HttpsProxyAgent = require(\'https-proxy-agent\');';
-  const newAgentImport = 'const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));';
+  const newAgentImport = 'const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));\nconst eclipseProxyUsage = require(require("node:path").join(process.cwd(), "messengerProxyUsage.js"));';
   const oldAgentSetup = 'if (ctx.globalOptions.proxy) options.wsOptions.agent = new HttpsProxyAgent(ctx.globalOptions.proxy);';
   const newAgentSetup = `if (ctx.globalOptions.proxy) {
         const proxyUrl = new URL(ctx.globalOptions.proxy);
         if (!["http:", "https:"].includes(proxyUrl.protocol) || !proxyUrl.hostname || !proxyUrl.port) {
             throw new Error("Invalid HTTP(S) proxy URL for Messenger MQTT transport.");
         }
-        options.wsOptions.agent = new HttpsProxyAgent(ctx.globalOptions.proxy);
+        options.wsOptions.agent = eclipseProxyUsage.instrumentAgent(new HttpsProxyAgent(ctx.globalOptions.proxy));
+    } else if (process.env.ECLIPSE_MESSENGER_PROXY_MODE !== "direct") {
+        throw new Error("Messenger MQTT proxy is required; refusing direct WebSocket transport.");
     }`;
   if (!mqttSource.includes(oldAgentImport) || !mqttSource.includes(oldAgentSetup)) {
     throw new Error("[postinstall] ws3-fca MQTT proxy setup did not match the verified 3.5.2 source; refusing to patch.");
@@ -263,6 +281,38 @@ if (!mqttSource.includes("ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1")) {
   console.log("[postinstall] Routed ws3-fca MQTT through the root HTTPS proxy agent.");
 } else {
   console.log("[postinstall] Root HTTPS proxy agent already installed for ws3-fca MQTT.");
+}
+
+// Upgrade an already-patched Render node_modules cache: the original MQTT patch
+// only installed an agent when a proxy happened to be supplied, silently allowing
+// direct WebSocket traffic if ws3-fca lost the login proxy option.
+const legacyMqttSetup = 'if (ctx.globalOptions.proxy) {\n        const proxyUrl = new URL(ctx.globalOptions.proxy);\n        if (!["http:", "https:"].includes(proxyUrl.protocol) || !proxyUrl.hostname || !proxyUrl.port) {\n            throw new Error("Invalid HTTP(S) proxy URL for Messenger MQTT transport.");\n        }\n        options.wsOptions.agent = new HttpsProxyAgent(ctx.globalOptions.proxy);\n    }';
+const guardedMqttSetup = `if (ctx.globalOptions.proxy) {
+        const proxyUrl = new URL(ctx.globalOptions.proxy);
+        if (!["http:", "https:"].includes(proxyUrl.protocol) || !proxyUrl.hostname || !proxyUrl.port) {
+            throw new Error("Invalid HTTP(S) proxy URL for Messenger MQTT transport.");
+        }
+        options.wsOptions.agent = new HttpsProxyAgent(ctx.globalOptions.proxy);
+    } else if (process.env.ECLIPSE_MESSENGER_PROXY_MODE !== "direct") {
+        throw new Error("Messenger MQTT proxy is required; refusing direct WebSocket transport.");
+    }`;
+if (mqttSource.includes("ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1") && mqttSource.includes(legacyMqttSetup)) {
+  mqttSource = mqttSource.replace(legacyMqttSetup, guardedMqttSetup);
+  fs.writeFileSync(mqttPath, mqttSource, "utf8");
+  console.log("[postinstall] Upgraded cached MQTT transport with a fail-closed proxy guard.");
+}
+
+if (mqttSource.includes("ECLIPSE_WS3_FCA_MQTT_ROOT_PROXY_AGENT_V1") && !mqttSource.includes("messengerProxyUsage.js")) {
+  mqttSource = mqttSource.replace(
+    'const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));',
+    'const { HttpsProxyAgent } = require(require.resolve("https-proxy-agent", { paths: [process.cwd()] }));\nconst eclipseProxyUsage = require(require("node:path").join(process.cwd(), "messengerProxyUsage.js"));'
+  );
+  mqttSource = mqttSource.replace(
+    'options.wsOptions.agent = new HttpsProxyAgent(ctx.globalOptions.proxy);',
+    'options.wsOptions.agent = eclipseProxyUsage.instrumentAgent(new HttpsProxyAgent(ctx.globalOptions.proxy));'
+  );
+  fs.writeFileSync(mqttPath, mqttSource, "utf8");
+  console.log("[postinstall] Upgraded cached MQTT proxy agent with bandwidth accounting.");
 }
 
 // Guard GraphQL batch entries before ws3-fca dereferences response.errors.
