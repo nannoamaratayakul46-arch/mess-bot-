@@ -3860,6 +3860,41 @@ function verifyPhotoSubmissionToken(token) {
 
 let photoSubmissionsSchemaPromise = null;
 
+// The shared capture page is public by design. Limit both token issuance and
+// uploads per client IP so the endpoint cannot be used as an unrestricted
+// anonymous image sink. Each token remains signed, short-lived, and single-use.
+const PHOTO_PUBLIC_RATE_WINDOW_MS = 15 * 60 * 1000;
+const PHOTO_PUBLIC_RATE_MAX = 10;
+const photoPublicRateBuckets = new Map();
+
+function allowPublicPhotoRequest(req, res) {
+  const now = Date.now();
+  const key = String(req.ip || req.socket?.remoteAddress || "unknown").slice(0, 128);
+  let bucket = photoPublicRateBuckets.get(key);
+  if (!bucket || now - bucket.startedAt >= PHOTO_PUBLIC_RATE_WINDOW_MS) {
+    if (!bucket && photoPublicRateBuckets.size >= 5000) {
+      const oldestKey = photoPublicRateBuckets.keys().next().value;
+      if (oldestKey !== undefined) photoPublicRateBuckets.delete(oldestKey);
+    }
+    bucket = { startedAt: now, count: 0 };
+    photoPublicRateBuckets.set(key, bucket);
+  }
+  bucket.count += 1;
+
+  if (photoPublicRateBuckets.size > 5000) {
+    for (const [ip, entry] of photoPublicRateBuckets) {
+      if (now - entry.startedAt >= PHOTO_PUBLIC_RATE_WINDOW_MS) photoPublicRateBuckets.delete(ip);
+    }
+  }
+
+  if (bucket.count > PHOTO_PUBLIC_RATE_MAX) {
+    res.setHeader("Retry-After", String(Math.ceil((PHOTO_PUBLIC_RATE_WINDOW_MS - (now - bucket.startedAt)) / 1000)));
+    res.status(429).json({ ok: false, error: "Too many photo attempts from this connection. Please try again later." });
+    return false;
+  }
+  return true;
+}
+
 async function ensurePhotoSubmissionsTable() {
   if (!photoSubmissionsSchemaPromise) {
     photoSubmissionsSchemaPromise = (async () => {
@@ -3876,7 +3911,20 @@ async function ensurePhotoSubmissionsTable() {
   }
 }
 
+app.post("/api/photo-submissions/public-token", (req, res) => {
+  if (!allowPublicPhotoRequest(req, res)) return;
+  try {
+    const token = createPhotoSubmissionToken("direct-link");
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({ ok: true, token, expires_in_seconds: PHOTO_TOKEN_TTL_MS / 1000 });
+  } catch (error) {
+    console.error("[PHOTO] Could not issue direct-link token:", error?.message || error);
+    return res.status(503).json({ ok: false, error: "Photo submissions are temporarily unavailable." });
+  }
+});
+
 app.post("/api/photo-submissions", express.raw({ type: "image/jpeg", limit: PHOTO_MAX_BYTES }), async (req, res) => {
+  if (!allowPublicPhotoRequest(req, res)) return;
   const rawToken = String(req.headers["x-eclipse-photo-token"] || "");
   const verified = verifyPhotoSubmissionToken(rawToken);
   if (!verified) return res.status(401).json({ ok: false, error: "This photo link is invalid or expired. Ask the bot for a new link." });
@@ -3894,7 +3942,7 @@ app.post("/api/photo-submissions", express.raw({ type: "image/jpeg", limit: PHOT
       [verified.senderId, req.body, req.body.length, tokenHash]
     );
     if (!inserted.rows?.length) return res.status(409).json({ ok: false, error: "This photo link has already been used. Ask the bot for a new link." });
-    if (activeMessengerApi && activeListenerGeneration > 0) {
+    if (verified.senderId !== "direct-link" && activeMessengerApi && activeListenerGeneration > 0) {
       try {
         await sendMessengerMessage(activeMessengerApi, "✅ We received your photo. Thank you!", verified.senderId);
       } catch (notifyError) {
@@ -8810,30 +8858,6 @@ async function handleMessage(
     String(
       senderID || ""
     ).trim();
-
-  if (text === "/photo" || text === "!photo" || text === ".photo") {
-    const dashboardOrigin = String(process.env.ECLIPSE_DASHBOARD_ORIGIN || "").trim().replace(/\/+$/, "");
-    if (!dashboardOrigin || !senderId) {
-      await sendMessengerMessage(api, "Photo submissions are not configured right now.", threadID).catch(() => undefined);
-      return;
-    }
-    try {
-      const token = createPhotoSubmissionToken(senderId);
-      const link = new URL("/capture", dashboardOrigin);
-      link.searchParams.set("token", token);
-      await sendMessengerMessage(
-        api,
-        "📸 Tap this secure link to take and submit your photo. Your camera starts only after you allow it, and the photo is uploaded only when you confirm:\n" + link.toString(),
-        threadID
-      );
-    } catch (error) {
-      console.error("[PHOTO] Could not create submission link:", error?.message || error);
-      await sendMessengerMessage(api, "Photo submissions are temporarily unavailable. Please try again later.", threadID).catch(() => undefined);
-    }
-    return;
-  }
-
-
 
   // ==========================================================
   // BANAT — BOT / ECLIPSE ADMIN REACTION
