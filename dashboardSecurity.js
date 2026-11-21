@@ -47,7 +47,7 @@ function createDashboardSecurity({ apiKey = "", allowedOrigins = "", now = Date.
       res.setHeader("Access-Control-Allow-Credentials", "true");
     }
     if (req.method === "OPTIONS") {
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-ECLIPSE-DASHBOARD-KEY, X-ECLIPSE-CSRF-TOKEN");
+      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization, X-ECLIPSE-DASHBOARD-KEY, X-ECLIPSE-CSRF-TOKEN, X-ECLIPSE-PHOTO-TOKEN");
       res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
       res.setHeader("Access-Control-Max-Age", "600");
       return res.sendStatus(204);

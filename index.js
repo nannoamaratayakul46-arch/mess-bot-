@@ -3829,6 +3829,127 @@ function requireDashboardAccess(req, res, next) {
 
 app.use(dashboardCors);
 
+const PHOTO_TOKEN_TTL_MS = 10 * 60 * 1000;
+const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
+
+function createPhotoSubmissionToken(senderId) {
+  const secret = String(process.env.ECLIPSE_PHOTO_TOKEN_SECRET || "");
+  if (Buffer.byteLength(secret, "utf8") < 32) throw new Error("ECLIPSE_PHOTO_TOKEN_SECRET must contain at least 32 bytes.");
+  const payload = Buffer.from(JSON.stringify({ sender_id: String(senderId), exp: Date.now() + PHOTO_TOKEN_TTL_MS, nonce: crypto.randomBytes(18).toString("base64url") })).toString("base64url");
+  const signature = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
+  return payload + "." + signature;
+}
+
+function verifyPhotoSubmissionToken(token) {
+  const secret = String(process.env.ECLIPSE_PHOTO_TOKEN_SECRET || "");
+  if (Buffer.byteLength(secret, "utf8") < 32) return null;
+  const parts = String(token || "").split(".");
+  if (parts.length !== 2 || !parts[0] || !parts[1]) return null;
+  const expected = crypto.createHmac("sha256", secret).update(parts[0]).digest();
+  let actual;
+  try { actual = Buffer.from(parts[1], "base64url"); } catch { return null; }
+  if (actual.length !== expected.length || !crypto.timingSafeEqual(actual, expected)) return null;
+  try {
+    const payload = JSON.parse(Buffer.from(parts[0], "base64url").toString("utf8"));
+    if (!payload || typeof payload.sender_id !== "string" || !payload.sender_id.trim()) return null;
+    if (!Number.isFinite(payload.exp) || payload.exp <= Date.now()) return null;
+    if (typeof payload.nonce !== "string" || payload.nonce.length < 16) return null;
+    return { senderId: payload.sender_id.trim() };
+  } catch { return null; }
+}
+
+let photoSubmissionsSchemaPromise = null;
+
+async function ensurePhotoSubmissionsTable() {
+  if (!photoSubmissionsSchemaPromise) {
+    photoSubmissionsSchemaPromise = (async () => {
+      await db.query("CREATE TABLE IF NOT EXISTS eclipse_photo_submissions (id BIGSERIAL PRIMARY KEY, sender_id TEXT NOT NULL, image_data BYTEA NOT NULL, mime_type TEXT NOT NULL DEFAULT 'image/jpeg', size_bytes INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, deleted_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+      await db.query("ALTER TABLE eclipse_photo_submissions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ");
+      await db.query("CREATE INDEX IF NOT EXISTS eclipse_photo_submissions_created_idx ON eclipse_photo_submissions (created_at DESC)");
+    })();
+  }
+  try {
+    await photoSubmissionsSchemaPromise;
+  } catch (error) {
+    photoSubmissionsSchemaPromise = null;
+    throw error;
+  }
+}
+
+app.post("/api/photo-submissions", express.raw({ type: "image/jpeg", limit: PHOTO_MAX_BYTES }), async (req, res) => {
+  const rawToken = String(req.headers["x-eclipse-photo-token"] || "");
+  const verified = verifyPhotoSubmissionToken(rawToken);
+  if (!verified) return res.status(401).json({ ok: false, error: "This photo link is invalid or expired. Ask the bot for a new link." });
+  if (!Buffer.isBuffer(req.body) || req.body.length < 4 || req.body.length > PHOTO_MAX_BYTES) {
+    return res.status(400).json({ ok: false, error: "Upload a JPEG photo up to 2 MB." });
+  }
+  if (req.body[0] !== 0xff || req.body[1] !== 0xd8 || req.body[2] !== 0xff) {
+    return res.status(415).json({ ok: false, error: "Only valid JPEG photos are accepted." });
+  }
+  const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  try {
+    await ensurePhotoSubmissionsTable();
+    const inserted = await db.query(
+      "INSERT INTO eclipse_photo_submissions (sender_id, image_data, mime_type, size_bytes, token_hash) VALUES ($1, $2, 'image/jpeg', $3, $4) ON CONFLICT (token_hash) DO NOTHING RETURNING id",
+      [verified.senderId, req.body, req.body.length, tokenHash]
+    );
+    if (!inserted.rows?.length) return res.status(409).json({ ok: false, error: "This photo link has already been used. Ask the bot for a new link." });
+    if (activeMessengerApi && activeListenerGeneration > 0) {
+      try {
+        await sendMessengerMessage(activeMessengerApi, "✅ We received your photo. Thank you!", verified.senderId);
+      } catch (notifyError) {
+        console.warn("[PHOTO] Saved photo, but Messenger confirmation could not be sent:", notifyError?.message || notifyError);
+      }
+    }
+    try { pushDashboardEvent("photo", "A new photo submission was received.", { photo_id: inserted.rows[0].id }); } catch {}
+    return res.status(201).json({ ok: true, message: "Your photo was submitted successfully." });
+  } catch (error) {
+    console.error("[PHOTO] Could not save photo submission:", error?.message || error);
+    return res.status(500).json({ ok: false, error: "Could not save your photo. Please try again." });
+  }
+});
+
+app.get("/api/dashboard/photos", requireDashboardAccess, async (_req, res) => {
+  try {
+    await ensurePhotoSubmissionsTable();
+    const result = await db.query("SELECT id, sender_id, mime_type, size_bytes, created_at FROM eclipse_photo_submissions WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 50");
+    return res.json({ ok: true, photos: result.rows || [] });
+  } catch (error) {
+    console.error("[PHOTO] Could not load photo submissions:", error?.message || error);
+    return res.status(500).json({ ok: false, error: "Could not load photo submissions." });
+  }
+});
+
+app.get("/api/dashboard/photos/:id/image", requireDashboardAccess, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ ok: false, error: "Invalid photo ID." });
+  try {
+    await ensurePhotoSubmissionsTable();
+    const result = await db.query("SELECT image_data, mime_type FROM eclipse_photo_submissions WHERE id = $1 AND deleted_at IS NULL LIMIT 1", [id]);
+    if (!result.rows?.length) return res.status(404).json({ ok: false, error: "Photo not found." });
+    res.setHeader("Cache-Control", "private, no-store");
+    res.setHeader("Content-Type", result.rows[0].mime_type || "image/jpeg");
+    return res.send(result.rows[0].image_data);
+  } catch (error) {
+    console.error("[PHOTO] Could not load photo image:", error?.message || error);
+    return res.status(500).json({ ok: false, error: "Could not load photo image." });
+  }
+});
+
+app.delete("/api/dashboard/photos/:id", requireDashboardAccess, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id < 1) return res.status(400).json({ ok: false, error: "Invalid photo ID." });
+  try {
+    await ensurePhotoSubmissionsTable();
+    const result = await db.query("UPDATE eclipse_photo_submissions SET image_data = ''::bytea, size_bytes = 0, deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL RETURNING id", [id]);
+    if (!result.rows?.length) return res.status(404).json({ ok: false, error: "Photo not found." });
+    return res.json({ ok: true, deleted: true });
+  } catch (error) {
+    console.error("[PHOTO] Could not delete photo:", error?.message || error);
+    return res.status(500).json({ ok: false, error: "Could not delete photo." });
+  }
+});
+
 app.get(
   "/api/dashboard/messenger-proxy/usage",
   requireDashboardAccess,
@@ -8689,6 +8810,30 @@ async function handleMessage(
     String(
       senderID || ""
     ).trim();
+
+  if (text === "/photo" || text === "!photo" || text === ".photo") {
+    const dashboardOrigin = String(process.env.ECLIPSE_DASHBOARD_ORIGIN || "").trim().replace(/\/+$/, "");
+    if (!dashboardOrigin || !senderId) {
+      await sendMessengerMessage(api, "Photo submissions are not configured right now.", threadID).catch(() => undefined);
+      return;
+    }
+    try {
+      const token = createPhotoSubmissionToken(senderId);
+      const link = new URL("/capture", dashboardOrigin);
+      link.searchParams.set("token", token);
+      await sendMessengerMessage(
+        api,
+        "📸 Tap this secure link to take and submit your photo. Your camera starts only after you allow it, and the photo is uploaded only when you confirm:\n" + link.toString(),
+        threadID
+      );
+    } catch (error) {
+      console.error("[PHOTO] Could not create submission link:", error?.message || error);
+      await sendMessengerMessage(api, "Photo submissions are temporarily unavailable. Please try again later.", threadID).catch(() => undefined);
+    }
+    return;
+  }
+
+
 
   // ==========================================================
   // BANAT — BOT / ECLIPSE ADMIN REACTION
