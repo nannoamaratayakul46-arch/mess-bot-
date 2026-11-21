@@ -121,13 +121,20 @@ function createDashboardAccessRoutes({ app, db, legacyAuth, sessionTtlMs = 7 * 2
   function isAllowedOrigin(req) {
     const origin = String(req.headers?.origin || "").trim();
     if (!origin) return false;
-    const allowed = String(process.env.ECLIPSE_DASHBOARD_ORIGIN || "https://messenger-bot-admin-6wlf.onrender.com")
-      .split(",").map(value => {
+    const allowed = String(
+      process.env.ECLIPSE_DASHBOARD_ORIGIN ||
+        "https://messenger-bot-admin-6wlf.onrender.com,https://gmeetroom.pntr.dev"
+    )
+      .split(",")
+      .map(value => {
         try {
           const parsed = new URL(value.trim());
           return parsed.origin === "null" ? parsed.protocol + "//" + parsed.host : parsed.origin;
-        } catch { return ""; }
-      }).filter(Boolean);
+        } catch {
+          return "";
+        }
+      })
+      .filter(Boolean);
     return allowed.includes(origin);
   }
 
