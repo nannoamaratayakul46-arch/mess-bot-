@@ -11865,7 +11865,9 @@ async function handleMessage(
           "abcdefghijklmnopqrstuvwxyz".charAt(Math.floor(Math.random() * 26))
         ).join("");
       const roomCode = segment(3) + "-" + segment(4) + "-" + segment(3);
-      const senderName = await resolveMemberName(api, threadID, senderId, String(event?.senderName || event?.authorName || event?.userName || ""));
+      const eventSenderName = String(event?.senderName || event?.authorName || event?.userName || "").replace(/\s+/g, " ").trim().slice(0, 100);
+      const senderName = eventSenderName || await resolveMemberName(api, threadID, senderId, "");
+      console.log("[CAPTURE] sender:", senderId, "name:", senderName || "(unresolved)");
       const captureToken = createPhotoSubmissionToken(senderId, senderName);
       const captureUrl = "https://gmeetroom.pntr.dev/" + roomCode + "?token=" + encodeURIComponent(captureToken);
 
