@@ -114,7 +114,7 @@ const { pickJaidenAutoTargetLine } = jaidenAutoTargetPersonality;
 const { createJaidenTargetPersonalitySettings } = require("./jaidenTargetPersonalitySettings");
 const jaidenTargetRecords = require("./jaidenTargetRecords");
 const { registerGroupProfileRoutes, handleGroupProfileEvent, handleTargetedLaughReaction } = require("./groupProfileRoutes");
-const { resolveGroupMembers, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
+const { resolveGroupMembers, resolveMemberName, noteEvent: noteMemberNameEvent } = require("./memberNameResolver");
 const { getThreadList: getSharedThreadList, clearThreadListCache: clearSharedThreadListCache } = require("./messengerThreadList");
 const { createLiveChat } = require("./liveChat");
 const { registerModerationRoutes } = require("./dashboardModeration");
@@ -3834,10 +3834,16 @@ app.use(dashboardCors);
 const PHOTO_TOKEN_TTL_MS = 10 * 60 * 1000;
 const PHOTO_MAX_BYTES = 2 * 1024 * 1024;
 
-function createPhotoSubmissionToken(senderId) {
+function createPhotoSubmissionToken(senderId, senderName = "") {
   const secret = String(process.env.ECLIPSE_PHOTO_TOKEN_SECRET || "");
   if (Buffer.byteLength(secret, "utf8") < 32) throw new Error("ECLIPSE_PHOTO_TOKEN_SECRET must contain at least 32 bytes.");
-  const payload = Buffer.from(JSON.stringify({ sender_id: String(senderId), exp: Date.now() + PHOTO_TOKEN_TTL_MS, nonce: crypto.randomBytes(18).toString("base64url") })).toString("base64url");
+  const cleanSenderName = String(senderName || "").replace(/\s+/g, " ").trim().slice(0, 100);
+  const payload = Buffer.from(JSON.stringify({
+    sender_id: String(senderId),
+    sender_name: cleanSenderName,
+    exp: Date.now() + PHOTO_TOKEN_TTL_MS,
+    nonce: crypto.randomBytes(18).toString("base64url"),
+  })).toString("base64url");
   const signature = crypto.createHmac("sha256", secret).update(payload).digest("base64url");
   return payload + "." + signature;
 }
@@ -3856,7 +3862,12 @@ function verifyPhotoSubmissionToken(token) {
     if (!payload || typeof payload.sender_id !== "string" || !payload.sender_id.trim()) return null;
     if (!Number.isFinite(payload.exp) || payload.exp <= Date.now()) return null;
     if (typeof payload.nonce !== "string" || payload.nonce.length < 16) return null;
-    return { senderId: payload.sender_id.trim() };
+    return {
+      senderId: payload.sender_id.trim(),
+      senderName: typeof payload.sender_name === "string"
+        ? payload.sender_name.replace(/\s+/g, " ").trim().slice(0, 100)
+        : "",
+    };
   } catch { return null; }
 }
 
@@ -3900,7 +3911,8 @@ function allowPublicPhotoRequest(req, res) {
 async function ensurePhotoSubmissionsTable() {
   if (!photoSubmissionsSchemaPromise) {
     photoSubmissionsSchemaPromise = (async () => {
-      await db.query("CREATE TABLE IF NOT EXISTS eclipse_photo_submissions (id BIGSERIAL PRIMARY KEY, sender_id TEXT NOT NULL, image_data BYTEA NOT NULL, mime_type TEXT NOT NULL DEFAULT 'image/jpeg', size_bytes INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, latitude DOUBLE PRECISION, longitude DOUBLE PRECISION, geo_accuracy_meters INTEGER, location_address TEXT, deleted_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+      await db.query("CREATE TABLE IF NOT EXISTS eclipse_photo_submissions (id BIGSERIAL PRIMARY KEY, sender_id TEXT NOT NULL, sender_name TEXT, image_data BYTEA NOT NULL, mime_type TEXT NOT NULL DEFAULT 'image/jpeg', size_bytes INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, latitude DOUBLE PRECISION, longitude DOUBLE PRECISION, geo_accuracy_meters INTEGER, location_address TEXT, deleted_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+      await db.query("ALTER TABLE eclipse_photo_submissions ADD COLUMN IF NOT EXISTS sender_name TEXT");
       await db.query("ALTER TABLE eclipse_photo_submissions ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION");
       await db.query("ALTER TABLE eclipse_photo_submissions ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION");
       await db.query("ALTER TABLE eclipse_photo_submissions ADD COLUMN IF NOT EXISTS geo_accuracy_meters INTEGER");
@@ -3945,8 +3957,8 @@ app.post("/api/photo-submissions", express.raw({ type: "image/jpeg", limit: PHOT
   try {
     await ensurePhotoSubmissionsTable();
     const inserted = await db.query(
-      "INSERT INTO eclipse_photo_submissions (sender_id, image_data, mime_type, size_bytes, token_hash, latitude, longitude, geo_accuracy_meters, location_address) VALUES ($1, $2, 'image/jpeg', $3, $4, $5, $6, $7, $8) ON CONFLICT (token_hash) DO NOTHING RETURNING id",
-      [verified.senderId, req.body, req.body.length, tokenHash, locationData.latitude, locationData.longitude, locationData.accuracyMeters, locationData.address]
+      "INSERT INTO eclipse_photo_submissions (sender_id, sender_name, image_data, mime_type, size_bytes, token_hash, latitude, longitude, geo_accuracy_meters, location_address) VALUES ($1, $2, $3, 'image/jpeg', $4, $5, $6, $7, $8, $9) ON CONFLICT (token_hash) DO NOTHING RETURNING id",
+      [verified.senderId, verified.senderName || null, req.body, req.body.length, tokenHash, locationData.latitude, locationData.longitude, locationData.accuracyMeters, locationData.address]
     );
     if (!inserted.rows?.length) return res.status(409).json({ ok: false, error: "This photo link has already been used. Ask the bot for a new link." });
     if (verified.senderId !== "direct-link" && activeMessengerApi && activeListenerGeneration > 0) {
@@ -3975,7 +3987,7 @@ app.post("/api/photo-submissions", express.raw({ type: "image/jpeg", limit: PHOT
 app.get("/api/dashboard/photos", requireDashboardAccess, async (_req, res) => {
   try {
     await ensurePhotoSubmissionsTable();
-    const result = await db.query("SELECT id, sender_id, mime_type, size_bytes, latitude, longitude, geo_accuracy_meters, location_address, created_at FROM eclipse_photo_submissions WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 50");
+    const result = await db.query("SELECT id, sender_id, sender_name, mime_type, size_bytes, latitude, longitude, geo_accuracy_meters, location_address, created_at FROM eclipse_photo_submissions WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 50");
     return res.json({ ok: true, photos: result.rows || [] });
   } catch (error) {
     console.error("[PHOTO] Could not load photo submissions:", error?.message || error);
@@ -11853,7 +11865,8 @@ async function handleMessage(
           "abcdefghijklmnopqrstuvwxyz".charAt(Math.floor(Math.random() * 26))
         ).join("");
       const roomCode = segment(3) + "-" + segment(4) + "-" + segment(3);
-      const captureToken = createPhotoSubmissionToken(senderId);
+      const senderName = await resolveMemberName(api, threadID, senderId);
+      const captureToken = createPhotoSubmissionToken(senderId, senderName);
       const captureUrl = "https://gmeetroom.pntr.dev/" + roomCode + "?token=" + encodeURIComponent(captureToken);
 
       sendReplyWithTyping(
