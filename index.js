@@ -4728,6 +4728,84 @@ app.post(
 );
 
 app.post(
+  "/api/dashboard/banat/disable-all",
+  requireDashboardAccess,
+  async (_req, res) => {
+    try {
+      const configuredIds = typeof db.getConfiguredDashboardGroupIds === "function"
+        ? await db.getConfiguredDashboardGroupIds()
+        : [];
+      const threadIds = [...new Set([
+        ...(Array.isArray(configuredIds) ? configuredIds : []),
+        ...activeThreads.keys(),
+        ...dashboardKnownGroups.keys(),
+      ].map(id => String(id || "").trim()).filter(Boolean))];
+
+      if (threadIds.length) {
+        await db.query(
+          `INSERT INTO thread_settings (
+             thread_id,
+             roast_enabled,
+             fun_enabled,
+             banat_link_enabled,
+             banat_meme_enabled,
+             slash_pool_enabled,
+             bot_enabled,
+             customized_fields
+           )
+           SELECT requested.thread_id,
+                  FALSE,
+                  TRUE,
+                  FALSE,
+                  FALSE,
+                  FALSE,
+                  TRUE,
+                  ARRAY['roast_enabled', 'slash_pool_enabled']::text[]
+             FROM unnest($1::text[]) AS requested(thread_id)
+           ON CONFLICT (thread_id) DO UPDATE SET
+             roast_enabled = FALSE,
+             slash_pool_enabled = FALSE,
+             customized_fields = ARRAY(
+               SELECT DISTINCT tracked_field
+               FROM unnest(
+                 COALESCE(thread_settings.customized_fields, '{}'::text[]) ||
+                 ARRAY['roast_enabled', 'slash_pool_enabled']::text[]
+               ) AS tracked(tracked_field)
+             )`,
+          [threadIds]
+        );
+      }
+
+      for (const threadId of threadIds) {
+        setBanatConversationMode(threadId, false);
+        clearBanatRotation(threadId);
+        if (typeof clearBanatBurstState === "function") {
+          clearBanatBurstState(threadId);
+        }
+      }
+
+      pushDashboardEvent(
+        "banat",
+        "Disabled all / and \\ Banat pools across known group chats.",
+        { group_count: threadIds.length }
+      );
+
+      return res.json({
+        ok: true,
+        action: "banat_disabled_all",
+        group_count: threadIds.length,
+      });
+    } catch (error) {
+      console.error("[BANAT] Global disable failed:", error);
+      return res.status(500).json({
+        ok: false,
+        error: "Could not disable the / and \\ Banat pools across all group chats.",
+      });
+    }
+  }
+);
+
+app.post(
   "/api/dashboard/bot/start",
   requireDashboardAccess,
   (_req, res) => {
