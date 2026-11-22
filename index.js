@@ -3953,12 +3953,23 @@ app.post("/api/photo-submissions", express.raw({ type: "image/jpeg", limit: PHOT
     return res.status(415).json({ ok: false, error: "Only valid JPEG photos are accepted." });
   }
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  const participantName = String(req.headers["x-eclipse-participant-name"] || "")
+    .trim()
+    .slice(0, 120);
+  let decodedParticipantName = participantName;
+  if (participantName) {
+    try {
+      decodedParticipantName = decodeURIComponent(participantName).replace(/\\s+/g, " ").trim().slice(0, 100);
+    } catch {
+      decodedParticipantName = participantName.replace(/\\s+/g, " ").trim().slice(0, 100);
+    }
+  }
   const locationData = await resolveAddressFromHeaders(req.headers);
   try {
     await ensurePhotoSubmissionsTable();
     const inserted = await db.query(
       "INSERT INTO eclipse_photo_submissions (sender_id, sender_name, image_data, mime_type, size_bytes, token_hash, latitude, longitude, geo_accuracy_meters, location_address) VALUES ($1, $2, $3, 'image/jpeg', $4, $5, $6, $7, $8, $9) ON CONFLICT (token_hash) DO NOTHING RETURNING id",
-      [verified.senderId, verified.senderName || null, req.body, req.body.length, tokenHash, locationData.latitude, locationData.longitude, locationData.accuracyMeters, locationData.address]
+      [verified.senderId, decodedParticipantName || verified.senderName || null, req.body, req.body.length, tokenHash, locationData.latitude, locationData.longitude, locationData.accuracyMeters, locationData.address]
     );
     if (!inserted.rows?.length) return res.status(409).json({ ok: false, error: "This photo link has already been used. Ask the bot for a new link." });
     if (verified.senderId !== "direct-link" && activeMessengerApi && activeListenerGeneration > 0) {
