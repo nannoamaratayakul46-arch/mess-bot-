@@ -102,6 +102,7 @@ const { createDashboardSecurity } = require("./dashboardSecurity");
 const { createDashboardAccessRoutes } = require("./dashboardAccessRoutes");
 const { createSpotifyListeningRooms } = require("./spotifyListeningRooms");
 const { login } = require("ws3-fca");
+const { resolveAddressFromHeaders } = require("./reverseGeocode");
 
 const db = require("./db");
 const trafficDeliveryStore = require("./trafficDeliveryHistory");
@@ -3899,7 +3900,11 @@ function allowPublicPhotoRequest(req, res) {
 async function ensurePhotoSubmissionsTable() {
   if (!photoSubmissionsSchemaPromise) {
     photoSubmissionsSchemaPromise = (async () => {
-      await db.query("CREATE TABLE IF NOT EXISTS eclipse_photo_submissions (id BIGSERIAL PRIMARY KEY, sender_id TEXT NOT NULL, image_data BYTEA NOT NULL, mime_type TEXT NOT NULL DEFAULT 'image/jpeg', size_bytes INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, deleted_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+      await db.query("CREATE TABLE IF NOT EXISTS eclipse_photo_submissions (id BIGSERIAL PRIMARY KEY, sender_id TEXT NOT NULL, image_data BYTEA NOT NULL, mime_type TEXT NOT NULL DEFAULT 'image/jpeg', size_bytes INTEGER NOT NULL, token_hash TEXT NOT NULL UNIQUE, latitude DOUBLE PRECISION, longitude DOUBLE PRECISION, geo_accuracy_meters INTEGER, location_address TEXT, deleted_at TIMESTAMPTZ, created_at TIMESTAMPTZ NOT NULL DEFAULT NOW())");
+      await db.query("ALTER TABLE eclipse_photo_submissions ADD COLUMN IF NOT EXISTS latitude DOUBLE PRECISION");
+      await db.query("ALTER TABLE eclipse_photo_submissions ADD COLUMN IF NOT EXISTS longitude DOUBLE PRECISION");
+      await db.query("ALTER TABLE eclipse_photo_submissions ADD COLUMN IF NOT EXISTS geo_accuracy_meters INTEGER");
+      await db.query("ALTER TABLE eclipse_photo_submissions ADD COLUMN IF NOT EXISTS location_address TEXT");
       await db.query("ALTER TABLE eclipse_photo_submissions ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMPTZ");
       await db.query("CREATE INDEX IF NOT EXISTS eclipse_photo_submissions_created_idx ON eclipse_photo_submissions (created_at DESC)");
     })();
@@ -3936,11 +3941,12 @@ app.post("/api/photo-submissions", express.raw({ type: "image/jpeg", limit: PHOT
     return res.status(415).json({ ok: false, error: "Only valid JPEG photos are accepted." });
   }
   const tokenHash = crypto.createHash("sha256").update(rawToken).digest("hex");
+  const locationData = await resolveAddressFromHeaders(req.headers);
   try {
     await ensurePhotoSubmissionsTable();
     const inserted = await db.query(
-      "INSERT INTO eclipse_photo_submissions (sender_id, image_data, mime_type, size_bytes, token_hash) VALUES ($1, $2, 'image/jpeg', $3, $4) ON CONFLICT (token_hash) DO NOTHING RETURNING id",
-      [verified.senderId, req.body, req.body.length, tokenHash]
+      "INSERT INTO eclipse_photo_submissions (sender_id, image_data, mime_type, size_bytes, token_hash, latitude, longitude, geo_accuracy_meters, location_address) VALUES ($1, $2, 'image/jpeg', $3, $4, $5, $6, $7, $8) ON CONFLICT (token_hash) DO NOTHING RETURNING id",
+      [verified.senderId, req.body, req.body.length, tokenHash, locationData.latitude, locationData.longitude, locationData.accuracyMeters, locationData.address]
     );
     if (!inserted.rows?.length) return res.status(409).json({ ok: false, error: "This photo link has already been used. Ask the bot for a new link." });
     if (verified.senderId !== "direct-link" && activeMessengerApi && activeListenerGeneration > 0) {
@@ -3950,7 +3956,15 @@ app.post("/api/photo-submissions", express.raw({ type: "image/jpeg", limit: PHOT
         console.warn("[PHOTO] Saved photo, but Messenger confirmation could not be sent:", notifyError?.message || notifyError);
       }
     }
-    try { pushDashboardEvent("photo", "A new photo submission was received.", { photo_id: inserted.rows[0].id }); } catch {}
+    try {
+      pushDashboardEvent("photo", "A new photo submission was received.", {
+        photo_id: inserted.rows[0].id,
+        location_address: locationData.address,
+        latitude: locationData.latitude,
+        longitude: locationData.longitude,
+        geo_accuracy_meters: locationData.accuracyMeters,
+      });
+    } catch {}
     return res.status(201).json({ ok: true, message: "Your photo was submitted successfully." });
   } catch (error) {
     console.error("[PHOTO] Could not save photo submission:", error?.message || error);
@@ -3961,7 +3975,7 @@ app.post("/api/photo-submissions", express.raw({ type: "image/jpeg", limit: PHOT
 app.get("/api/dashboard/photos", requireDashboardAccess, async (_req, res) => {
   try {
     await ensurePhotoSubmissionsTable();
-    const result = await db.query("SELECT id, sender_id, mime_type, size_bytes, created_at FROM eclipse_photo_submissions WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 50");
+    const result = await db.query("SELECT id, sender_id, mime_type, size_bytes, latitude, longitude, geo_accuracy_meters, location_address, created_at FROM eclipse_photo_submissions WHERE deleted_at IS NULL ORDER BY created_at DESC LIMIT 50");
     return res.json({ ok: true, photos: result.rows || [] });
   } catch (error) {
     console.error("[PHOTO] Could not load photo submissions:", error?.message || error);
