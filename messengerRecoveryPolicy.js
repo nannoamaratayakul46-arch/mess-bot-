@@ -32,7 +32,7 @@ function getClassificationText(value) {
     }
     for (const key of [
       "name", "message", "code", "error", "errorCode", "errorSummary",
-      "errorDescription", "error_description", "description", "reason",
+      "errorDescription", "error_description", "__html", "html", "description", "reason",
       "type", "cause"
     ]) {
       try {
