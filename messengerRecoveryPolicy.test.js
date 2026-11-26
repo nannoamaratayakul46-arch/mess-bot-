@@ -19,6 +19,14 @@ test("classifies nested Facebook temporary action blocks", () => {
   assert.equal(result.authRejected, false);
 });
 
+
+test("classifies a nested Facebook restriction description without a code", () => {
+  assert.equal(
+    classifyListenerError({ errorDescription: { __html: "You’re temporarily blocked for going too fast." } }).rateLimited,
+    true
+  );
+});
+
 test("classifies nested Facebook rate-limit errors", () => {
   assert.equal(
     classifyListenerError({ error: 1675004 }).rateLimited,
