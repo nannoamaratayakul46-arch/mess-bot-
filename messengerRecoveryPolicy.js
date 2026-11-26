@@ -24,7 +24,7 @@ function classifyListenerError(value) {
   }
   return {
     authRejected: /checkpoint|two.factor|2fa|invalid cookie|cookie.*(?:invalid|expired|rejected)|session.*(?:expired|invalid|rejected)|not logged in|login required|authentication failed|account disabled|confirm your identity|facebook blocked the login|error retrieving user.?id/i.test(text),
-    rateLimited: /1675004|rate.?limit|too many requests/i.test(text),
+    rateLimited: /1675004|3252001|rate.?limit|too many requests|temporarily blocked|misusing this feature|going too fast/i.test(text),
   };
 }
 
