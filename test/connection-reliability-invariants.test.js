@@ -186,3 +186,23 @@ test("all Messenger login retries are owned by one bounded, shutdown-aware timer
   assert.equal((index.match(/scheduleLoginRetry\(backoffMs, "login failure backoff"/g) || []).length, 2);
   assert.equal((index.match(/scheduleLoginRetry\(100, "durable-session fallback"/g) || []).length, 3);
 });
+
+test("proxy verification retries share the login retry coordinator and MQTT timer cancellation has one owner", () => {
+  assert.doesNotMatch(index, /proxyGateRetryTimer/);
+  assert.match(index, /if \(proxyGatePending \|\| loginRetryTimer\) return/);
+  assert.match(index, /scheduleLoginRetry\(backoffMs, "proxy egress verification"\)/);
+
+  const mqttCancelStart = index.indexOf("function cancelMqttReconnectTimer(reason =");
+  const mqttScheduleStart = index.indexOf("function scheduleMqttListenerReattach(reason)", mqttCancelStart);
+  const mqttCancel = index.slice(mqttCancelStart, mqttScheduleStart);
+  assert.ok(mqttCancelStart >= 0 && mqttScheduleStart > mqttCancelStart);
+  assert.match(mqttCancel, /clearTimeout\(mqttReconnectTimer\)/);
+  assert.match(mqttCancel, /mqttReconnectTimer = null/);
+  assert.equal((index.match(/mqttReconnectTimer\s*=\s*setTimeout\(/g) || []).length, 1,
+    "only the MQTT reattach scheduler may create the timer");
+  assert.equal((index.match(/clearTimeout\(mqttReconnectTimer\)/g) || []).length, 1,
+    "only the MQTT cancellation helper may clear the timer");
+  assert.match(index, /cancelMqttReconnectTimer\("watchdog stopped"\)/);
+  assert.match(index, /cancelMqttReconnectTimer\("new Messenger session connected"\)/);
+  assert.match(index, /cancelMqttReconnectTimer\("listener authentication rejected"\)/);
+});
