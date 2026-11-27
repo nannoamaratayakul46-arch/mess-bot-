@@ -545,6 +545,11 @@ function watchdogSetMessengerConnected(
 function watchdogRecordListenerActivity() {
   watchdogLastListenerActivityAt = Date.now();
   watchdogListenerStaleFailures = 0;
+
+  // Reset the reattach backoff only after the listener proves it is receiving
+  // real MQTT callbacks again; a successful listenMqtt() return alone is not
+  // proof that the subscription is healthy.
+  mqttReconnectAttempt = 0;
 }
 
 function watchdogCleanRestartForDeadListener(reason) {
@@ -7485,6 +7490,7 @@ function scheduleMqttListenerReattach(reason) {
     typeof activeMqttListenerCallback !== "function"
   ) return;
 
+  const scheduledGeneration = activeListenerGeneration;
   const delayMs = Math.min(
     MQTT_RECONNECT_MAX_DELAY_MS,
     MQTT_RECONNECT_BASE_DELAY_MS * (2 ** Math.min(mqttReconnectAttempt, 3))
@@ -7503,7 +7509,7 @@ function scheduleMqttListenerReattach(reason) {
     if (
       watchdogShuttingDown ||
       !api ||
-      activeListenerGeneration <= 0 ||
+      activeListenerGeneration !== scheduledGeneration ||
       typeof callback !== "function"
     ) return;
 
