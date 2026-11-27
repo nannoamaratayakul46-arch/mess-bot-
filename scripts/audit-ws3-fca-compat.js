@@ -9,7 +9,7 @@ const pkg = JSON.parse(read("package.json"));
 const checks = [
   ["ws3-fca is pinned to 3.5.2", pkg.dependencies?.["ws3-fca"] === "3.5.2"],
   ["login uses the 3.5.2 appState credential object", /login\(\s*\{\s*appState:\s*loginInput\s*\}/.test(read("index.js"))],
-  ["Messenger login is gated by verified proxy configuration with bounded retry", /if \(!proxyGateVerified\)/.test(read("index.js")) && /verifyMessengerProxy\(\)\.then/.test(read("index.js")) && /proxy: getMessengerProxyUrl\(\)/.test(read("index.js")) && /proxyGateRetryTimer = setTimeout/.test(read("index.js")) && /proxyGateRetryAttempt/.test(read("index.js"))],
+  ["Messenger login is gated by verified proxy configuration with bounded retry", /if \(!proxyGateVerified\)/.test(read("index.js")) && /verifyMessengerProxy\(\)\.then/.test(read("index.js")) && /proxy: getMessengerProxyUrl\(\)/.test(read("index.js")) && /scheduleLoginRetry\(backoffMs, "proxy egress verification"\)/.test(read("index.js")) && !/proxyGateRetryTimer/.test(read("index.js")) && /proxyGateRetryAttempt/.test(read("index.js"))],
   ["failed proxy probes are not cached permanently", /verificationPromise = null/.test(read("messengerProxy.js")) && /currentVerification/.test(read("messengerProxy.js"))],
   ["Messenger proxy routing is isolated from process-wide HTTP and dashboard traffic", fs.existsSync(path.join(root, "messengerProxy.js")) && !/process\.env\.(?:HTTP_PROXY|HTTPS_PROXY|ALL_PROXY|http_proxy|https_proxy|all_proxy)/.test(read("messengerProxy.js"))],
   ["login Promise rejection is observed", /loginResult\.catch\(/.test(read("index.js"))],

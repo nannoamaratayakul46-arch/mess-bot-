@@ -103,6 +103,16 @@ async function connect() {
     );
   `);
 
+  // Recovery metadata is deliberately separate from session credentials.
+  // It is JSONB with an allowlisted schema and isolated per Render service.
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS messenger_supervisor_states (
+      service_id TEXT PRIMARY KEY,
+      supervisor_state JSONB NOT NULL,
+      updated_at BIGINT NOT NULL
+    );
+  `);
+
   // ═════════════════════════════════════════════════════════
   // USERS
   // ═════════════════════════════════════════════════════════
@@ -4120,6 +4130,42 @@ async function clearMessengerSessionState() {
   return true;
 }
 
+async function getMessengerSupervisorState() {
+  const result = await requireConn().query(`
+    SELECT supervisor_state
+    FROM messenger_supervisor_states
+    WHERE service_id = $1
+    LIMIT 1
+  `, [getMessengerSessionServiceId()]);
+  const saved = result.rows[0]?.supervisor_state || null;
+  if (!saved) return null;
+  return require("./messengerSupervisorState").sanitizePersistedSnapshot(
+    typeof saved === "string" ? JSON.parse(saved) : saved
+  );
+}
+
+async function setMessengerSupervisorState(supervisorState) {
+  const safeState = require("./messengerSupervisorState")
+    .sanitizePersistedSnapshot(supervisorState);
+  await requireConn().query(`
+    INSERT INTO messenger_supervisor_states (service_id, supervisor_state, updated_at)
+    VALUES ($1, $2::jsonb, $3)
+    ON CONFLICT (service_id)
+    DO UPDATE SET
+      supervisor_state = EXCLUDED.supervisor_state,
+      updated_at = EXCLUDED.updated_at
+  `, [getMessengerSessionServiceId(), JSON.stringify(safeState), Date.now()]);
+  return true;
+}
+
+async function clearMessengerSupervisorState() {
+  await requireConn().query(
+    "DELETE FROM messenger_supervisor_states WHERE service_id = $1",
+    [getMessengerSessionServiceId()]
+  );
+  return true;
+}
+
 
 /**
  * Dashboard user inspector. Read-only; the bot remains the source of truth.
@@ -4419,6 +4465,9 @@ module.exports = {
   getMessengerSessionState,
   setMessengerSessionState,
   clearMessengerSessionState,
+  getMessengerSupervisorState,
+  setMessengerSupervisorState,
+  clearMessengerSupervisorState,
   getDashboardSnapshot,
   getDashboardUser,
   getDashboardAnalytics,

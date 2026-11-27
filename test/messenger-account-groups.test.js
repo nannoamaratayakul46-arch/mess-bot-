@@ -29,7 +29,9 @@ test("stale Messenger group history expires after seven days and cannot repopula
 });
 
 test("uploaded replacement cookies become the durable session when getAppState is unavailable", () => {
-  assert.match(source, /if \(pendingFacebookAppState\) \{\s*appState = pendingFacebookAppState;\s*pendingFacebookAppState = null;\s*\}\s*\/\/ Persist the newest session/);
+  assert.match(source, /replacement cookie set that just authenticated/);
+  assert.match(source, /if \(pendingFacebookAppState\) \{\s*appState = pendingFacebookAppState;\s*pendingFacebookAppState = null;\s*\}/);
+  assert.match(source, /persistFacebookSessionState\(appState\)/);
 });
 
 test("disconnect clears previous account group caches", () => {

@@ -105,6 +105,11 @@ const { login } = require("ws3-fca");
 const { resolveAddressFromHeaders } = require("./reverseGeocode");
 
 const db = require("./db");
+const {
+  STATES: MESSENGER_SUPERVISOR_STATES,
+  EVENTS: MESSENGER_SUPERVISOR_EVENTS,
+  createMessengerSupervisorState,
+} = require("./messengerSupervisorState");
 const trafficDeliveryStore = require("./trafficDeliveryHistory");
 const { resolveTargetName, clearTargetNameCache } = require("./targetName");
 const { createJaidenMessageQueue } = require("./jaiden-message-queue");
@@ -545,6 +550,11 @@ function watchdogSetMessengerConnected(
 function watchdogRecordListenerActivity() {
   watchdogLastListenerActivityAt = Date.now();
   watchdogListenerStaleFailures = 0;
+
+  // Reset the reattach backoff only after the listener proves it is receiving
+  // real MQTT callbacks again; a successful listenMqtt() return alone is not
+  // proof that the subscription is healthy.
+  mqttReconnectAttempt = 0;
 }
 
 function watchdogCleanRestartForDeadListener(reason) {
@@ -556,38 +566,26 @@ function watchdogCleanRestartForDeadListener(reason) {
   }
 
   watchdogListenerRestarting = true;
-  watchdogShuttingDown = true;
   watchdogMessengerConnected = false;
 
-  console.error(
-    "[WATCHDOG] Messenger listener appears silently dead."
+  console.warn(
+    "[WATCHDOG] Messenger listener appears stale; preserving the Node process and dashboard."
   );
+  console.warn("[WATCHDOG] " + reason);
 
-  console.error(
-    "[WATCHDOG] " + reason
-  );
-
-  console.error(
-    "[WATCHDOG] Stopping the stale listener and exiting with code 1 so Render can perform a clean restart."
-  );
-
+  // A stale Messenger listener is a recoverable dependency failure, not a
+  // reason to terminate the entire Render service. Reuse the bounded MQTT
+  // reattach path; login/session validation remains owned by attemptLogin().
   try {
-    if (
-      activeMessengerApi &&
-      typeof activeMessengerApi.stopListenMqtt === "function"
-    ) {
-      activeMessengerApi.stopListenMqtt();
-    }
+    scheduleMqttListenerReattach("watchdog stale-listener detection: " + String(reason || "no activity"));
   } catch (error) {
     console.error(
-      "[WATCHDOG] Failed to stop stale Messenger listener cleanly:",
-      error
+      "[WATCHDOG] Could not schedule listener reattach:",
+      error?.message || error
     );
+  } finally {
+    watchdogListenerRestarting = false;
   }
-
-  setTimeout(() => {
-    process.exit(1);
-  }, 1000);
 }
 
 function watchdogSetShuttingDown(
@@ -4630,15 +4628,15 @@ app.post(
     // working Messenger listener. If Facebook rejects these cookies,
     // ECLIPSE stays connected with the previous valid session.
     pendingFacebookAppState = incoming;
+    if (messengerSupervisor.snapshot().state === MESSENGER_SUPERVISOR_STATES.SESSION_REQUIRED) {
+      transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.SESSION_REPLACED);
+    }
 
     dashboardBotPaused = false;
     pushDashboardEvent("messenger", "Facebook session validation requested from Command Center. The session will be checkpointed after successful login.");
     listenerGeneration++;
 
-    if (loginRetryTimer) {
-      clearTimeout(loginRetryTimer);
-      loginRetryTimer = null;
-    }
+    cancelLoginRetry("explicit cancellation");
 
     loginAttempt = 0;
     listenFailureCount = 0;
@@ -4682,10 +4680,7 @@ app.post(
       !activeMessengerApi ||
       activeListenerGeneration <= 0
     ) {
-      if (loginRetryTimer) {
-        clearTimeout(loginRetryTimer);
-        loginRetryTimer = null;
-      }
+      cancelLoginRetry("explicit cancellation");
       loginAttempt = 0;
       attemptLogin();
     }
@@ -4714,10 +4709,7 @@ app.post(
     watchdogSetMessengerConnected(false);
     dashboardLastDisconnectedAt = new Date().toISOString();
 
-    if (loginRetryTimer) {
-      clearTimeout(loginRetryTimer);
-      loginRetryTimer = null;
-    }
+    cancelLoginRetry("explicit cancellation");
 
     res.json({
       ok: true,
@@ -4890,15 +4882,22 @@ app.get("/", (_req, res) => {
   );
 });
 
-app.get("/health", async (_req, res) => {
+const { isProcessLivenessHealthy, isCoreReadinessHealthy } = require("./runtimeHealthPolicy");
+
+app.get("/health", (_req, res) => {
   const watchdog = getWatchdogStatus();
-  const databaseHealthy = await checkDatabaseHealth();
-  const healthOk = watchdog.ok && databaseHealthy !== false;
-  // Keep public readiness information minimal; detailed diagnostics require dashboard authentication.
-  res.status(healthOk ? 200 : 503).json({
-    ok: healthOk,
-    uptime: Math.floor(process.uptime()),
+  const livenessOk = isProcessLivenessHealthy({
+    eventLoopAgeMs: watchdog.eventLoopAgeMs,
+    maxEventLoopAgeMs: WATCHDOG_EVENT_LOOP_TIMEOUT_MS,
+    shuttingDown: watchdog.shuttingDown,
   });
+  res.status(livenessOk ? 200 : 503).json({ ok: livenessOk, uptime: Math.floor(process.uptime()) });
+});
+
+app.get("/ready", async (_req, res) => {
+  const databaseHealthy = await checkDatabaseHealth();
+  const readinessOk = isCoreReadinessHealthy({ databaseHealthy, shuttingDown: watchdogShuttingDown });
+  res.status(readinessOk ? 200 : 503).json({ ok: readinessOk, uptime: Math.floor(process.uptime()) });
 });
 
 const port =
@@ -7436,11 +7435,66 @@ let loginInProgress = false;
 let proxyGateVerified = false;
 let proxyGatePending = false;
 let proxyGateRetryAttempt = 0;
-let proxyGateRetryTimer = null;
 let listenerGeneration = 0;
 let activeListenerGeneration = 0;
 let startupSchedulersInitialized = false;
 let loginRetryTimer = null;
+const messengerSupervisor = createMessengerSupervisorState();
+let messengerSupervisorPersistQueue = Promise.resolve();
+
+function persistMessengerSupervisorState() {
+  const snapshot = messengerSupervisor.snapshot();
+  messengerSupervisorPersistQueue = messengerSupervisorPersistQueue
+    .then(async () => {
+      await db.connect();
+      await db.setMessengerSupervisorState(snapshot);
+    })
+    .catch(error => {
+      // Recovery metadata is best-effort; a database outage must never crash
+      // the Messenger process or block an otherwise valid login attempt.
+      console.warn("[SUPERVISOR] Could not persist recovery metadata:", error?.message || error);
+    });
+  return messengerSupervisorPersistQueue;
+}
+
+function transitionMessengerSupervisor(event, metadata = {}) {
+  const result = messengerSupervisor.transition(event, metadata);
+  if (!result.ok) return false;
+  void persistMessengerSupervisorState();
+  return true;
+}
+
+async function restoreMessengerSupervisorState() {
+  try {
+    const saved = await db.getMessengerSupervisorState();
+    if (!saved) return false;
+
+    const restored = { ...saved };
+    const now = Date.now();
+    const maxCooldownAt = now + MAX_LOGIN_BACKOFF_MS;
+    if (restored.cooldownUntil > maxCooldownAt) {
+      restored.cooldownUntil = maxCooldownAt;
+    }
+
+    // A process restart invalidates any previously connected/in-flight socket.
+    // Never restore those states as live; require a fresh listener generation.
+    if ([MESSENGER_SUPERVISOR_STATES.CONNECTED,
+         MESSENGER_SUPERVISOR_STATES.CONNECTING,
+         MESSENGER_SUPERVISOR_STATES.STARTING].includes(restored.state)) {
+      restored.state = MESSENGER_SUPERVISOR_STATES.DEGRADED;
+      restored.lastFailureKind = "unknown";
+      restored.cooldownUntil = 0;
+    }
+
+    if (!messengerSupervisor.restore(restored)) return false;
+    console.log("[SUPERVISOR] Restored Messenger recovery state:", restored.state);
+    void persistMessengerSupervisorState();
+    return true;
+  } catch (error) {
+    console.warn("[SUPERVISOR] Could not restore recovery metadata; continuing with safe startup defaults:", error?.message || error);
+    return false;
+  }
+}
 // Permit one delayed revalidation after Facebook drops an authenticated listener.
 // A second explicit login-required response still waits for a fresh session.
 let authRejectionRetryUsed = false;
@@ -7479,6 +7533,14 @@ function attachMqttListener(api, callback) {
   return api.listenMqtt(callback);
 }
 
+function cancelMqttReconnectTimer(reason = "unspecified") {
+  if (!mqttReconnectTimer) return false;
+  clearTimeout(mqttReconnectTimer);
+  mqttReconnectTimer = null;
+  console.log("[MQTT WATCHDOG] Cancelled pending listener reattach (" + String(reason).slice(0, 100) + ").");
+  return true;
+}
+
 function scheduleMqttListenerReattach(reason) {
   if (
     mqttReconnectFatal ||
@@ -7490,6 +7552,11 @@ function scheduleMqttListenerReattach(reason) {
     typeof activeMqttListenerCallback !== "function"
   ) return;
 
+  if (messengerSupervisor.snapshot().state === MESSENGER_SUPERVISOR_STATES.CONNECTED) {
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.RECOVERY_BEGIN);
+  }
+
+  const scheduledGeneration = activeListenerGeneration;
   const delayMs = Math.min(
     MQTT_RECONNECT_MAX_DELAY_MS,
     MQTT_RECONNECT_BASE_DELAY_MS * (2 ** Math.min(mqttReconnectAttempt, 3))
@@ -7508,7 +7575,7 @@ function scheduleMqttListenerReattach(reason) {
     if (
       watchdogShuttingDown ||
       !api ||
-      activeListenerGeneration <= 0 ||
+      activeListenerGeneration !== scheduledGeneration ||
       typeof callback !== "function"
     ) return;
 
@@ -7538,6 +7605,9 @@ function scheduleMqttListenerReattach(reason) {
       const errorText = getFacebookLoginErrorMessage(error);
       const { authRejected } = classifyListenerError(errorText);
       if (authRejected) {
+        transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.AUTH_REJECTED, {
+          failureKind: "auth_rejected",
+        });
         mqttReconnectFatal = true;
         console.error(
           "[MQTT WATCHDOG] Fatal authentication rejection while reattaching (" +
@@ -7545,6 +7615,9 @@ function scheduleMqttListenerReattach(reason) {
         );
         return;
       }
+      transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE, {
+        failureKind: "mqtt_disconnect",
+      });
       console.warn("[MQTT WATCHDOG] Temporary listener reattach failure: " + errorText);
       scheduleMqttListenerReattach("temporary reattach failure");
     }
@@ -7579,10 +7652,7 @@ function stopMqttActivityWatchdog() {
     clearInterval(mqttActivityWatchdogTimer);
     mqttActivityWatchdogTimer = null;
   }
-  if (mqttReconnectTimer) {
-    clearTimeout(mqttReconnectTimer);
-    mqttReconnectTimer = null;
-  }
+  cancelMqttReconnectTimer("watchdog stopped");
   mqttReconnectInProgress = false;
 }
 
@@ -7793,7 +7863,87 @@ function fallbackFromRejectedDurableSession() {
   return true;
 }
 
+function cancelLoginRetry(reason = "unspecified") {
+  if (!loginRetryTimer) return false;
+  clearTimeout(loginRetryTimer);
+  loginRetryTimer = null;
+  console.log("[LOGIN][RETRY] Cancelled scheduled retry (" + String(reason).slice(0, 100) + ").");
+  return true;
+}
+
+function scheduleLoginRetry(delayMs, reason, callback = attemptLogin) {
+  if (watchdogShuttingDown) return null;
+  const parsedDelay = Number(delayMs);
+  const safeDelayMs = Number.isFinite(parsedDelay)
+    ? Math.min(30 * 60 * 1000, Math.max(1, Math.floor(parsedDelay)))
+    : 1_000;
+  if (loginRetryTimer) cancelLoginRetry("replaced: " + reason);
+  const safeReason = String(reason || "unspecified").slice(0, 100);
+  loginRetryTimer = setTimeout(() => {
+    loginRetryTimer = null;
+    if (watchdogShuttingDown) return;
+    try {
+      callback();
+    } catch (error) {
+      console.error("[LOGIN][RETRY] Scheduled retry callback failed (" + safeReason + "):", error?.message || error);
+    }
+  }, safeDelayMs);
+  if (typeof loginRetryTimer.unref === "function") loginRetryTimer.unref();
+  console.log("[LOGIN][RETRY] Scheduled " + safeReason + " in " + safeDelayMs + "ms.");
+  return loginRetryTimer;
+}
+
 function attemptLogin() {
+  const supervisorSnapshot = messengerSupervisor.snapshot();
+  if (
+    supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.SESSION_REQUIRED &&
+    !pendingFacebookAppState
+  ) {
+    return;
+  }
+
+  // A live API/listener remains the connection owner during MQTT recovery.
+  // Do this before changing supervisor state: otherwise a routine retry tick
+  // can move DEGRADED -> CONNECTING while the existing listener is reattaching,
+  // making its first real MQTT event unable to complete RECOVERY_SUCCESS.
+  if (
+    activeMessengerApi &&
+    activeListenerGeneration > 0 &&
+    !pendingFacebookAppState
+  ) {
+    return;
+  }
+  if (supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.COOLDOWN) {
+    const remainingMs = supervisorSnapshot.cooldownUntil - Date.now();
+    if (remainingMs > 0) {
+      if (!loginRetryTimer) {
+        scheduleLoginRetry(remainingMs, "supervisor cooldown", () => {
+          transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.COOLDOWN_END);
+          attemptLogin();
+        });
+      }
+      return;
+    }
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.COOLDOWN_END);
+  } else if (supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.STARTING) {
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.START);
+  } else if (supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.DEGRADED) {
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.CONNECT_BEGIN);
+  } else if (
+    supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.CONNECTED &&
+    (!activeMessengerApi || activeListenerGeneration <= 0)
+  ) {
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE, {
+      failureKind: "mqtt_disconnect",
+    });
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.CONNECT_BEGIN);
+  } else if (
+    supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.SESSION_REQUIRED &&
+    pendingFacebookAppState
+  ) {
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.SESSION_REPLACED);
+  }
+
   if (isMessengerProxyEnabled() && !messengerProxyUsage.isAllowed()) {
     dashboardLoginError = "Messenger login is paused by the proxy bandwidth safety guard or because usage accounting is unavailable.";
     console.error("[PROXY USAGE] Login blocked: bandwidth meter is not ready or the 1.8 GB safety cap has been reached.");
@@ -7802,7 +7952,7 @@ function attemptLogin() {
   // Verify the configured proxy before Messenger login. Temporary probe
   // failures retry automatically with bounded backoff and preserve the session.
   if (!proxyGateVerified) {
-    if (proxyGatePending || proxyGateRetryTimer) return;
+    if (proxyGatePending || loginRetryTimer) return;
     proxyGatePending = true;
     void verifyMessengerProxy().then(() => {
       proxyGateVerified = true;
@@ -7828,10 +7978,7 @@ function attemptLogin() {
         retry_in_ms: backoffMs,
         attempt: proxyGateRetryAttempt,
       });
-      proxyGateRetryTimer = setTimeout(() => {
-        proxyGateRetryTimer = null;
-        attemptLogin();
-      }, backoffMs);
+      scheduleLoginRetry(backoffMs, "proxy egress verification");
     });
     return;
   }
@@ -7890,8 +8037,7 @@ function attemptLogin() {
       console.warn("[AUTH] Durable session was not accepted; trying FB_COOKIES once.");
       pushDashboardEvent("login-failed", dashboardLoginError, { detail: safeTrace, parser_diagnostics: parserDiagnostics, attempt: loginAttempt + 1, session_source: "durable", failure_kind: "facebook_login_required" });
       loginInProgress = false;
-      if (loginRetryTimer) clearTimeout(loginRetryTimer);
-      loginRetryTimer = setTimeout(() => { loginRetryTimer = null; attemptLogin(); }, 100);
+      scheduleLoginRetry(100, "durable-session fallback");
       return true;
     }
 
@@ -7910,9 +8056,14 @@ function attemptLogin() {
     console.error("[LOGIN][SESSION] Safe failure trace:\\n" + safeTrace);
     if (parserDiagnostics) console.error("[LOGIN][SESSION] Safe parser diagnostics: " + JSON.stringify(parserDiagnostics));
     pushDashboardEvent("login-failed", dashboardLoginError, { detail: safeTrace, parser_diagnostics: parserDiagnostics, attempt: loginAttempt + 1, session_source: isReplacementSession ? "replacement" : appStateSource, failure_kind: "facebook_login_required" });
+    // An invalid replacement session must not mark the currently working
+    // account as session-required; the old listener remains authoritative.
+    if (!activeMessengerApi) {
+      transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.AUTH_REJECTED, { failureKind: "auth_rejected" });
+    }
     loginInProgress = false;
     if (!activeMessengerApi) watchdogSetMessengerConnected(false);
-    if (loginRetryTimer) { clearTimeout(loginRetryTimer); loginRetryTimer = null; }
+    cancelLoginRetry("explicit cancellation");
     return true;
   };
   const handleLoginInvocationFailure = (error) => {
@@ -7951,10 +8102,7 @@ function attemptLogin() {
         failure_kind: "ws3_fca_buildapi_parser",
       });
       loginInProgress = false;
-      if (loginRetryTimer) {
-        clearTimeout(loginRetryTimer);
-        loginRetryTimer = null;
-      }
+      cancelLoginRetry("explicit cancellation");
       return;
     }
 
@@ -7982,11 +8130,7 @@ function attemptLogin() {
 
       if (fellBackToCookies) {
         loginInProgress = false;
-        if (loginRetryTimer) clearTimeout(loginRetryTimer);
-        loginRetryTimer = setTimeout(() => {
-          loginRetryTimer = null;
-          attemptLogin();
-        }, 100);
+        scheduleLoginRetry(100, "durable-session fallback");
         return;
       }
 
@@ -8015,19 +8159,21 @@ function attemptLogin() {
     const backoffMs = loginRateLimited
       ? getListenerRecoveryDelayMs({ rateLimited: true, failureCount: rateLimitFailureCount })
       : getLoginRetryDelayMs(loginAttempt, MAX_LOGIN_BACKOFF_MS);
+    if (!isReplacementSession || !activeMessengerApi) {
+      transitionMessengerSupervisor(
+        loginRateLimited ? MESSENGER_SUPERVISOR_EVENTS.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE,
+        {
+          failureKind: loginRateLimited ? "facebook_rate_limit" : "network_error",
+          cooldownUntil: loginRateLimited ? Date.now() + backoffMs : 0,
+        }
+      );
+    }
 
     console.error(
       `[LOGIN] Login invocation failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
     );
 
-    if (loginRetryTimer) {
-      clearTimeout(loginRetryTimer);
-    }
-
-    loginRetryTimer = setTimeout(() => {
-      loginRetryTimer = null;
-      attemptLogin();
-    }, backoffMs);
+    scheduleLoginRetry(backoffMs, "login failure backoff");
   };
 
   try {
@@ -8095,10 +8241,7 @@ function attemptLogin() {
             failure_kind: "ws3_fca_buildapi_parser",
           });
           loginInProgress = false;
-          if (loginRetryTimer) {
-            clearTimeout(loginRetryTimer);
-            loginRetryTimer = null;
-          }
+          cancelLoginRetry("explicit cancellation");
           return;
         }
 
@@ -8154,11 +8297,7 @@ function attemptLogin() {
 
         if (fellBackToCookies) {
           loginInProgress = false;
-          if (loginRetryTimer) clearTimeout(loginRetryTimer);
-          loginRetryTimer = setTimeout(() => {
-            loginRetryTimer = null;
-            attemptLogin();
-          }, 100);
+          scheduleLoginRetry(100, "durable-session fallback");
           return;
         }
 
@@ -8168,6 +8307,15 @@ function attemptLogin() {
         const backoffMs = loginRateLimited
           ? getListenerRecoveryDelayMs({ rateLimited: true, failureCount: rateLimitFailureCount })
           : getLoginRetryDelayMs(loginAttempt, MAX_LOGIN_BACKOFF_MS);
+        if (!isReplacementSession || !activeMessengerApi) {
+          transitionMessengerSupervisor(
+            loginRateLimited ? MESSENGER_SUPERVISOR_EVENTS.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE,
+            {
+              failureKind: loginRateLimited ? "facebook_rate_limit" : "network_error",
+              cooldownUntil: loginRateLimited ? Date.now() + backoffMs : 0,
+            }
+          );
+        }
 
         console.error(
           `[LOGIN] Login failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
@@ -8179,18 +8327,12 @@ function attemptLogin() {
 
         loginInProgress = false;
 
-        if (loginRetryTimer) {
-          clearTimeout(loginRetryTimer);
-        }
-
-        loginRetryTimer = setTimeout(() => {
-          loginRetryTimer = null;
-          attemptLogin();
-        }, backoffMs);
+        scheduleLoginRetry(backoffMs, "login failure backoff");
 
         return;
       }
 
+      transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.CONNECT_SUCCESS);
       loginAttempt = 0;
       listenFailureCount = 0;
       rateLimitFailureCount = 0;
@@ -8200,10 +8342,7 @@ function attemptLogin() {
 
       mqttReconnectFatal = false;
       mqttReconnectAttempt = 0;
-      if (mqttReconnectTimer) {
-        clearTimeout(mqttReconnectTimer);
-        mqttReconnectTimer = null;
-      }
+      cancelMqttReconnectTimer("new Messenger session connected");
 
       // Every successful login may return refreshed Facebook session
       // state. Keep it in memory so native ws3-fca recovery can continue
@@ -8241,18 +8380,29 @@ function attemptLogin() {
         pendingFacebookAppState = null;
       }
 
+      // The login callback can be superseded while appState is being
+      // captured. Fence again before checkpointing and before promoting the
+      // candidate API; a stale callback must not overwrite newer session data.
+      if (thisGeneration !== listenerGeneration || watchdogShuttingDown) {
+        console.warn("[LOGIN] Discarding stale login completion before session checkpoint.");
+        return;
+      }
+
       // Persist the newest session returned by ws3-fca. This is what makes
       // a refreshed cookie survive Render restarts and redeploys.
       await persistFacebookSessionState(appState);
+
+      if (thisGeneration !== listenerGeneration || watchdogShuttingDown) {
+        console.warn("[LOGIN] Discarding stale login completion after session checkpoint.");
+        return;
+      }
+
       appStateSource = "durable";
       durableSessionRejected = false;
 
       pendingFacebookAppState = null;
 
-      if (loginRetryTimer) {
-        clearTimeout(loginRetryTimer);
-        loginRetryTimer = null;
-      }
+      cancelLoginRetry("explicit cancellation");
 
       // Promote this API to connection owner only after the login succeeded.
       // A replacement-session login is allowed while the old session remains
@@ -8524,13 +8674,8 @@ function attemptLogin() {
           listenError,
           event
         ) => {
-          if (event && typeof event === "object") {
-            lastMqttActivity = Date.now();
-            mqttReconnectAttempt = 0;
-            mqttReconnectFatal = false;
-          }
-          watchdogRecordListenerActivity();
-
+          // Fence stale callbacks before they can refresh watchdog health or
+          // reset reconnect backoff for the currently active listener.
           if (thisGeneration !== activeListenerGeneration) {
             return;
           }
@@ -8538,6 +8683,13 @@ function attemptLogin() {
           if (activeMessengerApi && activeMessengerApi !== api) {
             return;
           }
+
+          if (event && typeof event === "object") {
+            lastMqttActivity = Date.now();
+            mqttReconnectAttempt = 0;
+            mqttReconnectFatal = false;
+          }
+          watchdogRecordListenerActivity();
 
           if (listenError) {
             // ws3-fca's MQTT error path may call mqttClient.end() before
@@ -8588,11 +8740,13 @@ function attemptLogin() {
             }
 
             if (authRejected) {
+              // Keep the supervisor recoverable for the existing one-time
+              // saved-session revalidation. Only a rejected login attempt
+              // transitions to SESSION_REQUIRED; otherwise this scheduled
+              // retry would be blocked before it can run.
+              transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.RECOVERY_BEGIN);
               mqttReconnectFatal = true;
-              if (mqttReconnectTimer) {
-                clearTimeout(mqttReconnectTimer);
-                mqttReconnectTimer = null;
-              }
+              cancelMqttReconnectTimer("listener authentication rejected");
               dashboardLoginError = getFacebookLoginErrorMessage(listenError);
               pushDashboardEvent("login-failed", "Messenger listener stopped because Facebook rejected the session. Reconnect the account from the dashboard.", {
                 detail: String(dashboardLoginError || "Facebook session rejected").slice(0, 240),
@@ -8606,12 +8760,9 @@ function attemptLogin() {
                   failure_kind: "listener_auth_rejected",
                 });
                 console.warn("[AUTH] Scheduling one controlled saved-session revalidation in 30000ms.");
-                loginRetryTimer = setTimeout(() => {
-                  loginRetryTimer = null;
-                  if (!watchdogShuttingDown && !activeMessengerApi && activeListenerGeneration <= 0) {
-                    attemptLogin();
-                  }
-                }, retryDelayMs);
+                scheduleLoginRetry(retryDelayMs, "one-time auth revalidation", () => {
+                  if (!activeMessengerApi && activeListenerGeneration <= 0) attemptLogin();
+                });
               } else {
                 console.error("[AUTH] Saved-session revalidation already used or unavailable; a fresh session may be required.");
               }
@@ -8621,12 +8772,20 @@ function attemptLogin() {
             // Recover a dead listener through one controlled fresh login.
             // Rate-limit failures use an escalating cooldown (2, 4, 8, then
             // 15 minutes) so repeated rejections do not create a login loop.
+            if (rateLimited) rateLimitFailureCount++;
+            const recoveryDelayMs = getListenerRecoveryDelayMs({
+              rateLimited,
+              failureCount: rateLimitFailureCount,
+            });
+            transitionMessengerSupervisor(
+              rateLimited ? MESSENGER_SUPERVISOR_EVENTS.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE,
+              {
+                failureKind: rateLimited ? "facebook_rate_limit" : "mqtt_disconnect",
+                cooldownUntil: rateLimited ? Date.now() + recoveryDelayMs : 0,
+              }
+            );
+
             if (!loginRetryTimer) {
-              if (rateLimited) rateLimitFailureCount++;
-              const recoveryDelayMs = getListenerRecoveryDelayMs({
-                rateLimited,
-                failureCount: rateLimitFailureCount,
-              });
               const waitMinutes = Math.ceil(recoveryDelayMs / 60_000);
               dashboardLoginError = rateLimited
                 ? "Messenger was rate-limited; waiting " + waitMinutes + " minute(s) before reconnecting."
@@ -8637,18 +8796,20 @@ function attemptLogin() {
               });
               console.warn("[LISTENER] Scheduling fresh Messenger login in " + recoveryDelayMs + "ms (rateLimited=" + rateLimited + ").");
 
-              loginRetryTimer = setTimeout(() => {
-                loginRetryTimer = null;
-                if (!watchdogShuttingDown && !activeMessengerApi && activeListenerGeneration <= 0) {
-                  attemptLogin();
-                }
-              }, recoveryDelayMs);
+              scheduleLoginRetry(recoveryDelayMs, "listener recovery", () => {
+                if (!activeMessengerApi && activeListenerGeneration <= 0) attemptLogin();
+              });
             }
 
             return;
           }
 
           listenFailureCount = 0;
+          // The reattached socket is not considered recovered until it
+          // delivers a real MQTT event, not merely because listenMqtt returned.
+          if (event && typeof event === "object") {
+            transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.RECOVERY_SUCCESS);
+          }
           // Any subsequent healthy listener callback proves the cooldown
           // recovered; start future rate-limit backoff from its first step.
           rateLimitFailureCount = 0;
@@ -8821,6 +8982,7 @@ async function initializeMessengerSession() {
   // FB_COOKIES fallback in place. attemptLogin() owns the single shared
   // login path so startup and every dashboard login route behave identically.
   await loadPersistedFacebookSessionState();
+  await restoreMessengerSupervisorState();
   attemptLogin();
 }
 
@@ -14945,15 +15107,7 @@ async function gracefulShutdown(
     console.error("[SYSTEM] Cleanup scheduler shutdown failed:", error);
   }
 
-  if (loginRetryTimer) {
-    clearTimeout(loginRetryTimer);
-    loginRetryTimer = null;
-  }
-  if (proxyGateRetryTimer) {
-    clearTimeout(proxyGateRetryTimer);
-    proxyGateRetryTimer = null;
-  }
-
+  cancelLoginRetry("explicit cancellation");
   console.log(
     `[SYSTEM] Received ${signal}. Cleaning up ECLIPSE...`
   );
