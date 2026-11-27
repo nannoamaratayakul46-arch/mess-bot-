@@ -247,3 +247,21 @@ test("successful login completion is generation-fenced before and after durable 
     "candidate API must not become connection owner until post-await fence passes");
   assert.match(index.slice(afterCheckpointGuard, promotion), /watchdogShuttingDown/);
 });
+
+
+test("database reconnect waits for the previous pool to finish closing", () => {
+  const database = fs.readFileSync(path.join(__dirname, "..", "db.js"), "utf8");
+  assert.match(database, /let poolClosePromise = null/);
+
+  const connectStart = database.indexOf("async function connect()");
+  const connectEnd = database.indexOf("// CONNECTION GUARD", connectStart);
+  const connect = database.slice(connectStart, connectEnd);
+  assert.match(connect, /if \(poolClosePromise\) await poolClosePromise/);
+
+  const closeStart = database.indexOf("async function close()");
+  const closeEnd = database.indexOf("\n}", closeStart) + 2;
+  const close = database.slice(closeStart, closeEnd);
+  assert.match(close, /if \(poolClosePromise\) return poolClosePromise/);
+  assert.match(close, /await current\.end\(\)/);
+  assert.match(close, /poolClosePromise = null/);
+});
