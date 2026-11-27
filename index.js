@@ -7435,7 +7435,6 @@ let loginInProgress = false;
 let proxyGateVerified = false;
 let proxyGatePending = false;
 let proxyGateRetryAttempt = 0;
-let proxyGateRetryTimer = null;
 let listenerGeneration = 0;
 let activeListenerGeneration = 0;
 let startupSchedulersInitialized = false;
@@ -7532,6 +7531,14 @@ const MQTT_RECONNECT_MAX_DELAY_MS = 60_000;
 
 function attachMqttListener(api, callback) {
   return api.listenMqtt(callback);
+}
+
+function cancelMqttReconnectTimer(reason = "unspecified") {
+  if (!mqttReconnectTimer) return false;
+  clearTimeout(mqttReconnectTimer);
+  mqttReconnectTimer = null;
+  console.log("[MQTT WATCHDOG] Cancelled pending listener reattach (" + String(reason).slice(0, 100) + ").");
+  return true;
 }
 
 function scheduleMqttListenerReattach(reason) {
@@ -7645,10 +7652,7 @@ function stopMqttActivityWatchdog() {
     clearInterval(mqttActivityWatchdogTimer);
     mqttActivityWatchdogTimer = null;
   }
-  if (mqttReconnectTimer) {
-    clearTimeout(mqttReconnectTimer);
-    mqttReconnectTimer = null;
-  }
+  cancelMqttReconnectTimer("watchdog stopped");
   mqttReconnectInProgress = false;
 }
 
@@ -7936,7 +7940,7 @@ function attemptLogin() {
   // Verify the configured proxy before Messenger login. Temporary probe
   // failures retry automatically with bounded backoff and preserve the session.
   if (!proxyGateVerified) {
-    if (proxyGatePending || proxyGateRetryTimer) return;
+    if (proxyGatePending || loginRetryTimer) return;
     proxyGatePending = true;
     void verifyMessengerProxy().then(() => {
       proxyGateVerified = true;
@@ -7962,10 +7966,7 @@ function attemptLogin() {
         retry_in_ms: backoffMs,
         attempt: proxyGateRetryAttempt,
       });
-      proxyGateRetryTimer = setTimeout(() => {
-        proxyGateRetryTimer = null;
-        attemptLogin();
-      }, backoffMs);
+      scheduleLoginRetry(backoffMs, "proxy egress verification");
     });
     return;
   }
@@ -8329,10 +8330,7 @@ function attemptLogin() {
 
       mqttReconnectFatal = false;
       mqttReconnectAttempt = 0;
-      if (mqttReconnectTimer) {
-        clearTimeout(mqttReconnectTimer);
-        mqttReconnectTimer = null;
-      }
+      cancelMqttReconnectTimer("new Messenger session connected");
 
       // Every successful login may return refreshed Facebook session
       // state. Keep it in memory so native ws3-fca recovery can continue
@@ -8720,10 +8718,7 @@ function attemptLogin() {
               // retry would be blocked before it can run.
               transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.RECOVERY_BEGIN);
               mqttReconnectFatal = true;
-              if (mqttReconnectTimer) {
-                clearTimeout(mqttReconnectTimer);
-                mqttReconnectTimer = null;
-              }
+              cancelMqttReconnectTimer("listener authentication rejected");
               dashboardLoginError = getFacebookLoginErrorMessage(listenError);
               pushDashboardEvent("login-failed", "Messenger listener stopped because Facebook rejected the session. Reconnect the account from the dashboard.", {
                 detail: String(dashboardLoginError || "Facebook session rejected").slice(0, 240),
@@ -15085,11 +15080,6 @@ async function gracefulShutdown(
   }
 
   cancelLoginRetry("explicit cancellation");
-  if (proxyGateRetryTimer) {
-    clearTimeout(proxyGateRetryTimer);
-    proxyGateRetryTimer = null;
-  }
-
   console.log(
     `[SYSTEM] Received ${signal}. Cleaning up ECLIPSE...`
   );
