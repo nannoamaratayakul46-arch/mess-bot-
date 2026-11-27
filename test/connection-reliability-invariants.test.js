@@ -263,3 +263,16 @@ test("listener error teardown clears active listener ownership even if stop thro
   assert.match(finallyBlock, /listenerStartedApis\.delete\(rawApiForListener\)/);
   assert.match(finallyBlock, /activeMessengerApi = null/);
 });
+
+test("session replacement releases old listener bookkeeping even when stop throws", () => {
+  const replacementStart = index.indexOf("if (previousApi && previousApi !== api) {");
+  const replacementEnd = index.indexOf("\n      activeListenerGeneration = thisGeneration;", replacementStart);
+  const replacement = index.slice(replacementStart, replacementEnd);
+  assert.ok(replacementStart >= 0 && replacementEnd > replacementStart);
+  assert.match(replacement, /catch \(stopError\)/);
+  assert.match(replacement, /finally \{/);
+  const finallyBlock = replacement.slice(replacement.indexOf("finally {"));
+  assert.match(finallyBlock, /activeMqttStopHandle = null/);
+  assert.match(finallyBlock, /activeMqttListenerCallback = null/);
+  assert.match(finallyBlock, /listenerStartedApis\.delete\(previousRawApi\)/);
+});
