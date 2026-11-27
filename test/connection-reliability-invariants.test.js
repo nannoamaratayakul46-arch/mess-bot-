@@ -247,3 +247,19 @@ test("successful login completion is generation-fenced before and after durable 
     "candidate API must not become connection owner until post-await fence passes");
   assert.match(index.slice(afterCheckpointGuard, promotion), /watchdogShuttingDown/);
 });
+
+test("listener error teardown clears active listener ownership even if stop throws", () => {
+  const listenerErrorStart = index.indexOf("if (listenError) {", index.indexOf("activeMqttListenerCallback = ("));
+  const teardownStart = index.indexOf("try {", listenerErrorStart);
+  const teardownEnd = index.indexOf("\n\n            if (authRejected)", teardownStart);
+  const teardown = index.slice(teardownStart, teardownEnd);
+  assert.ok(listenerErrorStart >= 0 && teardownStart > listenerErrorStart && teardownEnd > teardownStart);
+  assert.match(teardown, /catch \(stopError\)/);
+  assert.match(teardown, /finally \{/);
+  const finallyStart = teardown.indexOf("finally {");
+  const finallyBlock = teardown.slice(finallyStart);
+  assert.match(finallyBlock, /activeMqttStopHandle = null/);
+  assert.match(finallyBlock, /activeMqttListenerCallback = null/);
+  assert.match(finallyBlock, /listenerStartedApis\.delete\(rawApiForListener\)/);
+  assert.match(finallyBlock, /activeMessengerApi = null/);
+});
