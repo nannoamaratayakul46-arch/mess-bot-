@@ -146,3 +146,20 @@ test("dead MQTT listener failures update durable supervisor cooldown state", () 
   assert.match(listenerErrorBranch, /failureKind: rateLimited \? "facebook_rate_limit" : "mqtt_disconnect"/);
   assert.match(listenerErrorBranch, /cooldownUntil: rateLimited \? Date\.now\(\) \+ recoveryDelayMs : 0/);
 });
+
+
+test("MQTT reattach remains degraded until real event activity proves recovery", () => {
+  const scheduler = index.slice(
+    index.indexOf("function scheduleMqttListenerReattach"),
+    index.indexOf("function startMqttActivityWatchdog")
+  );
+  assert.match(scheduler, /EVENTS\.RECOVERY_BEGIN/);
+  assert.match(scheduler, /EVENTS\.AUTH_REJECTED/);
+  assert.match(scheduler, /EVENTS\.TRANSIENT_FAILURE/);
+  assert.doesNotMatch(scheduler, /EVENTS\.RECOVERY_SUCCESS/);
+  const callback = index.slice(
+    index.indexOf("activeMqttListenerCallback = ("),
+    index.indexOf("// Learn sender, mention, join, and nickname names")
+  );
+  assert.match(callback, /event && typeof event === "object"[\s\S]*?EVENTS\.RECOVERY_SUCCESS/);
+});
