@@ -93,13 +93,13 @@ test("login rate-limit failures use the longer escalating cooldown in both failu
 
 test("MQTT reattach backoff resets only after real listener activity and stale generations are fenced", () => {
   const activityStart = index.indexOf("function watchdogRecordListenerActivity() {");
-  const activityEnd = index.indexOf("\\n}", activityStart);
+  const activityEnd = index.indexOf("\n}", activityStart);
   const activityHandler = index.slice(activityStart, activityEnd);
   assert.match(activityHandler, /mqttReconnectAttempt = 0/);
   assert.match(activityHandler, /real MQTT callbacks again/);
 
   const reattachStart = index.indexOf("function scheduleMqttListenerReattach(reason) {");
-  const reattachEnd = index.indexOf("\\nfunction startMqttActivityWatchdog(", reattachStart);
+  const reattachEnd = index.indexOf("\nfunction startMqttActivityWatchdog(", reattachStart);
   const reattachHandler = index.slice(reattachStart, reattachEnd);
   assert.match(reattachHandler, /const scheduledGeneration = activeListenerGeneration/);
   assert.match(reattachHandler, /activeListenerGeneration !== scheduledGeneration/);
