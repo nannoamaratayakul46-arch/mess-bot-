@@ -2398,6 +2398,10 @@ const musicPendingJobs = [];
 // Number of currently running download jobs.
 let activeMusicDownloads = 0;
 
+// Track active processing promises so shutdown can cancel and drain them safely.
+const activeMusicJobPromises = new Map();
+let musicShutdownStarted = false;
+
 // Monotonically increasing job ID.
 let musicJobCounter = 0;
 
@@ -2868,21 +2872,16 @@ function processMusicQueue() {
 
     activeMusicDownloads++;
 
-    void processMusicJob(
-      job
-    ).finally(() => {
-      activeMusicDownloads =
-        Math.max(
-          0,
-          activeMusicDownloads - 1
-        );
-
+    const processingPromise = processMusicJob(job).finally(() => {
+      activeMusicDownloads = Math.max(0, activeMusicDownloads - 1);
+      activeMusicJobPromises.delete(job);
       removeMusicJob(job);
 
-      setImmediate(
-        processMusicQueue
-      );
+      if (!musicShutdownStarted) {
+        setImmediate(processMusicQueue);
+      }
     });
+    activeMusicJobPromises.set(job, processingPromise);
   }
 }
 
@@ -15053,18 +15052,16 @@ async function cleanupMusicFiles() {
 
   for (const queue of musicQueues.values()) {
     for (const job of queue) {
-      if (job.temporaryFile) {
-        files.add(
-          job.temporaryFile
-        );
+      // Active jobs own their temporary files and remove them in their finally
+      // block. Avoid unlinking a file while a download or attachment stream uses it.
+      if (job.temporaryFile && !activeMusicJobPromises.has(job)) {
+        files.add(job.temporaryFile);
       }
     }
   }
 
   for (const file of files) {
-    await fsp
-      .unlink(file)
-      .catch(() => {});
+    await fsp.unlink(file).catch(() => {});
   }
 }
 
@@ -15118,16 +15115,25 @@ async function gracefulShutdown(
 
   pendingBroadcastTimers.clear();
 
-  for (
-    const job of musicPendingJobs
-  ) {
-    job.cancelled =
-      true;
+  // Stop music queue advancement and cancel both waiting and active jobs.
+  // Active work is drained for a bounded period; its own finally block owns file cleanup.
+  musicShutdownStarted = true;
+  musicPaused = true;
+  for (const queue of musicQueues.values()) {
+    for (const job of queue) {
+      job.cancelled = true;
+    }
   }
-
   musicPendingJobs.length = 0;
 
   try {
+    const activeMusicDrain = Promise.allSettled(
+      Array.from(activeMusicJobPromises.values())
+    );
+    await Promise.race([
+      activeMusicDrain,
+      new Promise((resolve) => setTimeout(resolve, 8000)),
+    ]);
     await cleanupMusicFiles();
   } catch (error) {
     console.error(
