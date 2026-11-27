@@ -79,3 +79,16 @@ test("broadcast uses the requested speech prefix", () => {
     /const outgoingMessage = imagePath\s*\?\s*\{/
   );
 });
+
+
+test("bootstrap releases database resources when startup is blocked or fails", () => {
+  const bootstrap = read("bootstrap.js");
+  assert.match(bootstrap, /async function cleanupFailedStartup\(licenseClient, reason\)/);
+  assert.match(bootstrap, /licenseClient\?\.stop\(\)/);
+  assert.match(bootstrap, /Promise\.race\([\s\S]*db\.close\(\)[\s\S]*8_000/);
+  assert.match(bootstrap, /clearTimeout\(timer\)/);
+  assert.match(bootstrap, /cleanupFailedStartup\(null, "Database initialization failure"\)/);
+  assert.match(bootstrap, /cleanupFailedStartup\(licenseClient, "License authorization failure"\)/);
+  assert.match(bootstrap, /cleanupFailedStartup\(licenseClient, "License initialization failure"\)/);
+  assert.match(bootstrap, /cleanupFailedStartup\(licenseClient, "Runtime startup failure"\)/);
+});
