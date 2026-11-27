@@ -8716,6 +8716,11 @@ function attemptLogin() {
             }
 
             if (authRejected) {
+              // Keep the supervisor recoverable for the existing one-time
+              // saved-session revalidation. Only a rejected login attempt
+              // transitions to SESSION_REQUIRED; otherwise this scheduled
+              // retry would be blocked before it can run.
+              transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.RECOVERY_BEGIN);
               mqttReconnectFatal = true;
               if (mqttReconnectTimer) {
                 clearTimeout(mqttReconnectTimer);
@@ -8749,12 +8754,20 @@ function attemptLogin() {
             // Recover a dead listener through one controlled fresh login.
             // Rate-limit failures use an escalating cooldown (2, 4, 8, then
             // 15 minutes) so repeated rejections do not create a login loop.
+            if (rateLimited) rateLimitFailureCount++;
+            const recoveryDelayMs = getListenerRecoveryDelayMs({
+              rateLimited,
+              failureCount: rateLimitFailureCount,
+            });
+            transitionMessengerSupervisor(
+              rateLimited ? MESSENGER_SUPERVISOR_EVENTS.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE,
+              {
+                failureKind: rateLimited ? "facebook_rate_limit" : "mqtt_disconnect",
+                cooldownUntil: rateLimited ? Date.now() + recoveryDelayMs : 0,
+              }
+            );
+
             if (!loginRetryTimer) {
-              if (rateLimited) rateLimitFailureCount++;
-              const recoveryDelayMs = getListenerRecoveryDelayMs({
-                rateLimited,
-                failureCount: rateLimitFailureCount,
-              });
               const waitMinutes = Math.ceil(recoveryDelayMs / 60_000);
               dashboardLoginError = rateLimited
                 ? "Messenger was rate-limited; waiting " + waitMinutes + " minute(s) before reconnecting."
