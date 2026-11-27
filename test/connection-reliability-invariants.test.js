@@ -105,3 +105,23 @@ test("MQTT reattach backoff resets only after real listener activity and stale g
   assert.match(reattachHandler, /activeListenerGeneration !== scheduledGeneration/);
   assert.match(reattachHandler, /mqttReconnectAttempt \+= 1/);
 });
+
+
+test("Messenger supervisor recovery metadata is service-isolated and never stores session credentials", () => {
+  const database = fs.readFileSync(path.join(__dirname, "..", "db.js"), "utf8");
+  assert.match(database, /CREATE TABLE IF NOT EXISTS messenger_supervisor_states/);
+  assert.match(database, /service_id TEXT PRIMARY KEY/);
+  assert.match(database, /sanitizePersistedSnapshot\(supervisorState\)/);
+  assert.match(database, /getMessengerSessionServiceId\(\)/);
+  assert.match(database, /supervisor_state JSONB NOT NULL/);
+  assert.doesNotMatch(database, /messenger_supervisor_states[^;]*encrypted_state/s);
+});
+
+test("Messenger supervisor restores before login and gates session-required and cooldown states", () => {
+  assert.match(index, /await restoreMessengerSupervisorState\(\);\s*attemptLogin\(\);/);
+  assert.match(index, /state === MESSENGER_SUPERVISOR_STATES\.SESSION_REQUIRED/);
+  assert.match(index, /state === MESSENGER_SUPERVISOR_STATES\.COOLDOWN/);
+  assert.match(index, /transitionMessengerSupervisor\(MESSENGER_SUPERVISOR_EVENTS\.COOLDOWN_END\)/);
+  assert.match(index, /Could not persist recovery metadata/);
+  assert.match(index, /Could not restore recovery metadata/);
+});
