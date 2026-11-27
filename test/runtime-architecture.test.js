@@ -83,9 +83,9 @@ test("broadcast uses the requested speech prefix", () => {
 test("database outage does not block the dashboard and Messenger runtime from starting", () => {
   const bootstrap = read("bootstrap.js");
   const dbFailure = bootstrap.indexOf("[BOOT] Database initialization failed; continuing in degraded mode:");
-  const runtimeStart = bootstrap.indexOf('require("./index")');
-  assert.ok(dbFailure >= 0 && runtimeStart > dbFailure);
-  const degradedStartup = bootstrap.slice(dbFailure, runtimeStart);
+  const licenseStartup = bootstrap.indexOf("  let licenseClient = null;", dbFailure);
+  assert.ok(dbFailure >= 0 && licenseStartup > dbFailure);
+  const degradedStartup = bootstrap.slice(dbFailure, licenseStartup);
   assert.ok(!degradedStartup.includes("process.exitCode = 1"));
   assert.ok(!degradedStartup.includes("return;"));
   assert.ok(bootstrap.includes("await db.connect()"));
