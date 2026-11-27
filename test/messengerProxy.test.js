@@ -14,7 +14,8 @@ test("Messenger login is gated on successful proxy verification", () => {
   assert.match(source, /verifyMessengerProxy, getMessengerProxyUrl, setMessengerProxyEnabled, isMessengerProxyEnabled/);
   assert.match(source, /let proxyGateVerified = false/);
   assert.match(source, /if \(!proxyGateVerified\)\s*\{[\s\S]*?verifyMessengerProxy\(\)\.then\(\(\) => \{[\s\S]*?proxyGateVerified = true;[\s\S]*?attemptLogin\(\);/);
-  assert.match(source, /proxyGateRetryTimer = setTimeout/);
+  assert.match(source, /scheduleLoginRetry\(backoffMs, "proxy egress verification"\)/);
+  assert.doesNotMatch(source, /proxyGateRetryTimer/);
   assert.match(source, /proxyGateRetryAttempt/);
   assert.doesNotMatch(source, /proxyGateFailed = true/);
   assert.match(source, /proxy: getMessengerProxyUrl\(\)/);
