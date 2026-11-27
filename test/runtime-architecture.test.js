@@ -82,9 +82,9 @@ test("broadcast uses the requested speech prefix", () => {
 
 test("Messenger login survives a failed durable session checkpoint", () => {
   const source = read("index.js");
-  assert.match(source, /let sessionCheckpointSaved = false/);
-  assert.match(source, /await persistFacebookSessionState\\(appState\\);/);
-  assert.match(source, /catch \\(checkpointError\\)/);
-  assert.match(source, /failure_kind: "session_checkpoint_failed"/);
-  assert.match(source, /appStateSource = sessionCheckpointSaved \\? "durable" : "memory"/);
+  assert.ok(source.includes("let sessionCheckpointSaved = false"));
+  assert.ok(source.includes("await persistFacebookSessionState(appState);"));
+  assert.ok(source.includes("catch (checkpointError)"));
+  assert.ok(source.includes('failure_kind: "session_checkpoint_failed"'));
+  assert.ok(source.includes('appStateSource = sessionCheckpointSaved ? "durable" : "memory"'));
 });
