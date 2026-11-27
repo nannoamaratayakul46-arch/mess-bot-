@@ -44,7 +44,7 @@ function makeHarness(savedSettings = { ...DEFAULTS }, options = {}) {
       json(body) { this.body = body; return this; },
     };
   }
-  return { routes, writes, sent, response };
+  return { routes, writes, sent, response, service };
 }
 
 test("run uses validated editor snapshot without persisting it", async () => {
@@ -101,6 +101,19 @@ test("stop endpoint cancels a run during its typing lead-in", async () => {
 
   await new Promise(resolve => setTimeout(resolve, 20));
   assert.equal(h.sent.length, 0);
+});
+
+test("shutdown stopAllRuns cancels active runs during typing lead-in", async () => {
+  const h = makeHarness({ ...DEFAULTS, messages_per_burst: 2 });
+  const runRes = h.response();
+  await h.routes["POST /api/dashboard/burst-roast/run"]({
+    body: { mode: "burst", thread_ids: ["gc-1"], settings: { ...DEFAULTS, messages_per_burst: 2 } },
+  }, runRes);
+  assert.equal(runRes.statusCode, 200);
+  assert.equal(h.service.stopAllRuns(), 1);
+  assert.equal(h.service.stopAllRuns(), 0, "stop should be idempotent");
+  await new Promise(resolve => setTimeout(resolve, 20));
+  assert.equal(h.sent.length, 0, "shutdown cancellation should prevent the pending send");
 });
 
 test("run rejects a cooldown shorter than two minutes", async () => {
