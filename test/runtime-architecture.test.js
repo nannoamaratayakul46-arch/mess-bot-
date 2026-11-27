@@ -37,6 +37,14 @@ test("database exposes graceful shutdown and transaction primitives", () => {
   assert.equal(typeof db.withTransaction, "function");
 });
 
+test("database health checks can restore a pool after degraded startup", () => {
+  const source = read("db.js");
+  assert.match(source, /let healthCheckPromise = null/);
+  assert.match(source, /async function healthCheck\(\)[\s\S]*?if \(!pool\) await connect\(\)/);
+  assert.match(source, /await requireConn\(\)\.query\("SELECT 1"\)/);
+  assert.match(source, /finally \{\s*healthCheckPromise = null;\s*\}/);
+});
+
 test("main process contains one shutdown path", () => {
   const index = read("index.js");
   assert.match(index, /async function gracefulShutdown/);
