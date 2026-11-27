@@ -42,7 +42,7 @@ test("main process contains one shutdown path", () => {
   assert.match(index, /async function gracefulShutdown/);
   assert.match(index, /process\.once\(\s*"SIGTERM"/);
   assert.match(index, /process\.once\(\s*"SIGINT"/);
-  assert.match(index, /await db\.close\(\)/);
+  assert.match(index, /awaitShutdownTask\("Database pool close", \(\) => db\.close\(\), 8_000\)/);
   assert.match(index, /stopTrafficGovernor\(\)/);
   assert.match(index, /shutdownGames\(\)/);
 });
@@ -78,4 +78,34 @@ test("broadcast uses the requested speech prefix", () => {
     source,
     /const outgoingMessage = imagePath\s*\?\s*\{/
   );
+});
+
+test("HTTP shutdown drain is bounded and force-closes lingering connections", () => {
+  const index = read("index.js");
+  const start = index.indexOf("async function gracefulShutdown(");
+  const end = index.indexOf("\nfunction handleRecoverableMessengerProcessFailure", start);
+  const shutdown = index.slice(start, end);
+  assert.ok(start >= 0 && end > start, "graceful shutdown should be present");
+  assert.match(shutdown, /server\.close\(finish\)/);
+  assert.match(shutdown, /setTimeout\(\(\) => \{/);
+  assert.match(shutdown, /8_000/);
+  assert.match(shutdown, /server\.closeAllConnections\(\)/);
+  assert.match(shutdown, /clearTimeout\(drainTimer\)/);
+  assert.ok(
+    shutdown.indexOf("server.close(finish)") < shutdown.indexOf('awaitShutdownTask("Database pool close"'),
+    "HTTP drain must complete or hit its deadline before database shutdown"
+  );
+});
+
+
+test("graceful shutdown bounds persistence, music cleanup, and database close", () => {
+  const index = read("index.js");
+  const start = index.indexOf("async function gracefulShutdown(");
+  const end = index.indexOf("\nfunction handleRecoverableMessengerProcessFailure", start);
+  const shutdown = index.slice(start, end);
+  assert.ok(index.includes("async function awaitShutdownTask(label, task, timeoutMs)"));
+  assert.ok(shutdown.includes('awaitShutdownTask("Session persistence", persistAppStateFile, 8_000)'));
+  assert.ok(shutdown.includes('awaitShutdownTask("Music file cleanup", cleanupMusicFiles, 3_000)'));
+  assert.ok(shutdown.includes('awaitShutdownTask("Database pool close", () => db.close(), 8_000)'));
+  assert.ok(index.includes("if (timer) clearTimeout(timer)"));
 });

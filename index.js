@@ -15068,6 +15068,24 @@ async function cleanupMusicFiles() {
   }
 }
 
+async function awaitShutdownTask(label, task, timeoutMs) {
+  let timer = null;
+  try {
+    await Promise.race([
+      Promise.resolve().then(task),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(label + " exceeded " + timeoutMs + "ms")),
+          timeoutMs
+        );
+      }),
+    ]);
+    return true;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 let shuttingDown =
   false;
 
@@ -15089,7 +15107,11 @@ async function gracefulShutdown(
     false
   );
 
-  await persistAppStateFile();
+  try {
+    await awaitShutdownTask("Session persistence", persistAppStateFile, 8_000);
+  } catch (error) {
+    console.error("[SYSTEM] Session persistence shutdown deadline/error:", error?.message || error);
+  }
   stopMqttActivityWatchdog();
   if (appStatePersistenceTimer) clearInterval(appStatePersistenceTimer);
   stopWatchdog();
@@ -15128,7 +15150,7 @@ async function gracefulShutdown(
   musicPendingJobs.length = 0;
 
   try {
-    await cleanupMusicFiles();
+    await awaitShutdownTask("Music file cleanup", cleanupMusicFiles, 3_000);
   } catch (error) {
     console.error(
       "[SYSTEM] Music cleanup failed:",
@@ -15143,13 +15165,28 @@ async function gracefulShutdown(
   // keep the session valid for the next startup.
   try {
     if (server) {
-      await new Promise(
-        (resolve) => {
-          server.close(
-            () => resolve()
-          );
-        }
-      );
+      await new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(drainTimer);
+          resolve();
+        };
+        const drainTimer = setTimeout(() => {
+          console.warn("[SYSTEM] HTTP shutdown drain exceeded 8s; closing remaining connections.");
+          try {
+            if (typeof server.closeAllConnections === "function") {
+              server.closeAllConnections();
+            }
+          } catch (closeError) {
+            console.warn("[SYSTEM] Could not force-close remaining HTTP connections:", closeError?.message || closeError);
+          }
+          finish();
+        }, 8_000);
+        drainTimer.unref?.();
+        server.close(finish);
+      });
     }
   } catch (error) {
     console.error(
@@ -15159,7 +15196,7 @@ async function gracefulShutdown(
   }
 
   try {
-    await db.close();
+    await awaitShutdownTask("Database pool close", () => db.close(), 8_000);
   } catch (error) {
     console.error("[SYSTEM] Database shutdown failed:", error);
   }

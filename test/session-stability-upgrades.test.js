@@ -13,7 +13,7 @@ assert.match(source, /appstate\.tmp\.json/);
 assert.match(source, /fsp\.writeFile\([\s\S]{0,250}temporaryPath/);
 assert.match(source, /fsp\.rename\(temporaryPath, targetPath\)/);
 assert.match(source, /20 \* 60_000/);
-assert.match(source, /await persistAppStateFile\(\)/);
+assert.match(source, /awaitShutdownTask\("Session persistence", persistAppStateFile, 8_000\)/);
 
 assert.match(source, /Chrome\/131\.0\.0\.0 Safari\/537\.36/);
 assert.match(source, /autoMarkDelivery: true/);
