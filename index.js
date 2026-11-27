@@ -8427,15 +8427,19 @@ function attemptLogin() {
           ) {
             previousRawApi.stopListenMqtt();
           }
-          activeMqttStopHandle = null;
-          activeMqttListenerCallback = null;
         } catch (stopError) {
           console.warn(
             "[LISTENER] Could not stop previous listener before replacement:",
             stopError?.message || stopError
           );
+        } finally {
+          // Replacement ownership is already fenced by activeListenerGeneration.
+          // Release old references regardless of whether stop throws.
+          activeMqttStopHandle = null;
+          activeMqttListenerCallback = null;
+          if (previousRawApi) listenerStartedApis.delete(previousRawApi);
         }
-        console.log("[LISTENER] Previous Messenger listener stopped before replacement.");
+        console.log("[LISTENER] Previous Messenger listener stop attempted before replacement.");
       }
 
       activeListenerGeneration = thisGeneration;
