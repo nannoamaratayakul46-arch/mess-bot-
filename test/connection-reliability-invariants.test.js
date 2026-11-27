@@ -125,3 +125,24 @@ test("Messenger supervisor restores before login and gates session-required and 
   assert.match(index, /Could not persist recovery metadata/);
   assert.match(index, /Could not restore recovery metadata/);
 });
+
+test("active-listener auth rejection permits the existing one-time saved-session revalidation", () => {
+  const listenerErrorBranch = index.slice(
+    index.indexOf('if (authRejected) {', index.indexOf('const { authRejected, rateLimited } = classifyListenerError')),
+    index.indexOf('// Recover a dead listener through one controlled fresh login')
+  );
+  assert.match(listenerErrorBranch, /EVENTS\.RECOVERY_BEGIN/);
+  assert.doesNotMatch(listenerErrorBranch, /EVENTS\.AUTH_REJECTED/);
+  assert.match(listenerErrorBranch, /Scheduling one controlled saved-session revalidation/);
+  assert.match(index, /if \(supervisorSnapshot\.state === MESSENGER_SUPERVISOR_STATES\.SESSION_REQUIRED &&\s*!pendingFacebookAppState\)/);
+});
+
+test("dead MQTT listener failures update durable supervisor cooldown state", () => {
+  const listenerErrorBranch = index.slice(
+    index.indexOf("// Recover a dead listener through one controlled fresh login"),
+    index.indexOf("return;\n          }", index.indexOf("// Recover a dead listener through one controlled fresh login"))
+  );
+  assert.match(listenerErrorBranch, /EVENTS\.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS\.TRANSIENT_FAILURE/);
+  assert.match(listenerErrorBranch, /failureKind: rateLimited \? "facebook_rate_limit" : "mqtt_disconnect"/);
+  assert.match(listenerErrorBranch, /cooldownUntil: rateLimited \? Date\.now\(\) \+ recoveryDelayMs : 0/);
+});
