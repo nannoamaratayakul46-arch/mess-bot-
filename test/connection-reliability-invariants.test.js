@@ -28,9 +28,19 @@ test("array-wrapped ws3-fca listener errors are normalized before classification
 
 test("known Messenger process-level auth failures use listener recovery", () => {
   assert.match(index, /function handleRecoverableMessengerProcessFailure/);
-  assert.match(index, /const { authRejected, rateLimited } = classifyListenerError(reason)/);
+  assert.ok(index.includes("const { authRejected, rateLimited } = classifyListenerError(reason);"));
   assert.match(index, /activeMqttListenerCallback\(reason, null\)/);
   assert.match(index, /process\.on\("unhandledRejection"/);
+});
+
+test("stale Messenger watchdog reattaches the listener without exiting the Render process", () => {
+  const start = index.indexOf("function watchdogCleanRestartForDeadListener(reason) {");
+  const end = index.indexOf("\\nfunction watchdogSetShuttingDown(", start);
+  const handler = index.slice(start, end);
+  assert.ok(start >= 0 && end > start, "stale-listener handler should exist");
+  assert.match(handler, /scheduleMqttListenerReattach\\(/);
+  assert.doesNotMatch(handler, /process\\.exit/);
+  assert.doesNotMatch(handler, /watchdogShuttingDown\\s*=\\s*true/);
 });
 
 test("transient listener errors use escalating rate-limit backoff", () => {
