@@ -15068,6 +15068,24 @@ async function cleanupMusicFiles() {
   }
 }
 
+async function awaitShutdownTask(label, task, timeoutMs) {
+  let timer = null;
+  try {
+    await Promise.race([
+      Promise.resolve().then(task),
+      new Promise((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(label + " exceeded " + timeoutMs + "ms")),
+          timeoutMs
+        );
+      }),
+    ]);
+    return true;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 let shuttingDown =
   false;
 
@@ -15089,7 +15107,11 @@ async function gracefulShutdown(
     false
   );
 
-  await persistAppStateFile();
+  try {
+    await awaitShutdownTask("Session persistence", persistAppStateFile, 8_000);
+  } catch (error) {
+    console.error("[SYSTEM] Session persistence shutdown deadline/error:", error?.message || error);
+  }
   stopMqttActivityWatchdog();
   if (appStatePersistenceTimer) clearInterval(appStatePersistenceTimer);
   stopWatchdog();
@@ -15128,7 +15150,7 @@ async function gracefulShutdown(
   musicPendingJobs.length = 0;
 
   try {
-    await cleanupMusicFiles();
+    await awaitShutdownTask("Music file cleanup", cleanupMusicFiles, 3_000);
   } catch (error) {
     console.error(
       "[SYSTEM] Music cleanup failed:",
@@ -15174,7 +15196,7 @@ async function gracefulShutdown(
   }
 
   try {
-    await db.close();
+    await awaitShutdownTask("Database pool close", () => db.close(), 8_000);
   } catch (error) {
     console.error("[SYSTEM] Database shutdown failed:", error);
   }
