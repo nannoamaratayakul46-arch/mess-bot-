@@ -87,4 +87,6 @@ test("Messenger login survives a failed durable session checkpoint", () => {
   assert.ok(source.includes("catch (checkpointError)"));
   assert.ok(source.includes('failure_kind: "session_checkpoint_failed"'));
   assert.ok(source.includes('appStateSource = sessionCheckpointSaved ? "durable" : "memory"'));
+  assert.ok(source.includes('appStateSource !== "durable" && appStateSource !== "memory"'));
+  assert.ok(source.includes('appStateSource !== "durable" && appStateSource !== "memory")'));
 });
