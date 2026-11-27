@@ -85,12 +85,19 @@ test("clearing a thread also clears its target-scoped FIFO queues", async () => 
   });
   const first = queue.enqueue("thread-clear:target-a", job("one"), 0);
   const second = queue.enqueue("thread-clear:target-b", job("two"), 0);
+  const pending = queue.enqueue("thread-clear:target-a", job("three"), 0);
   // Let both drains begin and block inside send before clearing the thread.
   await new Promise((resolve) => setImmediate(resolve));
+  let firstSettled = false;
+  first.then(() => { firstSettled = true; });
   const cleared = queue.clear("thread-clear");
-  assert.ok(cleared >= 1);
+  assert.equal(cleared, 1, "only the queued, not-yet-sent item should be cleared");
+  assert.equal((await pending).outcome, "cleared");
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(firstSettled, false, "an in-flight send must not be reported as cleared");
   release();
-  await Promise.all([first, second]);
+  const results = await Promise.all([first, second]);
+  assert.ok(results.every((result) => result.sent));
   queue.stop();
 });
 
