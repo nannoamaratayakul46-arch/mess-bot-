@@ -15143,13 +15143,28 @@ async function gracefulShutdown(
   // keep the session valid for the next startup.
   try {
     if (server) {
-      await new Promise(
-        (resolve) => {
-          server.close(
-            () => resolve()
-          );
-        }
-      );
+      await new Promise((resolve) => {
+        let settled = false;
+        const finish = () => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(drainTimer);
+          resolve();
+        };
+        const drainTimer = setTimeout(() => {
+          console.warn("[SYSTEM] HTTP shutdown drain exceeded 8s; closing remaining connections.");
+          try {
+            if (typeof server.closeAllConnections === "function") {
+              server.closeAllConnections();
+            }
+          } catch (closeError) {
+            console.warn("[SYSTEM] Could not force-close remaining HTTP connections:", closeError?.message || closeError);
+          }
+          finish();
+        }, 8_000);
+        drainTimer.unref?.();
+        server.close(finish);
+      });
     }
   } catch (error) {
     console.error(
