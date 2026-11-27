@@ -8388,16 +8388,35 @@ function attemptLogin() {
         return;
       }
 
-      // Persist the newest session returned by ws3-fca. This is what makes
-      // a refreshed cookie survive Render restarts and redeploys.
-      await persistFacebookSessionState(appState);
+      // Persist the newest session returned by ws3-fca. A database outage
+      // must not turn an otherwise successful Messenger login into an
+      // unhandled rejection that shuts down the whole bot process.
+      let sessionCheckpointSaved = false;
+      try {
+        await persistFacebookSessionState(appState);
+        sessionCheckpointSaved = true;
+      } catch (checkpointError) {
+        dashboardLoginError =
+          "Messenger connected, but the refreshed session could not be saved. The current session remains active; persistence will be retried on a later successful checkpoint.";
+        console.error(
+          "[AUTH] Messenger login succeeded, but session checkpoint persistence failed:",
+          checkpointError?.message || checkpointError
+        );
+        try {
+          pushDashboardEvent("database", "Messenger is connected, but its refreshed session could not be saved.", {
+            failure_kind: "session_checkpoint_failed",
+          });
+        } catch (eventError) {
+          console.warn("[AUTH] Could not publish session checkpoint warning:", eventError?.message || eventError);
+        }
+      }
 
       if (thisGeneration !== listenerGeneration || watchdogShuttingDown) {
         console.warn("[LOGIN] Discarding stale login completion after session checkpoint.");
         return;
       }
 
-      appStateSource = "durable";
+      appStateSource = sessionCheckpointSaved ? "durable" : "memory";
       durableSessionRejected = false;
 
       pendingFacebookAppState = null;
