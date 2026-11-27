@@ -46,6 +46,7 @@ const INTEREST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const LOAN_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 let pool = null;
+let poolClosePromise = null;
 let lastPoolTimeoutDiagnosticAt = 0;
 
 // ═══════════════════════════════════════════════════════════
@@ -53,6 +54,8 @@ let lastPoolTimeoutDiagnosticAt = 0;
 // ═══════════════════════════════════════════════════════════
 
 async function connect() {
+  // Do not overlap a replacement pool with a pool that is still draining.
+  if (poolClosePromise) await poolClosePromise;
   if (pool) return pool;
 
   // Initialization is atomic from the application's point of view. If a
@@ -1425,11 +1428,22 @@ async function withTransaction(work) {
 }
 
 async function close() {
-  if (!pool) return;
-  const current = pool;
-  pool = null;
-  await current.end();
-  console.log("[DB] Neon PostgreSQL connection pool closed.");
+  if (poolClosePromise) return poolClosePromise;
+
+  const closing = (async () => {
+    if (!pool) return;
+    const current = pool;
+    pool = null;
+    await current.end();
+    console.log("[DB] Neon PostgreSQL connection pool closed.");
+  })();
+
+  poolClosePromise = closing;
+  try {
+    await closing;
+  } finally {
+    if (poolClosePromise === closing) poolClosePromise = null;
+  }
 }
 
 // ═══════════════════════════════════════════════════════════
