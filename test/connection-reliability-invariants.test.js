@@ -206,3 +206,28 @@ test("proxy verification retries share the login retry coordinator and MQTT time
   assert.match(index, /cancelMqttReconnectTimer\("new Messenger session connected"\)/);
   assert.match(index, /cancelMqttReconnectTimer\("listener authentication rejected"\)/);
 });
+
+test("active Messenger listener is not demoted from degraded recovery to connecting by retry ticks", () => {
+  const start = index.indexOf("function attemptLogin() {");
+  const end = index.indexOf("\\nfunction ", start + 1);
+  const attempt = index.slice(start, end);
+  const liveGuard = attempt.indexOf("activeMessengerApi &&");
+  const stateMutation = attempt.indexOf("MESSENGER_SUPERVISOR_EVENTS.CONNECT_BEGIN");
+  assert.ok(liveGuard >= 0 && stateMutation > liveGuard,
+    "live-listener guard must run before supervisor transitions");
+  assert.match(attempt.slice(0, stateMutation), /!pendingFacebookAppState/);
+});
+
+test("stale MQTT callbacks cannot refresh watchdog activity or reset reconnect backoff", () => {
+  const callbackStart = index.indexOf("activeMqttListenerCallback = (");
+  const callbackEnd = index.indexOf("// Learn sender, mention, join, and nickname names", callbackStart);
+  const callback = index.slice(callbackStart, callbackEnd);
+  const generationFence = callback.indexOf("thisGeneration !== activeListenerGeneration");
+  const activityUpdate = callback.indexOf("watchdogRecordListenerActivity()");
+  const backoffReset = callback.indexOf("mqttReconnectAttempt = 0");
+  assert.ok(generationFence >= 0);
+  assert.ok(activityUpdate > generationFence,
+    "stale callbacks must be rejected before watchdog activity is recorded");
+  assert.ok(backoffReset > generationFence,
+    "stale callbacks must not reset the active listener's reconnect backoff");
+});
