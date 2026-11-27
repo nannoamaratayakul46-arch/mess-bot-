@@ -79,3 +79,18 @@ test("broadcast uses the requested speech prefix", () => {
     /const outgoingMessage = imagePath\s*\?\s*\{/
   );
 });
+
+test("Messenger login survives a failed durable session checkpoint", () => {
+  const source = read("index.js");
+  assert.ok(source.includes("let sessionCheckpointSaved = false"));
+  assert.ok(source.includes("await persistFacebookSessionState(appState);"));
+  assert.ok(source.includes("catch (checkpointError)"));
+  assert.ok(source.includes('failure_kind: "session_checkpoint_failed"'));
+  assert.ok(source.includes('appStateSource = sessionCheckpointSaved ? "durable" : "memory"'));
+  assert.ok(source.includes('appStateSource !== "durable" && appStateSource !== "memory"'));
+  assert.ok(source.includes('appStateSource !== "durable" && appStateSource !== "memory")'));
+  assert.doesNotMatch(source, /authRejectionRetryUsed = false;\s*loginInProgress = false;/);
+  const promotedApiAt = source.indexOf("activeMessengerApi = api;");
+  const loginGateReleaseAt = source.indexOf("loginInProgress = false;", promotedApiAt);
+  assert.ok(promotedApiAt >= 0 && loginGateReleaseAt > promotedApiAt);
+});
