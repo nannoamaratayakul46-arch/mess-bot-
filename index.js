@@ -4636,10 +4636,7 @@ app.post(
     pushDashboardEvent("messenger", "Facebook session validation requested from Command Center. The session will be checkpointed after successful login.");
     listenerGeneration++;
 
-    if (loginRetryTimer) {
-      clearTimeout(loginRetryTimer);
-      loginRetryTimer = null;
-    }
+    cancelLoginRetry("explicit cancellation");
 
     loginAttempt = 0;
     listenFailureCount = 0;
@@ -4683,10 +4680,7 @@ app.post(
       !activeMessengerApi ||
       activeListenerGeneration <= 0
     ) {
-      if (loginRetryTimer) {
-        clearTimeout(loginRetryTimer);
-        loginRetryTimer = null;
-      }
+      cancelLoginRetry("explicit cancellation");
       loginAttempt = 0;
       attemptLogin();
     }
@@ -4715,10 +4709,7 @@ app.post(
     watchdogSetMessengerConnected(false);
     dashboardLastDisconnectedAt = new Date().toISOString();
 
-    if (loginRetryTimer) {
-      clearTimeout(loginRetryTimer);
-      loginRetryTimer = null;
-    }
+    cancelLoginRetry("explicit cancellation");
 
     res.json({
       ok: true,
@@ -7868,6 +7859,36 @@ function fallbackFromRejectedDurableSession() {
   return true;
 }
 
+function cancelLoginRetry(reason = "unspecified") {
+  if (!loginRetryTimer) return false;
+  clearTimeout(loginRetryTimer);
+  loginRetryTimer = null;
+  console.log("[LOGIN][RETRY] Cancelled scheduled retry (" + String(reason).slice(0, 100) + ").");
+  return true;
+}
+
+function scheduleLoginRetry(delayMs, reason, callback = attemptLogin) {
+  if (watchdogShuttingDown) return null;
+  const parsedDelay = Number(delayMs);
+  const safeDelayMs = Number.isFinite(parsedDelay)
+    ? Math.min(30 * 60 * 1000, Math.max(1, Math.floor(parsedDelay)))
+    : 1_000;
+  if (loginRetryTimer) cancelLoginRetry("replaced: " + reason);
+  const safeReason = String(reason || "unspecified").slice(0, 100);
+  loginRetryTimer = setTimeout(() => {
+    loginRetryTimer = null;
+    if (watchdogShuttingDown) return;
+    try {
+      callback();
+    } catch (error) {
+      console.error("[LOGIN][RETRY] Scheduled retry callback failed (" + safeReason + "):", error?.message || error);
+    }
+  }, safeDelayMs);
+  if (typeof loginRetryTimer.unref === "function") loginRetryTimer.unref();
+  console.log("[LOGIN][RETRY] Scheduled " + safeReason + " in " + safeDelayMs + "ms.");
+  return loginRetryTimer;
+}
+
 function attemptLogin() {
   const supervisorSnapshot = messengerSupervisor.snapshot();
   if (
@@ -7880,11 +7901,10 @@ function attemptLogin() {
     const remainingMs = supervisorSnapshot.cooldownUntil - Date.now();
     if (remainingMs > 0) {
       if (!loginRetryTimer) {
-        loginRetryTimer = setTimeout(() => {
-          loginRetryTimer = null;
+        scheduleLoginRetry(remainingMs, "supervisor cooldown", () => {
           transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.COOLDOWN_END);
           attemptLogin();
-        }, remainingMs);
+        });
       }
       return;
     }
@@ -8004,8 +8024,7 @@ function attemptLogin() {
       console.warn("[AUTH] Durable session was not accepted; trying FB_COOKIES once.");
       pushDashboardEvent("login-failed", dashboardLoginError, { detail: safeTrace, parser_diagnostics: parserDiagnostics, attempt: loginAttempt + 1, session_source: "durable", failure_kind: "facebook_login_required" });
       loginInProgress = false;
-      if (loginRetryTimer) clearTimeout(loginRetryTimer);
-      loginRetryTimer = setTimeout(() => { loginRetryTimer = null; attemptLogin(); }, 100);
+      scheduleLoginRetry(100, "durable-session fallback");
       return true;
     }
 
@@ -8031,7 +8050,7 @@ function attemptLogin() {
     }
     loginInProgress = false;
     if (!activeMessengerApi) watchdogSetMessengerConnected(false);
-    if (loginRetryTimer) { clearTimeout(loginRetryTimer); loginRetryTimer = null; }
+    cancelLoginRetry("explicit cancellation");
     return true;
   };
   const handleLoginInvocationFailure = (error) => {
@@ -8070,10 +8089,7 @@ function attemptLogin() {
         failure_kind: "ws3_fca_buildapi_parser",
       });
       loginInProgress = false;
-      if (loginRetryTimer) {
-        clearTimeout(loginRetryTimer);
-        loginRetryTimer = null;
-      }
+      cancelLoginRetry("explicit cancellation");
       return;
     }
 
@@ -8101,11 +8117,7 @@ function attemptLogin() {
 
       if (fellBackToCookies) {
         loginInProgress = false;
-        if (loginRetryTimer) clearTimeout(loginRetryTimer);
-        loginRetryTimer = setTimeout(() => {
-          loginRetryTimer = null;
-          attemptLogin();
-        }, 100);
+        scheduleLoginRetry(100, "durable-session fallback");
         return;
       }
 
@@ -8148,14 +8160,7 @@ function attemptLogin() {
       `[LOGIN] Login invocation failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
     );
 
-    if (loginRetryTimer) {
-      clearTimeout(loginRetryTimer);
-    }
-
-    loginRetryTimer = setTimeout(() => {
-      loginRetryTimer = null;
-      attemptLogin();
-    }, backoffMs);
+    scheduleLoginRetry(backoffMs, "login failure backoff");
   };
 
   try {
@@ -8223,10 +8228,7 @@ function attemptLogin() {
             failure_kind: "ws3_fca_buildapi_parser",
           });
           loginInProgress = false;
-          if (loginRetryTimer) {
-            clearTimeout(loginRetryTimer);
-            loginRetryTimer = null;
-          }
+          cancelLoginRetry("explicit cancellation");
           return;
         }
 
@@ -8282,11 +8284,7 @@ function attemptLogin() {
 
         if (fellBackToCookies) {
           loginInProgress = false;
-          if (loginRetryTimer) clearTimeout(loginRetryTimer);
-          loginRetryTimer = setTimeout(() => {
-            loginRetryTimer = null;
-            attemptLogin();
-          }, 100);
+          scheduleLoginRetry(100, "durable-session fallback");
           return;
         }
 
@@ -8316,14 +8314,7 @@ function attemptLogin() {
 
         loginInProgress = false;
 
-        if (loginRetryTimer) {
-          clearTimeout(loginRetryTimer);
-        }
-
-        loginRetryTimer = setTimeout(() => {
-          loginRetryTimer = null;
-          attemptLogin();
-        }, backoffMs);
+        scheduleLoginRetry(backoffMs, "login failure backoff");
 
         return;
       }
@@ -8387,10 +8378,7 @@ function attemptLogin() {
 
       pendingFacebookAppState = null;
 
-      if (loginRetryTimer) {
-        clearTimeout(loginRetryTimer);
-        loginRetryTimer = null;
-      }
+      cancelLoginRetry("explicit cancellation");
 
       // Promote this API to connection owner only after the login succeeded.
       // A replacement-session login is allowed while the old session remains
@@ -8749,12 +8737,9 @@ function attemptLogin() {
                   failure_kind: "listener_auth_rejected",
                 });
                 console.warn("[AUTH] Scheduling one controlled saved-session revalidation in 30000ms.");
-                loginRetryTimer = setTimeout(() => {
-                  loginRetryTimer = null;
-                  if (!watchdogShuttingDown && !activeMessengerApi && activeListenerGeneration <= 0) {
-                    attemptLogin();
-                  }
-                }, retryDelayMs);
+                scheduleLoginRetry(retryDelayMs, "one-time auth revalidation", () => {
+                  if (!activeMessengerApi && activeListenerGeneration <= 0) attemptLogin();
+                });
               } else {
                 console.error("[AUTH] Saved-session revalidation already used or unavailable; a fresh session may be required.");
               }
@@ -8788,12 +8773,9 @@ function attemptLogin() {
               });
               console.warn("[LISTENER] Scheduling fresh Messenger login in " + recoveryDelayMs + "ms (rateLimited=" + rateLimited + ").");
 
-              loginRetryTimer = setTimeout(() => {
-                loginRetryTimer = null;
-                if (!watchdogShuttingDown && !activeMessengerApi && activeListenerGeneration <= 0) {
-                  attemptLogin();
-                }
-              }, recoveryDelayMs);
+              scheduleLoginRetry(recoveryDelayMs, "listener recovery", () => {
+                if (!activeMessengerApi && activeListenerGeneration <= 0) attemptLogin();
+              });
             }
 
             return;
@@ -15102,10 +15084,7 @@ async function gracefulShutdown(
     console.error("[SYSTEM] Cleanup scheduler shutdown failed:", error);
   }
 
-  if (loginRetryTimer) {
-    clearTimeout(loginRetryTimer);
-    loginRetryTimer = null;
-  }
+  cancelLoginRetry("explicit cancellation");
   if (proxyGateRetryTimer) {
     clearTimeout(proxyGateRetryTimer);
     proxyGateRetryTimer = null;
