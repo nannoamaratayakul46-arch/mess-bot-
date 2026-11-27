@@ -89,8 +89,13 @@ test("clearing a thread also clears its target-scoped FIFO queues", async () => 
   await new Promise((resolve) => setImmediate(resolve));
   const cleared = queue.clear("thread-clear");
   assert.ok(cleared >= 1);
+  let firstSettled = false;
+  first.then(() => { firstSettled = true; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(firstSettled, false, "an in-flight send must not be reported as cleared");
   release();
-  await Promise.all([first, second]);
+  const results = await Promise.all([first, second]);
+  assert.ok(results.every((result) => result.sent));
   queue.stop();
 });
 
