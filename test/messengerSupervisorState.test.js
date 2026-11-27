@@ -64,3 +64,29 @@ test("terminal states reject accidental transitions", () => {
   assert.equal(supervisor.snapshot().state, STATES.STOPPING);
   assert.equal(supervisor.transition(EVENTS.START).ok, false);
 });
+
+
+test("persisted supervisor snapshots are allowlisted and exclude unknown credential fields", () => {
+  const { sanitizePersistedSnapshot } = require("../messengerSupervisorState");
+  const safe = sanitizePersistedSnapshot({
+    state: STATES.COOLDOWN,
+    generation: 4,
+    attempts: 9,
+    consecutiveFailures: 3,
+    cooldownUntil: 5000,
+    lastFailureKind: "facebook_rate_limit",
+    lastTransitionAt: 1000,
+    lastConnectedAt: 800,
+    cookie: "must-not-persist",
+    appState: [{ key: "secret" }],
+  });
+  assert.deepEqual(Object.keys(safe).sort(), [
+    "state", "generation", "attempts", "consecutiveFailures", "cooldownUntil",
+    "lastFailureKind", "lastTransitionAt", "lastConnectedAt",
+  ].sort());
+  assert.equal(safe.lastFailureKind, "facebook_rate_limit");
+  assert.throws(() => sanitizePersistedSnapshot({ state: "unknown", cookie: "secret" }), /Invalid Messenger supervisor snapshot/);
+  assert.equal(sanitizePersistedSnapshot({
+    state: STATES.DEGRADED, lastFailureKind: "some-cookie-value",
+  }).lastFailureKind, null);
+});
