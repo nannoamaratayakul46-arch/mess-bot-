@@ -7884,6 +7884,14 @@ function attemptLogin() {
   } else if (supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.DEGRADED) {
     transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.CONNECT_BEGIN);
   } else if (
+    supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.CONNECTED &&
+    (!activeMessengerApi || activeListenerGeneration <= 0)
+  ) {
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE, {
+      failureKind: "mqtt_disconnect",
+    });
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.CONNECT_BEGIN);
+  } else if (
     supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.SESSION_REQUIRED &&
     pendingFacebookAppState
   ) {
@@ -8116,13 +8124,15 @@ function attemptLogin() {
     const backoffMs = loginRateLimited
       ? getListenerRecoveryDelayMs({ rateLimited: true, failureCount: rateLimitFailureCount })
       : getLoginRetryDelayMs(loginAttempt, MAX_LOGIN_BACKOFF_MS);
-    transitionMessengerSupervisor(
-      loginRateLimited ? MESSENGER_SUPERVISOR_EVENTS.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE,
-      {
-        failureKind: loginRateLimited ? "facebook_rate_limit" : "network_error",
-        cooldownUntil: loginRateLimited ? Date.now() + backoffMs : 0,
-      }
-    );
+    if (!isReplacementSession || !activeMessengerApi) {
+      transitionMessengerSupervisor(
+        loginRateLimited ? MESSENGER_SUPERVISOR_EVENTS.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE,
+        {
+          failureKind: loginRateLimited ? "facebook_rate_limit" : "network_error",
+          cooldownUntil: loginRateLimited ? Date.now() + backoffMs : 0,
+        }
+      );
+    }
 
     console.error(
       `[LOGIN] Login invocation failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
@@ -8276,13 +8286,15 @@ function attemptLogin() {
         const backoffMs = loginRateLimited
           ? getListenerRecoveryDelayMs({ rateLimited: true, failureCount: rateLimitFailureCount })
           : getLoginRetryDelayMs(loginAttempt, MAX_LOGIN_BACKOFF_MS);
-        transitionMessengerSupervisor(
-          loginRateLimited ? MESSENGER_SUPERVISOR_EVENTS.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE,
-          {
-            failureKind: loginRateLimited ? "facebook_rate_limit" : "network_error",
-            cooldownUntil: loginRateLimited ? Date.now() + backoffMs : 0,
-          }
-        );
+        if (!isReplacementSession || !activeMessengerApi) {
+          transitionMessengerSupervisor(
+            loginRateLimited ? MESSENGER_SUPERVISOR_EVENTS.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE,
+            {
+              failureKind: loginRateLimited ? "facebook_rate_limit" : "network_error",
+              cooldownUntil: loginRateLimited ? Date.now() + backoffMs : 0,
+            }
+          );
+        }
 
         console.error(
           `[LOGIN] Login failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
