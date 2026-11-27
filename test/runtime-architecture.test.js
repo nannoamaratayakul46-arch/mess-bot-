@@ -103,9 +103,9 @@ test("graceful shutdown bounds persistence, music cleanup, and database close", 
   const start = index.indexOf("async function gracefulShutdown(");
   const end = index.indexOf("\\nfunction handleRecoverableMessengerProcessFailure", start);
   const shutdown = index.slice(start, end);
-  assert.match(index, /async function awaitShutdownTask\\(label, task, timeoutMs\\)/);
-  assert.match(shutdown, /awaitShutdownTask\\("Session persistence", persistAppStateFile, 8_000\\)/);
-  assert.match(shutdown, /awaitShutdownTask\\("Music file cleanup", cleanupMusicFiles, 3_000\\)/);
-  assert.match(shutdown, /awaitShutdownTask\\("Database pool close", \\(\\) => db\\.close\\(\\), 8_000\\)/);
-  assert.match(index, /clearTimeout\\(timer\\)/);
+  assert.ok(index.includes("async function awaitShutdownTask(label, task, timeoutMs)"));
+  assert.ok(shutdown.includes('awaitShutdownTask("Session persistence", persistAppStateFile, 8_000)'));
+  assert.ok(shutdown.includes('awaitShutdownTask("Music file cleanup", cleanupMusicFiles, 3_000)'));
+  assert.ok(shutdown.includes('awaitShutdownTask("Database pool close", () => db.close(), 8_000)'));
+  assert.ok(index.includes("if (timer) clearTimeout(timer)"));
 });
