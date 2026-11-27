@@ -8380,9 +8380,23 @@ function attemptLogin() {
         pendingFacebookAppState = null;
       }
 
+      // The login callback can be superseded while appState is being
+      // captured. Fence again before checkpointing and before promoting the
+      // candidate API; a stale callback must not overwrite newer session data.
+      if (thisGeneration !== listenerGeneration || watchdogShuttingDown) {
+        console.warn("[LOGIN] Discarding stale login completion before session checkpoint.");
+        return;
+      }
+
       // Persist the newest session returned by ws3-fca. This is what makes
       // a refreshed cookie survive Render restarts and redeploys.
       await persistFacebookSessionState(appState);
+
+      if (thisGeneration !== listenerGeneration || watchdogShuttingDown) {
+        console.warn("[LOGIN] Discarding stale login completion after session checkpoint.");
+        return;
+      }
+
       appStateSource = "durable";
       durableSessionRejected = false;
 
