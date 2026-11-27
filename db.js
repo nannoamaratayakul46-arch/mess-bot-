@@ -46,6 +46,7 @@ const INTEREST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const LOAN_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 let pool = null;
+let poolInitializationPromise = null;
 let lastPoolTimeoutDiagnosticAt = 0;
 
 // ═══════════════════════════════════════════════════════════
@@ -53,7 +54,10 @@ let lastPoolTimeoutDiagnosticAt = 0;
 // ═══════════════════════════════════════════════════════════
 
 async function connect() {
+  if (poolInitializationPromise) return poolInitializationPromise;
   if (pool) return pool;
+
+  const initialization = (async () => {
 
   // Initialization is atomic from the application's point of view. If a
   // migration/table setup query fails, discard the half-initialized pool so
@@ -1366,6 +1370,16 @@ async function connect() {
   }
 
   throw error;
+    }
+  })();
+
+  poolInitializationPromise = initialization;
+  try {
+    return await initialization;
+  } finally {
+    if (poolInitializationPromise === initialization) {
+      poolInitializationPromise = null;
+    }
   }
 }
 
@@ -1425,6 +1439,14 @@ async function withTransaction(work) {
 }
 
 async function close() {
+  if (poolInitializationPromise) {
+    try {
+      await poolInitializationPromise;
+    } catch {
+      return;
+    }
+  }
+
   if (!pool) return;
   const current = pool;
   pool = null;
