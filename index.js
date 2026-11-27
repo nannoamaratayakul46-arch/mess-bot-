@@ -8006,7 +8006,11 @@ function attemptLogin() {
     console.error("[LOGIN][SESSION] Safe failure trace:\\n" + safeTrace);
     if (parserDiagnostics) console.error("[LOGIN][SESSION] Safe parser diagnostics: " + JSON.stringify(parserDiagnostics));
     pushDashboardEvent("login-failed", dashboardLoginError, { detail: safeTrace, parser_diagnostics: parserDiagnostics, attempt: loginAttempt + 1, session_source: isReplacementSession ? "replacement" : appStateSource, failure_kind: "facebook_login_required" });
-    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.AUTH_REJECTED, { failureKind: "auth_rejected" });
+    // An invalid replacement session must not mark the currently working
+    // account as session-required; the old listener remains authoritative.
+    if (!activeMessengerApi) {
+      transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.AUTH_REJECTED, { failureKind: "auth_rejected" });
+    }
     loginInProgress = false;
     if (!activeMessengerApi) watchdogSetMessengerConnected(false);
     if (loginRetryTimer) { clearTimeout(loginRetryTimer); loginRetryTimer = null; }
