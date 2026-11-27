@@ -85,6 +85,8 @@ test("database outage does not block the dashboard and Messenger runtime from st
   const dbFailure = bootstrap.indexOf("[BOOT] Database initialization failed; continuing in degraded mode:");
   const runtimeStart = bootstrap.indexOf('require("./index")');
   assert.ok(dbFailure >= 0 && runtimeStart > dbFailure);
-  assert.doesNotMatch(bootstrap.slice(dbFailure, runtimeStart), /process\\.exitCode\\s*=\\s*1|return;/);
-  assert.match(bootstrap, /await db\\.connect\\(\\)/);
+  const degradedStartup = bootstrap.slice(dbFailure, runtimeStart);
+  assert.ok(!degradedStartup.includes("process.exitCode = 1"));
+  assert.ok(!degradedStartup.includes("return;"));
+  assert.ok(bootstrap.includes("await db.connect()"));
 });
