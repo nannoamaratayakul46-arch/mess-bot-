@@ -35,12 +35,12 @@ test("known Messenger process-level auth failures use listener recovery", () => 
 
 test("stale Messenger watchdog reattaches the listener without exiting the Render process", () => {
   const start = index.indexOf("function watchdogCleanRestartForDeadListener(reason) {");
-  const end = index.indexOf("\\nfunction watchdogSetShuttingDown(", start);
+  const end = index.indexOf("\nfunction watchdogSetShuttingDown(", start);
   const handler = index.slice(start, end);
   assert.ok(start >= 0 && end > start, "stale-listener handler should exist");
-  assert.match(handler, /scheduleMqttListenerReattach\\(/);
-  assert.doesNotMatch(handler, /process\\.exit/);
-  assert.doesNotMatch(handler, /watchdogShuttingDown\\s*=\\s*true/);
+  assert.match(handler, /scheduleMqttListenerReattach\(/);
+  assert.doesNotMatch(handler, /process\.exit/);
+  assert.doesNotMatch(handler, /watchdogShuttingDown\s*=\s*true/);
 });
 
 test("transient listener errors use escalating rate-limit backoff", () => {
