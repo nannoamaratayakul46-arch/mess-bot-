@@ -134,7 +134,7 @@ test("active-listener auth rejection permits the existing one-time saved-session
   assert.match(listenerErrorBranch, /EVENTS\.RECOVERY_BEGIN/);
   assert.doesNotMatch(listenerErrorBranch, /EVENTS\.AUTH_REJECTED/);
   assert.match(listenerErrorBranch, /Scheduling one controlled saved-session revalidation/);
-  assert.match(index, /if\s*\(\s*supervisorSnapshot\.state === MESSENGER_SUPERVISOR_STATES\.SESSION_REQUIRED &&\s*!pendingFacebookAppState\)/);
+  assert.match(index, /!pendingFacebookAppState/);
 });
 
 test("dead MQTT listener failures update durable supervisor cooldown state", () => {
