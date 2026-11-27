@@ -37,6 +37,14 @@ test("database exposes graceful shutdown and transaction primitives", () => {
   assert.equal(typeof db.withTransaction, "function");
 });
 
+test("database health checks can restore a pool after degraded startup", () => {
+  const source = read("db.js");
+  assert.match(source, /let healthCheckPromise = null/);
+  assert.match(source, /async function healthCheck\(\)[\s\S]*?if \(!pool\) await connect\(\)/);
+  assert.match(source, /await requireConn\(\)\.query\("SELECT 1"\)/);
+  assert.match(source, /finally \{\s*healthCheckPromise = null;\s*\}/);
+});
+
 test("main process contains one shutdown path", () => {
   const index = read("index.js");
   assert.match(index, /async function gracefulShutdown/);
@@ -78,4 +86,15 @@ test("broadcast uses the requested speech prefix", () => {
     source,
     /const outgoingMessage = imagePath\s*\?\s*\{/
   );
+});
+
+test("database outage does not block the dashboard and Messenger runtime from starting", () => {
+  const bootstrap = read("bootstrap.js");
+  const dbFailure = bootstrap.indexOf("[BOOT] Database initialization failed; continuing in degraded mode:");
+  const licenseStartup = bootstrap.indexOf("  let licenseClient = null;", dbFailure);
+  assert.ok(dbFailure >= 0 && licenseStartup > dbFailure);
+  const degradedStartup = bootstrap.slice(dbFailure, licenseStartup);
+  assert.ok(!degradedStartup.includes("process.exitCode = 1"));
+  assert.ok(!degradedStartup.includes("return;"));
+  assert.ok(bootstrap.includes("await db.connect()"));
 });

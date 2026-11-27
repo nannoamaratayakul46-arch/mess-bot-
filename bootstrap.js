@@ -15,9 +15,14 @@ async function boot() {
     await db.connect();
     console.log("[BOOT] Neon database connected before ECLIPSE runtime.");
   } catch (error) {
-    console.error("[BOOT] Database initialization failed:", String(error?.code || error?.name || "DB_INIT_FAILED"));
-    process.exitCode = 1;
-    return;
+    // PostgreSQL is a recoverable dependency, not a prerequisite for the
+    // dashboard or Messenger authentication. index.js retries DB access
+    // through its normal startup/session paths and can accept an uploaded
+    // session even when no durable checkpoint is currently available.
+    console.error(
+      "[BOOT] Database initialization failed; continuing in degraded mode:",
+      String(error?.code || error?.name || "DB_INIT_FAILED")
+    );
   }
 
   let licenseClient = null;

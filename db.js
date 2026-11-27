@@ -46,6 +46,7 @@ const INTEREST_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 const LOAN_DURATION_MS = 7 * 24 * 60 * 60 * 1000;
 
 let pool = null;
+let healthCheckPromise = null;
 let lastPoolTimeoutDiagnosticAt = 0;
 
 // ═══════════════════════════════════════════════════════════
@@ -4083,8 +4084,22 @@ async function getDashboardSnapshot() {
 }
 
 async function healthCheck() {
-  await requireConn().query("SELECT 1");
-  return true;
+  if (healthCheckPromise) return healthCheckPromise;
+
+  healthCheckPromise = (async () => {
+    // A failed initial connection leaves no pool. Readiness probes and
+    // dashboard health checks become the recovery trigger, so Neon returning
+    // does not require a Render restart before DB-backed features can recover.
+    if (!pool) await connect();
+    await requireConn().query("SELECT 1");
+    return true;
+  })();
+
+  try {
+    return await healthCheckPromise;
+  } finally {
+    healthCheckPromise = null;
+  }
 }
 
 function getMessengerSessionServiceId() {
