@@ -8727,15 +8727,18 @@ function attemptLogin() {
                 } else if (typeof api.stopListenMqtt === "function") {
                   api.stopListenMqtt();
                 }
+              } catch (stopError) {
+                console.warn("[LISTENER] Could not stop failed MQTT listener cleanly:", stopError?.message || stopError);
+              } finally {
+                // Clear ownership/bookkeeping even when the transport stop API throws.
+                // The generation fence above already prevents this listener from
+                // processing events; stale references must not block a fresh attach.
                 activeMqttStopHandle = null;
                 activeMqttListenerCallback = null;
                 if (rawApiForListener) listenerStartedApis.delete(rawApiForListener);
-              } catch (stopError) {
-                console.warn("[LISTENER] Could not stop failed MQTT listener cleanly:", stopError?.message || stopError);
-              }
-
-              if (activeMessengerApi === api || activeMessengerApi === rawApiForListener) {
-                activeMessengerApi = null;
+                if (activeMessengerApi === api || activeMessengerApi === rawApiForListener) {
+                  activeMessengerApi = null;
+                }
               }
             }
 
