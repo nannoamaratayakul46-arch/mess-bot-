@@ -17,5 +17,5 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      - run: YOUTUBE_DL_SKIP_DOWNLOAD=true npm ci
       - run: npm run verify
