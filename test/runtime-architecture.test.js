@@ -96,3 +96,16 @@ test("HTTP shutdown drain is bounded and force-closes lingering connections", ()
     "HTTP drain must complete or hit its deadline before database shutdown"
   );
 });
+
+
+test("graceful shutdown bounds persistence, music cleanup, and database close", () => {
+  const index = read("index.js");
+  const start = index.indexOf("async function gracefulShutdown(");
+  const end = index.indexOf("\\nfunction handleRecoverableMessengerProcessFailure", start);
+  const shutdown = index.slice(start, end);
+  assert.match(index, /async function awaitShutdownTask\\(label, task, timeoutMs\\)/);
+  assert.match(shutdown, /awaitShutdownTask\\("Session persistence", persistAppStateFile, 8_000\\)/);
+  assert.match(shutdown, /awaitShutdownTask\\("Music file cleanup", cleanupMusicFiles, 3_000\\)/);
+  assert.match(shutdown, /awaitShutdownTask\\("Database pool close", \\(\\) => db\\.close\\(\\), 8_000\\)/);
+  assert.match(index, /clearTimeout\\(timer\\)/);
+});
