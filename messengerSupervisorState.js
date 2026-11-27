@@ -68,4 +68,33 @@ function createMessengerSupervisorState(options = {}) {
   }
   return { transition, snapshot, isCurrentGeneration: generation => Number(generation) === state.generation, restore };
 }
-module.exports = { STATES, EVENTS, createMessengerSupervisorState };
+const PERSISTED_FAILURE_KINDS = new Set([
+  "facebook_rate_limit", "mqtt_disconnect", "session_expired",
+  "auth_rejected", "network_error", "proxy_unavailable", "unknown",
+]);
+
+function sanitizePersistedSnapshot(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value) ||
+      !Object.values(STATES).includes(value.state)) {
+    throw new TypeError("Invalid Messenger supervisor snapshot.");
+  }
+  const integer = (input, fallback = 0) => {
+    const parsed = Number(input);
+    return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
+  };
+  const failureKind = PERSISTED_FAILURE_KINDS.has(value.lastFailureKind)
+    ? value.lastFailureKind
+    : null;
+  return {
+    state: value.state,
+    generation: integer(value.generation),
+    attempts: Math.min(1000000, integer(value.attempts)),
+    consecutiveFailures: Math.min(1000000, integer(value.consecutiveFailures)),
+    cooldownUntil: integer(value.cooldownUntil),
+    lastFailureKind: failureKind,
+    lastTransitionAt: integer(value.lastTransitionAt),
+    lastConnectedAt: integer(value.lastConnectedAt),
+  };
+}
+
+module.exports = { STATES, EVENTS, createMessengerSupervisorState, sanitizePersistedSnapshot };
