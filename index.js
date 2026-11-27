@@ -8546,7 +8546,7 @@ function attemptLogin() {
             listenFailureCount++;
 
             const normalizedListenerError = getFacebookLoginErrorMessage(listenError);
-            const nestedRateLimitCode = normalizedListenerError.includes("1675004") ? "1675004" : null;
+            const nestedRateLimitCode = /(?:1675004|3252001)/.exec(normalizedListenerError)?.[0] || null;
             const listenErrorSummary = {
               type: Array.isArray(listenError) ? "array" : typeof listenError,
               name: typeof listenError?.name === "string" ? listenError.name : null,
@@ -15016,10 +15016,10 @@ async function gracefulShutdown(
 }
 
 function handleRecoverableMessengerProcessFailure(kind, reason) {
-  const { authRejected } = classifyListenerError(reason);
-  if (!authRejected) return false;
+  const { authRejected, rateLimited } = classifyListenerError(reason);
+  if (!authRejected && !rateLimited) return false;
 
-  const detail = String(reason?.message || reason || "Facebook rejected the Messenger session.")
+  const detail = String(reason?.message || reason || "Facebook rejected a Messenger action.")
     .slice(0, 240);
   console.error("[SYSTEM] Recoverable Messenger " + kind + ":", detail);
 
@@ -15048,17 +15048,23 @@ function handleRecoverableMessengerProcessFailure(kind, reason) {
   // flow owns retries and will require a fresh session after its one recheck.
   watchdogSetMessengerConnected(false);
   dashboardLastDisconnectedAt = new Date().toISOString();
-  dashboardLoginError =
-    "Facebook rejected the Messenger session. Upload a fresh session from the dashboard if revalidation does not recover it.";
+  dashboardLoginError = rateLimited
+    ? "Facebook temporarily blocked Messenger actions for this account. Messenger reconnects are paused with an escalating cooldown; the dashboard remains online."
+    : "Facebook rejected the Messenger session. Upload a fresh session from the dashboard if revalidation does not recover it.";
   try {
-    pushDashboardEvent("login-failed", "Messenger authentication was rejected; the dashboard remains online.", {
+    pushDashboardEvent(rateLimited ? "messenger" : "login-failed",
+      rateLimited
+        ? "Facebook temporarily blocked Messenger actions; the bot process and dashboard are being kept online."
+        : "Messenger authentication was rejected; the dashboard remains online.", {
       detail,
-      failure_kind: "messenger_auth_rejected",
+      failure_kind: rateLimited ? "facebook_temporary_block" : "messenger_auth_rejected",
     });
   } catch (eventError) {
     console.warn("[SYSTEM] Could not publish Messenger auth failure event:", eventError?.message || eventError);
   }
-  console.warn("[SYSTEM] Messenger is paused; the dashboard and independent services will remain online.");
+  console.warn(rateLimited
+    ? "[SYSTEM] Facebook temporary block detected; Messenger is paused without terminating the bot process."
+    : "[SYSTEM] Messenger is paused; the dashboard and independent services will remain online.");
   return true;
 }
 

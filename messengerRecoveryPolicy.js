@@ -14,17 +14,44 @@ function toFiniteNumber(value, fallback) {
   }
 }
 
-function classifyListenerError(value) {
-  let text = "";
-  try {
-    text = String(value ?? "");
-  } catch {
-    // Error objects supplied by third-party libraries can have hostile or
-    // broken coercion hooks. Classification should fail closed to transient.
+function getClassificationText(value) {
+  const parts = [];
+  const visited = new Set();
+
+  function visit(item, depth = 0) {
+    if (item === null || item === undefined || depth > 5 || parts.length >= 80) return;
+    if (typeof item === "string" || typeof item === "number" || typeof item === "boolean") {
+      parts.push(String(item));
+      return;
+    }
+    if (typeof item !== "object" || visited.has(item)) return;
+    visited.add(item);
+    if (Array.isArray(item)) {
+      for (const child of item) visit(child, depth + 1);
+      return;
+    }
+    for (const key of [
+      "name", "message", "code", "error", "errorCode", "errorSummary",
+      "errorDescription", "error_description", "__html", "html", "description", "reason",
+      "type", "cause"
+    ]) {
+      try {
+        if (key in item) visit(item[key], depth + 1);
+      } catch {
+        // Ignore hostile getters from third-party error objects.
+      }
+    }
   }
+
+  visit(value);
+  return parts.join(" | ");
+}
+
+function classifyListenerError(value) {
+  const text = getClassificationText(value);
   return {
     authRejected: /checkpoint|two.factor|2fa|invalid cookie|cookie.*(?:invalid|expired|rejected)|session.*(?:expired|invalid|rejected)|not logged in|login required|authentication failed|account disabled|confirm your identity|facebook blocked the login|error retrieving user.?id/i.test(text),
-    rateLimited: /1675004|rate.?limit|too many requests/i.test(text),
+    rateLimited: /1675004|3252001|rate.?limit|too many requests|temporarily blocked|misusing this feature|going too fast/i.test(text),
   };
 }
 
