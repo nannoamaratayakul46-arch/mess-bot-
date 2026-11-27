@@ -105,6 +105,11 @@ const { login } = require("ws3-fca");
 const { resolveAddressFromHeaders } = require("./reverseGeocode");
 
 const db = require("./db");
+const {
+  STATES: MESSENGER_SUPERVISOR_STATES,
+  EVENTS: MESSENGER_SUPERVISOR_EVENTS,
+  createMessengerSupervisorState,
+} = require("./messengerSupervisorState");
 const trafficDeliveryStore = require("./trafficDeliveryHistory");
 const { resolveTargetName, clearTargetNameCache } = require("./targetName");
 const { createJaidenMessageQueue } = require("./jaiden-message-queue");
@@ -4623,6 +4628,9 @@ app.post(
     // working Messenger listener. If Facebook rejects these cookies,
     // ECLIPSE stays connected with the previous valid session.
     pendingFacebookAppState = incoming;
+    if (messengerSupervisor.snapshot().state === MESSENGER_SUPERVISOR_STATES.SESSION_REQUIRED) {
+      transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.SESSION_REPLACED);
+    }
 
     dashboardBotPaused = false;
     pushDashboardEvent("messenger", "Facebook session validation requested from Command Center. The session will be checkpointed after successful login.");
@@ -7441,6 +7449,62 @@ let listenerGeneration = 0;
 let activeListenerGeneration = 0;
 let startupSchedulersInitialized = false;
 let loginRetryTimer = null;
+const messengerSupervisor = createMessengerSupervisorState();
+let messengerSupervisorPersistQueue = Promise.resolve();
+
+function persistMessengerSupervisorState() {
+  const snapshot = messengerSupervisor.snapshot();
+  messengerSupervisorPersistQueue = messengerSupervisorPersistQueue
+    .then(async () => {
+      await db.connect();
+      await db.setMessengerSupervisorState(snapshot);
+    })
+    .catch(error => {
+      // Recovery metadata is best-effort; a database outage must never crash
+      // the Messenger process or block an otherwise valid login attempt.
+      console.warn("[SUPERVISOR] Could not persist recovery metadata:", error?.message || error);
+    });
+  return messengerSupervisorPersistQueue;
+}
+
+function transitionMessengerSupervisor(event, metadata = {}) {
+  const result = messengerSupervisor.transition(event, metadata);
+  if (!result.ok) return false;
+  void persistMessengerSupervisorState();
+  return true;
+}
+
+async function restoreMessengerSupervisorState() {
+  try {
+    const saved = await db.getMessengerSupervisorState();
+    if (!saved) return false;
+
+    const restored = { ...saved };
+    const now = Date.now();
+    const maxCooldownAt = now + MAX_LOGIN_BACKOFF_MS;
+    if (restored.cooldownUntil > maxCooldownAt) {
+      restored.cooldownUntil = maxCooldownAt;
+    }
+
+    // A process restart invalidates any previously connected/in-flight socket.
+    // Never restore those states as live; require a fresh listener generation.
+    if ([MESSENGER_SUPERVISOR_STATES.CONNECTED,
+         MESSENGER_SUPERVISOR_STATES.CONNECTING,
+         MESSENGER_SUPERVISOR_STATES.STARTING].includes(restored.state)) {
+      restored.state = MESSENGER_SUPERVISOR_STATES.DEGRADED;
+      restored.lastFailureKind = "unknown";
+      restored.cooldownUntil = 0;
+    }
+
+    if (!messengerSupervisor.restore(restored)) return false;
+    console.log("[SUPERVISOR] Restored Messenger recovery state:", restored.state);
+    void persistMessengerSupervisorState();
+    return true;
+  } catch (error) {
+    console.warn("[SUPERVISOR] Could not restore recovery metadata; continuing with safe startup defaults:", error?.message || error);
+    return false;
+  }
+}
 // Permit one delayed revalidation after Facebook drops an authenticated listener.
 // A second explicit login-required response still waits for a fresh session.
 let authRejectionRetryUsed = false;
@@ -7795,6 +7859,37 @@ function fallbackFromRejectedDurableSession() {
 }
 
 function attemptLogin() {
+  const supervisorSnapshot = messengerSupervisor.snapshot();
+  if (
+    supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.SESSION_REQUIRED &&
+    !pendingFacebookAppState
+  ) {
+    return;
+  }
+  if (supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.COOLDOWN) {
+    const remainingMs = supervisorSnapshot.cooldownUntil - Date.now();
+    if (remainingMs > 0) {
+      if (!loginRetryTimer) {
+        loginRetryTimer = setTimeout(() => {
+          loginRetryTimer = null;
+          transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.COOLDOWN_END);
+          attemptLogin();
+        }, remainingMs);
+      }
+      return;
+    }
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.COOLDOWN_END);
+  } else if (supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.STARTING) {
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.START);
+  } else if (supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.DEGRADED) {
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.CONNECT_BEGIN);
+  } else if (
+    supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.SESSION_REQUIRED &&
+    pendingFacebookAppState
+  ) {
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.SESSION_REPLACED);
+  }
+
   if (isMessengerProxyEnabled() && !messengerProxyUsage.isAllowed()) {
     dashboardLoginError = "Messenger login is paused by the proxy bandwidth safety guard or because usage accounting is unavailable.";
     console.error("[PROXY USAGE] Login blocked: bandwidth meter is not ready or the 1.8 GB safety cap has been reached.");
@@ -7911,6 +8006,7 @@ function attemptLogin() {
     console.error("[LOGIN][SESSION] Safe failure trace:\\n" + safeTrace);
     if (parserDiagnostics) console.error("[LOGIN][SESSION] Safe parser diagnostics: " + JSON.stringify(parserDiagnostics));
     pushDashboardEvent("login-failed", dashboardLoginError, { detail: safeTrace, parser_diagnostics: parserDiagnostics, attempt: loginAttempt + 1, session_source: isReplacementSession ? "replacement" : appStateSource, failure_kind: "facebook_login_required" });
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.AUTH_REJECTED, { failureKind: "auth_rejected" });
     loginInProgress = false;
     if (!activeMessengerApi) watchdogSetMessengerConnected(false);
     if (loginRetryTimer) { clearTimeout(loginRetryTimer); loginRetryTimer = null; }
@@ -8016,6 +8112,13 @@ function attemptLogin() {
     const backoffMs = loginRateLimited
       ? getListenerRecoveryDelayMs({ rateLimited: true, failureCount: rateLimitFailureCount })
       : getLoginRetryDelayMs(loginAttempt, MAX_LOGIN_BACKOFF_MS);
+    transitionMessengerSupervisor(
+      loginRateLimited ? MESSENGER_SUPERVISOR_EVENTS.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE,
+      {
+        failureKind: loginRateLimited ? "facebook_rate_limit" : "network_error",
+        cooldownUntil: loginRateLimited ? Date.now() + backoffMs : 0,
+      }
+    );
 
     console.error(
       `[LOGIN] Login invocation failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
@@ -8169,6 +8272,13 @@ function attemptLogin() {
         const backoffMs = loginRateLimited
           ? getListenerRecoveryDelayMs({ rateLimited: true, failureCount: rateLimitFailureCount })
           : getLoginRetryDelayMs(loginAttempt, MAX_LOGIN_BACKOFF_MS);
+        transitionMessengerSupervisor(
+          loginRateLimited ? MESSENGER_SUPERVISOR_EVENTS.RATE_LIMIT : MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE,
+          {
+            failureKind: loginRateLimited ? "facebook_rate_limit" : "network_error",
+            cooldownUntil: loginRateLimited ? Date.now() + backoffMs : 0,
+          }
+        );
 
         console.error(
           `[LOGIN] Login failed (attempt ${loginAttempt}). Retrying in ${backoffMs}ms: ${dashboardLoginError}`
@@ -8192,6 +8302,7 @@ function attemptLogin() {
         return;
       }
 
+      transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.CONNECT_SUCCESS);
       loginAttempt = 0;
       listenFailureCount = 0;
       rateLimitFailureCount = 0;
@@ -8822,6 +8933,7 @@ async function initializeMessengerSession() {
   // FB_COOKIES fallback in place. attemptLogin() owns the single shared
   // login path so startup and every dashboard login route behave identically.
   await loadPersistedFacebookSessionState();
+  await restoreMessengerSupervisorState();
   attemptLogin();
 }
 
