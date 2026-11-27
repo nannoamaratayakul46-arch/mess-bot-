@@ -79,3 +79,20 @@ test("broadcast uses the requested speech prefix", () => {
     /const outgoingMessage = imagePath\s*\?\s*\{/
   );
 });
+
+test("HTTP shutdown drain is bounded and force-closes lingering connections", () => {
+  const index = read("index.js");
+  const start = index.indexOf("async function gracefulShutdown(");
+  const end = index.indexOf("\nfunction handleRecoverableMessengerProcessFailure", start);
+  const shutdown = index.slice(start, end);
+  assert.ok(start >= 0 && end > start, "graceful shutdown should be present");
+  assert.match(shutdown, /server\.close\(finish\)/);
+  assert.match(shutdown, /setTimeout\(\(\) => \{/);
+  assert.match(shutdown, /8_000/);
+  assert.match(shutdown, /server\.closeAllConnections\(\)/);
+  assert.match(shutdown, /clearTimeout\(drainTimer\)/);
+  assert.ok(
+    shutdown.indexOf("server.close(finish)") < shutdown.indexOf("await db.close()"),
+    "HTTP drain must complete or hit its deadline before database shutdown"
+  );
+});
