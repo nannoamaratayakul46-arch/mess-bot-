@@ -15094,6 +15094,12 @@ async function gracefulShutdown(
   if (appStatePersistenceTimer) clearInterval(appStatePersistenceTimer);
   stopWatchdog();
   stopTrafficGovernor();
+  try {
+    const stoppedBurstRuns = burstRoastSettings.stopAllRuns();
+    if (stoppedBurstRuns) console.log("[SYSTEM] Stopped " + stoppedBurstRuns + " active Burst & Roast run(s).");
+  } catch (error) {
+    console.error("[SYSTEM] Burst & Roast shutdown failed:", error?.message || error);
+  }
 
   try {
     shutdownGames();
