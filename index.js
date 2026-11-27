@@ -8134,7 +8134,7 @@ function attemptLogin() {
         return;
       }
 
-      if (appStateSource !== "durable") {
+      if (appStateSource !== "durable" && appStateSource !== "memory") {
         loginInProgress = false;
         dashboardLoginError =
           appStateSource === "fb_cookies"
@@ -8285,7 +8285,7 @@ function attemptLogin() {
         const fellBackToCookies =
           fallbackFromRejectedDurableSession();
 
-        if (!fellBackToCookies && appStateSource !== "durable") {
+        if (!fellBackToCookies && appStateSource !== "durable" && appStateSource !== "memory") {
           loginInProgress = false;
           dashboardLoginError =
             appStateSource === "fb_cookies"
