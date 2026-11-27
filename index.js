@@ -7901,6 +7901,18 @@ function attemptLogin() {
   ) {
     return;
   }
+
+  // A live API/listener remains the connection owner during MQTT recovery.
+  // Do this before changing supervisor state: otherwise a routine retry tick
+  // can move DEGRADED -> CONNECTING while the existing listener is reattaching,
+  // making its first real MQTT event unable to complete RECOVERY_SUCCESS.
+  if (
+    activeMessengerApi &&
+    activeListenerGeneration > 0 &&
+    !pendingFacebookAppState
+  ) {
+    return;
+  }
   if (supervisorSnapshot.state === MESSENGER_SUPERVISOR_STATES.COOLDOWN) {
     const remainingMs = supervisorSnapshot.cooldownUntil - Date.now();
     if (remainingMs > 0) {
@@ -8648,13 +8660,8 @@ function attemptLogin() {
           listenError,
           event
         ) => {
-          if (event && typeof event === "object") {
-            lastMqttActivity = Date.now();
-            mqttReconnectAttempt = 0;
-            mqttReconnectFatal = false;
-          }
-          watchdogRecordListenerActivity();
-
+          // Fence stale callbacks before they can refresh watchdog health or
+          // reset reconnect backoff for the currently active listener.
           if (thisGeneration !== activeListenerGeneration) {
             return;
           }
@@ -8662,6 +8669,13 @@ function attemptLogin() {
           if (activeMessengerApi && activeMessengerApi !== api) {
             return;
           }
+
+          if (event && typeof event === "object") {
+            lastMqttActivity = Date.now();
+            mqttReconnectAttempt = 0;
+            mqttReconnectFatal = false;
+          }
+          watchdogRecordListenerActivity();
 
           if (listenError) {
             // ws3-fca's MQTT error path may call mqttClient.end() before
