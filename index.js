@@ -8337,7 +8337,6 @@ function attemptLogin() {
       listenFailureCount = 0;
       rateLimitFailureCount = 0;
       authRejectionRetryUsed = false;
-      loginInProgress = false;
       dashboardLoginError = null;
 
       mqttReconnectFatal = false;
@@ -8463,6 +8462,10 @@ function attemptLogin() {
       // listener callback will fail the generation check below.
       api = installTrafficGovernor(api) || api;
       activeMessengerApi = api;
+      // Keep the login gate closed throughout asynchronous checkpoint and
+      // startup work. Once the API is promoted, the active-listener guard
+      // becomes the owner and prevents a duplicate login.
+      loginInProgress = false;
       const previousMessengerUserID = String(eclipseUserID || "").trim();
 
       try {
