@@ -231,3 +231,19 @@ test("stale MQTT callbacks cannot refresh watchdog activity or reset reconnect b
   assert.ok(backoffReset > generationFence,
     "stale callbacks must not reset the active listener's reconnect backoff");
 });
+
+test("successful login completion is generation-fenced before and after durable session checkpoint", () => {
+  const successCallbackStart = index.indexOf("transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.CONNECT_SUCCESS)");
+  const checkpointStart = index.indexOf("await persistFacebookSessionState(appState)", successCallbackStart);
+  const beforeCheckpointGuard = index.lastIndexOf("thisGeneration !== listenerGeneration", checkpointStart);
+  const afterCheckpointGuard = index.indexOf("thisGeneration !== listenerGeneration", checkpointStart);
+  const promotion = index.indexOf("activeMessengerApi = api", checkpointStart);
+  assert.ok(successCallbackStart >= 0 && checkpointStart > successCallbackStart);
+  assert.ok(beforeCheckpointGuard > successCallbackStart,
+    "current login generation must be verified before durable session checkpoint");
+  assert.ok(afterCheckpointGuard > checkpointStart,
+    "generation/shutdown must be rechecked after awaited checkpoint");
+  assert.ok(promotion > afterCheckpointGuard,
+    "candidate API must not become connection owner until post-await fence passes");
+  assert.match(index.slice(afterCheckpointGuard, promotion), /watchdogShuttingDown/);
+});
