@@ -4890,15 +4890,22 @@ app.get("/", (_req, res) => {
   );
 });
 
-app.get("/health", async (_req, res) => {
+const { isProcessLivenessHealthy, isCoreReadinessHealthy } = require("./runtimeHealthPolicy");
+
+app.get("/health", (_req, res) => {
   const watchdog = getWatchdogStatus();
-  const databaseHealthy = await checkDatabaseHealth();
-  const healthOk = watchdog.ok && databaseHealthy !== false;
-  // Keep public readiness information minimal; detailed diagnostics require dashboard authentication.
-  res.status(healthOk ? 200 : 503).json({
-    ok: healthOk,
-    uptime: Math.floor(process.uptime()),
+  const livenessOk = isProcessLivenessHealthy({
+    eventLoopAgeMs: watchdog.eventLoopAgeMs,
+    maxEventLoopAgeMs: WATCHDOG_EVENT_LOOP_TIMEOUT_MS,
+    shuttingDown: watchdog.shuttingDown,
   });
+  res.status(livenessOk ? 200 : 503).json({ ok: livenessOk, uptime: Math.floor(process.uptime()) });
+});
+
+app.get("/ready", async (_req, res) => {
+  const databaseHealthy = await checkDatabaseHealth();
+  const readinessOk = isCoreReadinessHealthy({ databaseHealthy, shuttingDown: watchdogShuttingDown });
+  res.status(readinessOk ? 200 : 503).json({ ok: readinessOk, uptime: Math.floor(process.uptime()) });
 });
 
 const port =
