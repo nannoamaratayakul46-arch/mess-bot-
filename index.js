@@ -7554,6 +7554,10 @@ function scheduleMqttListenerReattach(reason) {
     typeof activeMqttListenerCallback !== "function"
   ) return;
 
+  if (messengerSupervisor.snapshot().state === MESSENGER_SUPERVISOR_STATES.CONNECTED) {
+    transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.RECOVERY_BEGIN);
+  }
+
   const scheduledGeneration = activeListenerGeneration;
   const delayMs = Math.min(
     MQTT_RECONNECT_MAX_DELAY_MS,
@@ -7603,6 +7607,9 @@ function scheduleMqttListenerReattach(reason) {
       const errorText = getFacebookLoginErrorMessage(error);
       const { authRejected } = classifyListenerError(errorText);
       if (authRejected) {
+        transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.AUTH_REJECTED, {
+          failureKind: "auth_rejected",
+        });
         mqttReconnectFatal = true;
         console.error(
           "[MQTT WATCHDOG] Fatal authentication rejection while reattaching (" +
@@ -7610,6 +7617,9 @@ function scheduleMqttListenerReattach(reason) {
         );
         return;
       }
+      transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.TRANSIENT_FAILURE, {
+        failureKind: "mqtt_disconnect",
+      });
       console.warn("[MQTT WATCHDOG] Temporary listener reattach failure: " + errorText);
       scheduleMqttListenerReattach("temporary reattach failure");
     }
@@ -8790,6 +8800,11 @@ function attemptLogin() {
           }
 
           listenFailureCount = 0;
+          // The reattached socket is not considered recovered until it
+          // delivers a real MQTT event, not merely because listenMqtt returned.
+          if (event && typeof event === "object") {
+            transitionMessengerSupervisor(MESSENGER_SUPERVISOR_EVENTS.RECOVERY_SUCCESS);
+          }
           // Any subsequent healthy listener callback proves the cooldown
           // recovered; start future rate-limit backoff from its first step.
           rateLimitFailureCount = 0;
