@@ -24,6 +24,7 @@ function createJaidenMessageQueue(options = {}) {
         let completed = false;
         let thrownRetries = 0;
         while (!stopped && !completed) {
+          state.activeItem = item;
           state.lastStartedAt = Date.now();
           try {
             const result = await send(item.job);
@@ -63,6 +64,17 @@ function createJaidenMessageQueue(options = {}) {
             }
           }
         }
+        if (!completed && stopped) {
+          // The request may already have reached Messenger. Do not describe
+          // an in-flight item as cleared or safely retry it after shutdown.
+          item.resolve({
+            accepted: true,
+            sent: false,
+            attempts: thrownRetries + 1,
+            outcome: "stopped-after-send-attempt",
+          });
+        }
+        state.activeItem = null;
         state.jobs.shift();
       }
     } finally {
@@ -95,9 +107,15 @@ function createJaidenMessageQueue(options = {}) {
     for (const [key, state] of queues) {
       // Queue keys may be thread IDs or threadID:targetID scopes.
       if (prefix !== null && key !== prefix && !key.startsWith(prefix + ":")) continue;
-      for (const item of state.jobs) { item.resolve({ accepted: false, sent: false, outcome: "cleared" }); cleared++; }
-      state.jobs.length = 0;
-      if (!state.running) queues.delete(key);
+      // A send already handed to Messenger cannot be cancelled. Preserve its
+      // promise and only discard jobs that have not started sending.
+      const firstPendingIndex = state.activeItem ? 1 : 0;
+      const pending = state.jobs.splice(firstPendingIndex);
+      for (const item of pending) {
+        item.resolve({ accepted: false, sent: false, outcome: "cleared" });
+        cleared++;
+      }
+      if (!state.running && !state.jobs.length) queues.delete(key);
     }
     return cleared;
   }
