@@ -28,7 +28,7 @@ test("array-wrapped ws3-fca listener errors are normalized before classification
 
 test("known Messenger process-level auth failures use listener recovery", () => {
   assert.match(index, /function handleRecoverableMessengerProcessFailure/);
-  assert.match(index, /const \{ authRejected \} = classifyListenerError\(reason\)/);
+  assert.match(index, /const { authRejected, rateLimited } = classifyListenerError(reason)/);
   assert.match(index, /activeMqttListenerCallback\(reason, null\)/);
   assert.match(index, /process\.on\("unhandledRejection"/);
 });
