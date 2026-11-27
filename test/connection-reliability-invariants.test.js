@@ -163,3 +163,26 @@ test("MQTT reattach remains degraded until real event activity proves recovery",
   );
   assert.match(callback, /event && typeof event === "object"[\s\S]*?EVENTS\.RECOVERY_SUCCESS/);
 });
+
+test("all Messenger login retries are owned by one bounded, shutdown-aware timer coordinator", () => {
+  const helperStart = index.indexOf("function cancelLoginRetry(reason =");
+  const helperEnd = index.indexOf("\nfunction attemptLogin()", helperStart);
+  const helper = index.slice(helperStart, helperEnd);
+  assert.ok(helperStart >= 0 && helperEnd > helperStart, "login retry coordinator should exist");
+  assert.match(helper, /clearTimeout\(loginRetryTimer\)/);
+  assert.match(helper, /Math\.min\(30 \* 60 \* 1000, Math\.max\(1/);
+  assert.match(helper, /if \(watchdogShuttingDown\) return null/);
+  assert.match(helper, /if \(watchdogShuttingDown\) return/);
+  assert.match(helper, /loginRetryTimer\.unref/);
+  assert.match(helper, /loginRetryTimer = null/);
+  assert.match(helper, /callback\(\)/);
+  assert.equal((index.match(/loginRetryTimer\s*=\s*setTimeout\(/g) || []).length, 1,
+    "only the coordinator may create a login retry timer");
+  assert.equal((index.match(/clearTimeout\(loginRetryTimer\)/g) || []).length, 1,
+    "only the coordinator may clear a login retry timer");
+  assert.match(index, /scheduleLoginRetry\(remainingMs, "supervisor cooldown"/);
+  assert.match(index, /scheduleLoginRetry\(retryDelayMs, "one-time auth revalidation"/);
+  assert.match(index, /scheduleLoginRetry\(recoveryDelayMs, "listener recovery"/);
+  assert.equal((index.match(/scheduleLoginRetry\(backoffMs, "login failure backoff"/g) || []).length, 2);
+  assert.equal((index.match(/scheduleLoginRetry\(100, "durable-session fallback"/g) || []).length, 3);
+});
