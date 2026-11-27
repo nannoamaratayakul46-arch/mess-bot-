@@ -556,38 +556,26 @@ function watchdogCleanRestartForDeadListener(reason) {
   }
 
   watchdogListenerRestarting = true;
-  watchdogShuttingDown = true;
   watchdogMessengerConnected = false;
 
-  console.error(
-    "[WATCHDOG] Messenger listener appears silently dead."
+  console.warn(
+    "[WATCHDOG] Messenger listener appears stale; preserving the Node process and dashboard."
   );
+  console.warn("[WATCHDOG] " + reason);
 
-  console.error(
-    "[WATCHDOG] " + reason
-  );
-
-  console.error(
-    "[WATCHDOG] Stopping the stale listener and exiting with code 1 so Render can perform a clean restart."
-  );
-
+  // A stale Messenger listener is a recoverable dependency failure, not a
+  // reason to terminate the entire Render service. Reuse the bounded MQTT
+  // reattach path; login/session validation remains owned by attemptLogin().
   try {
-    if (
-      activeMessengerApi &&
-      typeof activeMessengerApi.stopListenMqtt === "function"
-    ) {
-      activeMessengerApi.stopListenMqtt();
-    }
+    scheduleMqttListenerReattach("watchdog stale-listener detection: " + String(reason || "no activity"));
   } catch (error) {
     console.error(
-      "[WATCHDOG] Failed to stop stale Messenger listener cleanly:",
-      error
+      "[WATCHDOG] Could not schedule listener reattach:",
+      error?.message || error
     );
+  } finally {
+    watchdogListenerRestarting = false;
   }
-
-  setTimeout(() => {
-    process.exit(1);
-  }, 1000);
 }
 
 function watchdogSetShuttingDown(
