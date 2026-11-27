@@ -33,5 +33,5 @@ test("dashboard SSE clients and heartbeat timers are closed before HTTP shutdown
   const shutdown = index.slice(shutdownStart, shutdownEnd);
   assert.match(shutdown, /for \(const \[client, heartbeatTimer\] of dashboardEventHeartbeatTimers\)/);
   assert.match(shutdown, /client\.end\(\)/);
-  assert.ok(shutdown.indexOf("client.end()") < shutdown.indexOf("server.close("));
+  assert.ok(shutdown.indexOf("server.close(") < shutdown.indexOf("client.end()"));
 });
