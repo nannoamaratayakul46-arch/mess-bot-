@@ -282,6 +282,16 @@ function createBurstRoastSettings({ db, getApi = () => null, isKnownGroup = () =
       });
     });
   }
-  return { registerRoutes, getSettings: () => ({ ...settings }) };
+  function stopAllRuns() {
+    let stopped = 0;
+    for (const controller of activeRuns.values()) {
+      if (!controller.stopped) {
+        controller.stop();
+        stopped += 1;
+      }
+    }
+    return stopped;
+  }
+  return { registerRoutes, getSettings: () => ({ ...settings }), stopAllRuns };
 }
 module.exports = { createBurstRoastSettings, DEFAULTS, normalize, buildSpamMessage, randomDelaySeconds, formatTimeCheck, DOGMODE_BANATS, NORMAL_SPAM_BANATS };
