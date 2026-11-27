@@ -21,3 +21,17 @@ test("dashboard event stream uses actual SSE line delimiters", () => {
   assert.ok(!publicHealth.includes("lastFailure: status.lastFailure"));
   assert.ok(!publicHealth.includes("trafficGovernor:"));
 });
+
+test("dashboard SSE clients and heartbeat timers are closed before HTTP shutdown", () => {
+  assert.match(index, /const dashboardEventHeartbeatTimers = new Map\(\);/);
+  assert.match(index, /dashboardEventHeartbeatTimers\.set\(res, heartbeatTimer\)/);
+  assert.match(index, /res\.once\("close", \(\) => cleanupDashboardEventClient\(res\)\)/);
+  assert.doesNotMatch(index, /req\.on\("close", \(\) => \{\s*clearInterval\(heartbeatTimer\)/);
+
+  const shutdownStart = index.indexOf("async function gracefulShutdown");
+  const shutdownEnd = index.indexOf("function handleRecoverableMessengerProcessFailure", shutdownStart);
+  const shutdown = index.slice(shutdownStart, shutdownEnd);
+  assert.match(shutdown, /for \(const \[client, heartbeatTimer\] of dashboardEventHeartbeatTimers\)/);
+  assert.match(shutdown, /client\.end\(\)/);
+  assert.ok(shutdown.indexOf("server.close(") < shutdown.indexOf("client.end()"));
+});

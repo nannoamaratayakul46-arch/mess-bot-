@@ -4927,7 +4927,15 @@ if (
 
 const dashboardEventBuffer = [];
 const dashboardEventClients = new Set();
+const dashboardEventHeartbeatTimers = new Map();
 const DASHBOARD_EVENT_LIMIT = 150;
+
+function cleanupDashboardEventClient(client) {
+  const heartbeatTimer = dashboardEventHeartbeatTimers.get(client);
+  if (heartbeatTimer) clearInterval(heartbeatTimer);
+  dashboardEventHeartbeatTimers.delete(client);
+  dashboardEventClients.delete(client);
+}
 
 function pushDashboardEvent(type, message, meta = {}) {
   const event = {
@@ -4948,7 +4956,7 @@ function pushDashboardEvent(type, message, meta = {}) {
     try {
       client.write(payload);
     } catch {
-      dashboardEventClients.delete(client);
+      cleanupDashboardEventClient(client);
     }
   }
 
@@ -5095,11 +5103,13 @@ app.get(
 
     const heartbeatTimer = setInterval(heartbeat, 20_000);
     heartbeatTimer.unref?.();
+    dashboardEventHeartbeatTimers.set(res, heartbeatTimer);
 
-    req.on("close", () => {
-      clearInterval(heartbeatTimer);
-      dashboardEventClients.delete(res);
-    });
+    // The response owns the long-lived SSE socket. IncomingMessage "close"
+    // can fire when the request itself completes, so clean up on the response
+    // lifecycle instead of depending on the request object.
+    res.once("close", () => cleanupDashboardEventClient(res));
+    res.once("error", () => cleanupDashboardEventClient(res));
   }
 );
 
@@ -15142,15 +15152,20 @@ async function gracefulShutdown(
   // replaced. Stopping the Node process is enough; ws3-fca/Facebook can
   // keep the session valid for the next startup.
   try {
-    if (server) {
-      await new Promise(
-        (resolve) => {
-          server.close(
-            () => resolve()
-          );
-        }
-      );
+    // Stop accepting new HTTP connections first, then close long-lived SSE
+    // responses so server.close() can drain instead of waiting indefinitely.
+    const serverClosePromise = server
+      ? new Promise(resolve => server.close(resolve))
+      : Promise.resolve();
+
+    for (const [client, heartbeatTimer] of dashboardEventHeartbeatTimers) {
+      clearInterval(heartbeatTimer);
+      try { client.end(); } catch {}
     }
+    dashboardEventHeartbeatTimers.clear();
+    dashboardEventClients.clear();
+
+    await serverClosePromise;
   } catch (error) {
     console.error(
       "[SYSTEM] Server shutdown failed:",
