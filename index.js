@@ -15146,31 +15146,26 @@ async function gracefulShutdown(
     );
   }
 
-  // End long-lived dashboard SSE responses before closing the HTTP server.
-  // Otherwise server.close() can wait forever for clients that are still
-  // connected, preventing the process from completing a Render shutdown.
-  for (const [client, heartbeatTimer] of dashboardEventHeartbeatTimers) {
-    clearInterval(heartbeatTimer);
-    try { client.end(); } catch {}
-  }
-  dashboardEventHeartbeatTimers.clear();
-  dashboardEventClients.clear();
-
   // Do NOT call Messenger logout during process shutdown.
   // Render sends SIGTERM for normal deploys/restarts. Explicitly logging
   // out here invalidates the Facebook session every time the process is
   // replaced. Stopping the Node process is enough; ws3-fca/Facebook can
   // keep the session valid for the next startup.
   try {
-    if (server) {
-      await new Promise(
-        (resolve) => {
-          server.close(
-            () => resolve()
-          );
-        }
-      );
+    // Stop accepting new HTTP connections first, then close long-lived SSE
+    // responses so server.close() can drain instead of waiting indefinitely.
+    const serverClosePromise = server
+      ? new Promise(resolve => server.close(resolve))
+      : Promise.resolve();
+
+    for (const [client, heartbeatTimer] of dashboardEventHeartbeatTimers) {
+      clearInterval(heartbeatTimer);
+      try { client.end(); } catch {}
     }
+    dashboardEventHeartbeatTimers.clear();
+    dashboardEventClients.clear();
+
+    await serverClosePromise;
   } catch (error) {
     console.error(
       "[SYSTEM] Server shutdown failed:",
